@@ -303,6 +303,9 @@ importers:
       reka-ui:
         specifier: 2.10.3
         version: 2.10.3(vue@3.5.41(typescript@6.0.3))
+      simple-icons:
+        specifier: 16.28.0
+        version: 16.28.0
       socket.io-client:
         specifier: 4.8.3
         version: 4.8.3(supports-color@10.0.0)
@@ -10415,6 +10418,13 @@ packages:
         integrity: sha512-cGQjLjK8bxJw4QuYT7gxHw3/IouVESbhahSsHrX97MzCL1gu2u7oy38W6L2ZIGECEfIBG4BabsWDPjBxJENv9Q==,
       }
 
+  simple-icons@16.28.0:
+    resolution:
+      {
+        integrity: sha512-sQPR5AtK/ijRjou7zw7mlLp08oB6FH7i0lOy5XJ2zp9mJs/yejgiOn7KvQoe2q4YJIx6VmgUSW5AOefebPt5kg==,
+      }
+    engines: { node: '>=0.12.18' }
+
   sirv@3.0.2:
     resolution:
       {
@@ -18696,6 +18706,8 @@ snapshots:
       debug: 4.4.3(supports-color@10.0.0)
     transitivePeerDependencies:
       - supports-color
+
+  simple-icons@16.28.0: {}
 
   sirv@3.0.2:
     dependencies:
