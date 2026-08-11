@@ -1,0 +1,6 @@
+export { default as DashboardStatsCards } from './stats-cards.vue';
+export { default as DashboardQuickActions } from './quick-actions.vue';
+export { default as DashboardRecentProjects } from './recent-projects.vue';
+export { default as DashboardActivityFeed } from './activity-feed.vue';
+export { default as DashboardTechOverview } from './tech-overview.vue';
+export { default as DashboardSystemStatus } from './system-status.vue';

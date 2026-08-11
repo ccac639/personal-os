@@ -24,7 +24,8 @@ describe('default-layout 顶部导航', () => {
     const labels = wrapper.findAll('nav a').map((a) => a.text());
     expect(labels).toEqual(['首页', 'Chat', '工作流', '开发中', '已完成', '管理系统']);
     // 第一个链接是品牌区，最后一个链接是设置（幽灵按钮）
-    expect(links[0].text()).toBe('Personal OS');
+    // 品牌字母动画将空格渲染为 \u00A0（非断行空格），需归一化
+    expect(links[0].text().replace(/\u00A0/g, ' ')).toBe('Personal OS');
     expect(links.at(-1)?.text()).toBe('设置');
   });
 

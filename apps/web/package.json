@@ -38,6 +38,7 @@
     "marked": "18.0.9",
     "monaco-editor": "0.56.0",
     "motion": "13.1.0",
+    "motion-v": "2.3.0",
     "ofetch": "1.5.1",
     "pinia": "4.0.2",
     "reka-ui": "2.10.3",
