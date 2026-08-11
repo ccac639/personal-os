@@ -1,8 +1,36 @@
 <script setup lang="ts">
 import { motion, AnimatePresence, LayoutGroup } from 'motion-v';
 import { useRoute } from 'vue-router';
+import { ref } from 'vue';
 
 const route = useRoute();
+
+interface Ripple {
+  id: number;
+  x: number;
+  y: number;
+}
+
+/** 点击涟漪：每个导航项独立维护自己的涟漪列表，元素挂载时自动播放扩散动画 */
+const ripplesByNav = ref<Record<string, Ripple[]>>({});
+let rippleSeq = 0;
+
+function addRipple(to: string, e: MouseEvent) {
+  const el = e.currentTarget as HTMLElement;
+  const rect = el.getBoundingClientRect();
+  const id = ++rippleSeq;
+  const list = ripplesByNav.value[to] ?? [];
+  ripplesByNav.value = {
+    ...ripplesByNav.value,
+    [to]: [...list, { id, x: e.clientX - rect.left, y: e.clientY - rect.top }],
+  };
+  window.setTimeout(() => {
+    ripplesByNav.value = {
+      ...ripplesByNav.value,
+      [to]: (ripplesByNav.value[to] ?? []).filter((r) => r.id !== id),
+    };
+  }, 700);
+}
 
 interface NavItem {
   label: string;
@@ -70,7 +98,7 @@ const brandLetters = 'Personal OS'.split('');
         <LayoutGroup>
           <nav class="flex h-full items-center justify-center gap-5">
             <RouterLink
-              v-for="item in navItems"
+              v-for="(item, i) in navItems"
               :key="item.to"
               v-slot="{ href, navigate }"
               :to="item.to"
@@ -89,9 +117,22 @@ const brandLetters = 'Personal OS'.split('');
                   opacity: { duration: 0.35, ease: 'easeOut', delay: 0.16 + i * 0.05 },
                   y: { type: 'spring', stiffness: 260, damping: 22, delay: 0.16 + i * 0.05 },
                 }"
-                :while-hover="{ scale: 1.08, y: -1 }"
-                :while-tap="{ scale: 0.9 }"
-                @click="navigate"
+                :while-hover="{
+                  scale: 1.08,
+                  y: -1,
+                  transition: { type: 'spring', stiffness: 420, damping: 22, delay: 0 },
+                }"
+                :while-tap="{
+                  scale: 0.88,
+                  y: 2,
+                  transition: { type: 'spring', stiffness: 520, damping: 18, delay: 0 },
+                }"
+                @click="
+                  (e: MouseEvent) => {
+                    addRipple(item.to, e);
+                    navigate(e);
+                  }
+                "
               >
                 <!-- hover 光晕 pill：仅 transform/opacity，GPU 合成零布局开销 -->
                 <motion.span
@@ -111,6 +152,16 @@ const brandLetters = 'Personal OS'.split('');
                     :transition="{ type: 'spring', stiffness: 380, damping: 30 }"
                   />
                 </AnimatePresence>
+                <!-- 点击涟漪：从鼠标位置扩散，一次性，transform/opacity 零布局开销 -->
+                <motion.span
+                  v-for="r in ripplesByNav[item.to] ?? []"
+                  :key="r.id"
+                  class="pointer-events-none absolute h-10 w-10 rounded-full bg-neutral-900/15"
+                  :style="{ left: r.x - 20 + 'px', top: r.y - 20 + 'px' }"
+                  :initial="{ opacity: 0.55, scale: 0 }"
+                  :animate="{ opacity: 0, scale: 2.4 }"
+                  :transition="{ duration: 0.55, ease: 'easeOut' }"
+                />
               </motion.a>
             </RouterLink>
           </nav>
