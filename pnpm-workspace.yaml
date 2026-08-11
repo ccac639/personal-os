@@ -1,0 +1,47 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# pnpm 11: 允许执行 postinstall 的依赖白名单
+# （pnpm 10+ 默认不执行依赖构建脚本，缺失会导致原生包构建失败）
+allowBuilds:
+  '@scarf/scarf': true
+  bcrypt: true
+  esbuild: true
+  msgpackr-extract: true
+  vue-demi: true
+
+# pnpm 11: 供应链策略（minimum release age）豁免清单，
+# 由 pnpm approve-builds 自动生成，勿手动删除。
+minimumReleaseAgeExclude:
+  - '@tiptap/core@3.30.0'
+  - '@tiptap/extension-blockquote@3.30.0'
+  - '@tiptap/extension-bold@3.30.0'
+  - '@tiptap/extension-bubble-menu@3.30.0'
+  - '@tiptap/extension-bullet-list@3.30.0'
+  - '@tiptap/extension-code-block-lowlight@3.30.0'
+  - '@tiptap/extension-code-block@3.30.0'
+  - '@tiptap/extension-code@3.30.0'
+  - '@tiptap/extension-document@3.30.0'
+  - '@tiptap/extension-dropcursor@3.30.0'
+  - '@tiptap/extension-floating-menu@3.30.0'
+  - '@tiptap/extension-gapcursor@3.30.0'
+  - '@tiptap/extension-hard-break@3.30.0'
+  - '@tiptap/extension-heading@3.30.0'
+  - '@tiptap/extension-horizontal-rule@3.30.0'
+  - '@tiptap/extension-image@3.30.0'
+  - '@tiptap/extension-italic@3.30.0'
+  - '@tiptap/extension-link@3.30.0'
+  - '@tiptap/extension-list-item@3.30.0'
+  - '@tiptap/extension-list-keymap@3.30.0'
+  - '@tiptap/extension-list@3.30.0'
+  - '@tiptap/extension-ordered-list@3.30.0'
+  - '@tiptap/extension-paragraph@3.30.0'
+  - '@tiptap/extension-placeholder@3.30.0'
+  - '@tiptap/extension-strike@3.30.0'
+  - '@tiptap/extension-text@3.30.0'
+  - '@tiptap/extension-underline@3.30.0'
+  - '@tiptap/extensions@3.30.0'
+  - '@tiptap/pm@3.30.0'
+  - '@tiptap/starter-kit@3.30.0'
+  - '@tiptap/vue-3@3.30.0'

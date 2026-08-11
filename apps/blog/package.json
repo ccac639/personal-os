@@ -1,0 +1,31 @@
+{
+  "name": "@personal-os/blog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "lint": "eslint .",
+    "typecheck": "nuxt typecheck",
+    "test": "vitest run",
+    "clean": "rimraf .nuxt .output"
+  },
+  "dependencies": {
+    "@nuxtjs/seo": "5.3.12",
+    "@personal-os/types": "workspace:*",
+    "@personal-os/ui": "workspace:*",
+    "@personal-os/utils": "workspace:*",
+    "nuxt": "4.5.2",
+    "tailwindcss": "4.3.3"
+  },
+  "devDependencies": {
+    "@personal-os/config": "workspace:*",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "24.13.3",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10",
+    "vue-tsc": "3.3.9"
+  }
+}

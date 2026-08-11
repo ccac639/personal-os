@@ -1,0 +1,36 @@
+/*
+ * Personal OS — Tailwind CSS v4 全局主题预设（CSS-first 配置）
+ *
+ * Tailwind v4 不再需要 tailwind.config.js，
+ * 通过 CSS 中的 @theme 定义设计令牌。
+ * 各应用在自己的 CSS 入口中：
+ *
+ *   @import "tailwindcss";
+ *   @import "@personal-os/config/tailwind";
+ *
+ * 注意：@import 顺序要求 tailwindcss 在自定义主题之前。
+ */
+
+@theme {
+  /* 品牌色 */
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+
+  /* 中性色 */
+  --color-surface-0: #ffffff;
+  --color-surface-50: #f8fafc;
+  --color-surface-100: #f1f5f9;
+  --color-surface-800: #1e293b;
+  --color-surface-900: #0f172a;
+
+  /* 圆角 */
+  --radius-card: 0.75rem;
+  --radius-panel: 1rem;
+
+  /* 阴影 */
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+  --shadow-float: 0 8px 24px -6px rgb(0 0 0 / 0.12);
+}

@@ -1,0 +1,22 @@
+/*
+ * Personal OS UI — 基础样式入口
+ *
+ * 各应用（web / blog）在自身 CSS 入口中：
+ *
+ *   @import "tailwindcss";
+ *   @import "@personal-os/config/tailwind";
+ *   @import "@personal-os/ui/styles";
+ *
+ * 本阶段仅提供全局基础样式，不包含组件样式。
+ */
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-surface-50 text-surface-900;
+  }
+}
