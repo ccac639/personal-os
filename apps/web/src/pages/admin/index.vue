@@ -4,7 +4,7 @@ import PagePlaceholder from '@/components/PagePlaceholder.vue';
 
 <template>
   <PagePlaceholder
-    title="已完成"
-    description="已完成的项目与成果：项目成果、文章、演讲、开源贡献（后续阶段实现）"
+    title="管理系统"
+    description="后台管理：用户、配置、系统状态监控（后续阶段实现）"
   />
 </template>

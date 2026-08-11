@@ -4,7 +4,7 @@ import PagePlaceholder from '@/components/PagePlaceholder.vue';
 
 <template>
   <PagePlaceholder
-    title="Projects"
-    description="项目管理：项目列表、任务看板、进度追踪（后续阶段实现）"
+    title="开发中"
+    description="进行中的项目：项目列表、任务看板、进度追踪（后续阶段实现）"
   />
 </template>
