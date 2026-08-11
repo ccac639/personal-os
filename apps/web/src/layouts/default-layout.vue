@@ -27,14 +27,14 @@ function isActive(to: string): boolean {
 <template>
   <div class="flex min-h-screen flex-col">
     <header class="border-surface-100 bg-surface-0/85 sticky top-0 z-40 border-b backdrop-blur">
-      <div class="mx-auto flex h-14 max-w-7xl items-center gap-8 px-4">
+      <div class="mx-auto grid h-14 max-w-7xl grid-cols-[auto_1fr_auto] items-center px-4">
         <!-- 品牌区：纯文字（视觉锚点） -->
         <RouterLink to="/" class="shrink-0 text-lg font-bold tracking-tight text-neutral-900">
           Personal OS
         </RouterLink>
 
-        <!-- 主导航 -->
-        <nav class="flex h-full items-center gap-5">
+        <!-- 主导航（水平居中） -->
+        <nav class="flex h-full items-center justify-center gap-5">
           <RouterLink
             v-for="item in navItems"
             :key="item.to"
@@ -49,8 +49,8 @@ function isActive(to: string): boolean {
           </RouterLink>
         </nav>
 
-        <!-- 右侧操作区：设置（幽灵按钮） -->
-        <div class="ml-auto flex items-center">
+        <!-- 右侧操作区：设置（幽灵按钮，grid 第三列自动右对齐） -->
+        <div class="flex items-center justify-self-end">
           <RouterLink
             to="/settings"
             class="rounded-md border border-neutral-200 px-3 py-1 text-[13px] text-neutral-600 transition hover:border-neutral-300 hover:text-black"
