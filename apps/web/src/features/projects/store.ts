@@ -1,104 +1,96 @@
 /**
  * 项目功能域 —— Pinia store
  *
- * 职责：项目 CRUD、归档 / 恢复、删除、活动记录、总览页搜索与状态筛选、
- * localStorage 本地持久化（纯前端 mock，不调用后端）。
+ * 职责：项目 CRUD、收藏 / 排序、归档 / 恢复、删除、进度模式（自动 / 手动）、
+ * 活动记录、总览页搜索与状态 / 快捷视图筛选。
  *
- * 摘要数据（summary）只读暴露给首页等模块消费，禁止写入 dashboard 模块。
+ * 持久化统一走 ./persistence（版本信封 + 严格校验 + 迁移 + 失败降级），
+ * 组件不得直接访问 localStorage。
+ *
+ * 摘要数据（summary）只读暴露给首页等模块消费，API 形状保持向后兼容。
  */
 import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
 import type { ProjectStatus } from '@personal-os/types';
 
-import { SEED_ACTIVITIES, SEED_PROJECTS } from './mock';
+import {
+  loadActivitiesData,
+  loadProjectsData,
+  loadProjectsUi,
+  saveActivitiesData,
+  saveProjectsData,
+  saveProjectsUi,
+} from './persistence';
+import { withProgressMode } from './progress';
 import type {
   ProjectActivity,
   ProjectActivityType,
   ProjectDetail,
   ProjectForm,
+  ProjectProgressMode,
+  ProjectSortKey,
   ProjectStatusFilter,
   ProjectSummary,
+  ProjectViewFilter,
 } from './types';
-
-const STORAGE_KEY = 'personal-os.projects.v1';
-const ACTIVITY_KEY = 'personal-os.projects.activities.v1';
 
 function uid(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function cloneProjects(list: ProjectDetail[]): ProjectDetail[] {
-  return list.map((p) => ({ ...p, tags: [...p.tags], techStack: [...p.techStack] }));
-}
-
-function loadProjects(): ProjectDetail[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed as ProjectDetail[];
-    }
-  } catch {
-    /* 数据损坏时回退到种子 */
-  }
-  // 克隆种子，避免跨 store 实例共享可变引用
-  return cloneProjects(SEED_PROJECTS);
-}
-
-function cloneActivities(list: ProjectActivity[]): ProjectActivity[] {
-  return list.map((a) => ({ ...a }));
-}
-
-function loadActivities(): ProjectActivity[] {
-  try {
-    const raw = localStorage.getItem(ACTIVITY_KEY);
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed as ProjectActivity[];
-    }
-  } catch {
-    /* 数据损坏时回退到种子 */
-  }
-  return cloneActivities(SEED_ACTIVITIES);
-}
-
 export const useProjectStore = defineStore('projects', () => {
-  const projects = ref<ProjectDetail[]>(loadProjects());
-  const activities = ref<ProjectActivity[]>(loadActivities());
+  const initial = loadProjectsData();
+  const projects = ref<ProjectDetail[]>(initial.data);
+  const storageWarning = ref<string | null>(initial.notice);
 
+  const actInitial = loadActivitiesData();
+  const activities = ref<ProjectActivity[]>(actInitial.data);
+  if (actInitial.notice && !storageWarning.value) storageWarning.value = actInitial.notice;
+
+  const uiInitial = loadProjectsUi();
   /** 总览页搜索词（匹配名称 / 描述 / 标签 / 技术栈） */
-  const searchQuery = ref('');
+  const searchQuery = ref(uiInitial.searchQuery);
   /** 总览页状态筛选 */
-  const statusFilter = ref<ProjectStatusFilter>('all');
+  const statusFilter = ref<ProjectStatusFilter>(uiInitial.statusFilter);
+  /** 快捷视图：全部 / 收藏 / 归档（与状态筛选互斥，见页面切换逻辑） */
+  const viewFilter = ref<ProjectViewFilter>(uiInitial.viewFilter);
+  /** 排序键与方向 */
+  const sortBy = ref<ProjectSortKey>(uiInitial.sortBy);
+  const sortDir = ref<'asc' | 'desc'>(uiInitial.sortDir);
+
+  function handleSave(result: { ok: boolean; reason?: string }): void {
+    if (!result.ok) storageWarning.value = result.reason ?? '本地存储写入失败';
+  }
+
+  watch(projects, (value) => handleSave(saveProjectsData(value)), { deep: true, flush: 'sync' });
+
+  watch(activities, (value) => handleSave(saveActivitiesData(value)), {
+    deep: true,
+    flush: 'sync',
+  });
 
   watch(
-    projects,
-    (value) => {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-      } catch {
-        /* 存储失败（配额 / 隐私模式）不阻塞操作 */
-      }
+    [searchQuery, statusFilter, viewFilter, sortBy, sortDir],
+    () => {
+      handleSave(
+        saveProjectsUi({
+          searchQuery: searchQuery.value,
+          statusFilter: statusFilter.value,
+          viewFilter: viewFilter.value,
+          sortBy: sortBy.value,
+          sortDir: sortDir.value,
+        }),
+      );
     },
-    { deep: true, flush: 'sync' },
+    { flush: 'sync' },
   );
 
-  watch(
-    activities,
-    (value) => {
-      try {
-        localStorage.setItem(ACTIVITY_KEY, JSON.stringify(value));
-      } catch {
-        /* 同上 */
-      }
-    },
-    { deep: true, flush: 'sync' },
-  );
-
-  /** 搜索 + 状态筛选后的项目列表（总览页数据源） */
+  /** 搜索 + 状态筛选 + 快捷视图过滤后的项目列表 */
   const filteredProjects = computed<ProjectDetail[]>(() => {
     const q = searchQuery.value.trim().toLowerCase();
     return projects.value.filter((p) => {
+      if (viewFilter.value === 'favorites' && !p.favorite) return false;
+      if (viewFilter.value === 'archived' && p.status !== 'archived') return false;
       if (statusFilter.value !== 'all' && p.status !== statusFilter.value) return false;
       if (!q) return true;
       return (
@@ -110,7 +102,7 @@ export const useProjectStore = defineStore('projects', () => {
     });
   });
 
-  /** 只读摘要（首页 / 其他模块可读） */
+  /** 只读摘要（首页 / 其他模块可读，形状向后兼容） */
   const summary = computed<ProjectSummary>(() => {
     const count = (s: ProjectStatus) => projects.value.filter((p) => p.status === s).length;
     const recent = [...projects.value]
@@ -154,6 +146,11 @@ export const useProjectStore = defineStore('projects', () => {
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   }
 
+  /** 某项目最近一条活动（详情页上下文栏用） */
+  function latestActivity(id: string): ProjectActivity | null {
+    return projectActivities(id)[0] ?? null;
+  }
+
   function createProject(input: ProjectForm): ProjectDetail {
     const now = new Date().toISOString();
     const project: ProjectDetail = {
@@ -166,6 +163,8 @@ export const useProjectStore = defineStore('projects', () => {
       techStack: input.techStack,
       createdAt: now,
       updatedAt: now,
+      favorite: false,
+      progressMode: 'auto',
     };
     projects.value.unshift(project);
     addActivity(project.id, 'created', '创建项目', project.name);
@@ -200,7 +199,7 @@ export const useProjectStore = defineStore('projects', () => {
     addActivity(id, 'restored', '恢复项目', p.name);
   }
 
-  /** 删除项目：同时清理其活动记录（任务由 task store 的 removeByProject 级联） */
+  /** 永久删除项目：移除项目及其活动记录（关联任务由调用方先执行 taskStore.removeByProject 级联） */
   function deleteProject(id: string): void {
     const p = projectById(id);
     if (!p) return;
@@ -208,20 +207,67 @@ export const useProjectStore = defineStore('projects', () => {
     activities.value = activities.value.filter((a) => a.projectId !== id);
   }
 
+  // ── 收藏 / 进度 ──
+
+  function toggleFavorite(id: string): void {
+    const p = projectById(id);
+    if (!p) return;
+    p.favorite = !p.favorite;
+  }
+
+  /** 切换进度模式；切到手动时以当前有效进度初始化（见 progress.ts） */
+  function setProgressMode(id: string, mode: ProjectProgressMode, taskProgress: number): void {
+    const p = projectById(id);
+    if (!p || p.progressMode === mode) return;
+    const next = withProgressMode(p, mode, taskProgress);
+    p.progressMode = next.progressMode;
+    p.manualProgress = next.manualProgress;
+    p.updatedAt = new Date().toISOString();
+    addActivity(
+      id,
+      'updated',
+      mode === 'manual' ? '项目进度切换为手动' : '项目进度切换为自动',
+      p.name,
+    );
+  }
+
+  function setManualProgress(id: string, value: number): void {
+    const p = projectById(id);
+    if (!p || p.progressMode !== 'manual') return;
+    const next = Math.min(100, Math.max(0, Math.round(value)));
+    if (p.manualProgress === next) return;
+    p.manualProgress = next;
+    p.updatedAt = new Date().toISOString();
+  }
+
+  /** 清空持久化失败提示（非阻塞横幅关闭） */
+  function dismissStorageWarning(): void {
+    storageWarning.value = null;
+  }
+
   return {
     projects,
     activities,
     searchQuery,
     statusFilter,
+    viewFilter,
+    sortBy,
+    sortDir,
+    storageWarning,
     filteredProjects,
     summary,
     projectById,
     projectActivities,
+    latestActivity,
     addActivity,
     createProject,
     updateProject,
     archiveProject,
     restoreProject,
     deleteProject,
+    toggleFavorite,
+    setProgressMode,
+    setManualProgress,
+    dismissStorageWarning,
   };
 });

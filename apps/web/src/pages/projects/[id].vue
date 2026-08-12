@@ -5,6 +5,7 @@ import {
   CalendarClock,
   ClipboardList,
   Pencil,
+  Plus,
   RotateCcw,
   Tag,
   Trash2,
@@ -14,14 +15,23 @@ import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { Component } from 'vue';
 
-import { ConfirmDialog, ProjectForm, useProjectStore } from '@/features/projects';
+import {
+  ConfirmDialog,
+  ProjectContextBar,
+  ProjectDeleteDialog,
+  ProjectForm,
+  ProgressEditor,
+  StorageWarningBanner,
+  useProjectStore,
+} from '@/features/projects';
 import { PROJECT_STATUS_META } from '@/features/projects/types';
 import type {
   ProjectActivityType,
   ProjectForm as ProjectFormType,
 } from '@/features/projects/types';
 import { formatDateTime, formatDate, relativeTime } from '@/features/projects/utils';
-import { TaskKanban, useTaskStore } from '@/features/tasks';
+import { TaskForm, TaskKanban, useTaskStore } from '@/features/tasks';
+import type { TaskForm as TaskFormData } from '@/features/tasks/types';
 
 type TabKey = 'overview' | 'tasks' | 'activity';
 
@@ -34,11 +44,17 @@ const projectId = computed(() => String(route.params.id ?? ''));
 const project = computed(() => store.projectById(projectId.value));
 const stats = computed(() => taskStore.projectStats(projectId.value));
 const activities = computed(() => store.projectActivities(projectId.value));
+const latest = computed(() => store.latestActivity(projectId.value));
 
 const tab = ref<TabKey>('overview');
 const formOpen = ref(false);
-const deleting = ref(false);
 const archiving = ref(false);
+/** 删除策略对话框 */
+const deleting = ref(false);
+/** 永久删除二次确认 */
+const permanentDeleting = ref(false);
+/** 快速创建任务 */
+const quickTaskOpen = ref(false);
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: '概览' },
@@ -65,16 +81,29 @@ function onFormSubmit(form: ProjectFormType) {
   formOpen.value = false;
 }
 
-function confirmDelete() {
+/** 删除策略一：归档并保留任务 */
+function onArchiveFromDelete() {
+  deleting.value = false;
+  store.archiveProject(projectId.value);
+}
+
+/** 删除策略二：永久删除（二次确认后级联清理任务） */
+function confirmPermanentDelete() {
   taskStore.removeByProject(projectId.value);
   store.deleteProject(projectId.value);
-  deleting.value = false;
+  permanentDeleting.value = false;
   router.push('/projects');
 }
 
 function confirmArchive() {
   store.archiveProject(projectId.value);
   archiving.value = false;
+}
+
+function onQuickTaskSubmit(form: TaskFormData) {
+  taskStore.createTask(form);
+  quickTaskOpen.value = false;
+  tab.value = 'tasks';
 }
 </script>
 
@@ -155,6 +184,16 @@ function confirmArchive() {
           <div class="flex shrink-0 items-center gap-2">
             <button
               type="button"
+              class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+              title="快速创建任务（自动关联本项目）"
+              aria-label="快速创建任务"
+              @click="quickTaskOpen = true"
+            >
+              <Plus class="size-3.5" />
+              新建任务
+            </button>
+            <button
+              type="button"
               class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors"
               @click="formOpen = true"
             >
@@ -190,6 +229,29 @@ function confirmArchive() {
           </div>
         </div>
       </header>
+
+      <!-- 存储提示 -->
+      <div class="mt-4">
+        <StorageWarningBanner
+          :message="store.storageWarning || taskStore.storageWarning"
+          @dismiss="
+            () => {
+              store.dismissStorageWarning();
+              taskStore.dismissStorageWarning();
+            }
+          "
+        />
+      </div>
+
+      <!-- 项目上下文栏：状态 / 进度 / 未完成任务 / 最近活动 / 归档入口 -->
+      <div class="mt-4">
+        <ProjectContextBar
+          :project="project"
+          :latest-activity="latest"
+          @archive="archiving = true"
+          @restore="store.restoreProject(project.id)"
+        />
+      </div>
 
       <!-- 视图切换 -->
       <nav class="border-surface-100 mt-5 flex items-center gap-1 border-b">
@@ -268,43 +330,50 @@ function confirmArchive() {
           </dl>
         </section>
 
-        <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
-          <h2 class="text-surface-900 mb-4 text-sm font-semibold">任务统计</h2>
-          <div class="mb-4 flex items-end justify-between">
-            <p class="text-surface-900 text-3xl font-semibold">
-              {{ stats.progress }}<span class="text-surface-800/50 text-base">%</span>
+        <div class="space-y-4">
+          <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
+            <h2 class="text-surface-900 mb-4 text-sm font-semibold">任务统计</h2>
+            <div class="mb-4 flex items-end justify-between">
+              <p class="text-surface-900 text-3xl font-semibold">
+                {{ stats.progress }}<span class="text-surface-800/50 text-base">%</span>
+              </p>
+              <p class="text-surface-800/50 text-xs">完成率</p>
+            </div>
+            <div class="bg-surface-100 mb-5 h-2 overflow-hidden rounded-full">
+              <div
+                class="h-full rounded-full transition-all"
+                :class="stats.progress >= 100 ? 'bg-green-500' : 'bg-brand-500'"
+                :style="{ width: `${stats.progress}%` }"
+              />
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-center">
+              <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
+                <p class="text-lg font-semibold text-sky-600">{{ stats.todo }}</p>
+                <p class="text-surface-800/50 mt-0.5 text-xs">待办</p>
+              </div>
+              <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
+                <p class="text-lg font-semibold text-amber-600">{{ stats.inProgress }}</p>
+                <p class="text-surface-800/50 mt-0.5 text-xs">进行中</p>
+              </div>
+              <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
+                <p class="text-lg font-semibold text-green-600">{{ stats.done }}</p>
+                <p class="text-surface-800/50 mt-0.5 text-xs">已完成</p>
+              </div>
+            </div>
+            <p
+              v-if="stats.overdue > 0"
+              class="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-center text-xs font-medium text-red-600"
+            >
+              {{ stats.overdue }} 个任务已逾期
             </p>
-            <p class="text-surface-800/50 text-xs">完成率</p>
-          </div>
-          <div class="bg-surface-100 mb-5 h-2 overflow-hidden rounded-full">
-            <div
-              class="h-full rounded-full transition-all"
-              :class="stats.progress >= 100 ? 'bg-green-500' : 'bg-brand-500'"
-              :style="{ width: `${stats.progress}%` }"
-            />
-          </div>
-          <div class="grid grid-cols-3 gap-2 text-center">
-            <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
-              <p class="text-lg font-semibold text-sky-600">{{ stats.todo }}</p>
-              <p class="text-surface-800/50 mt-0.5 text-xs">待办</p>
-            </div>
-            <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
-              <p class="text-lg font-semibold text-amber-600">{{ stats.inProgress }}</p>
-              <p class="text-surface-800/50 mt-0.5 text-xs">进行中</p>
-            </div>
-            <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
-              <p class="text-lg font-semibold text-green-600">{{ stats.done }}</p>
-              <p class="text-surface-800/50 mt-0.5 text-xs">已完成</p>
-            </div>
-          </div>
-          <p
-            v-if="stats.overdue > 0"
-            class="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-center text-xs font-medium text-red-600"
-          >
-            {{ stats.overdue }} 个任务已逾期
-          </p>
-          <p v-else class="text-surface-800/40 mt-3 text-center text-xs">暂无逾期任务</p>
-        </section>
+            <p v-else class="text-surface-800/40 mt-3 text-center text-xs">暂无逾期任务</p>
+          </section>
+
+          <!-- 进度模式编辑器（自动 / 手动，带说明） -->
+          <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
+            <ProgressEditor :project="project" />
+          </section>
+        </div>
       </div>
 
       <!-- 任务看板 -->
@@ -351,22 +420,46 @@ function confirmArchive() {
         @close="formOpen = false"
       />
 
-      <!-- 删除确认 -->
-      <ConfirmDialog
+      <!-- 快速创建任务 -->
+      <TaskForm
+        :open="quickTaskOpen"
+        :task="null"
+        :project-id="project.id"
+        @submit="onQuickTaskSubmit"
+        @close="quickTaskOpen = false"
+      />
+
+      <!-- 删除策略选择 -->
+      <ProjectDeleteDialog
         :open="deleting"
-        title="删除项目"
-        :message="`确定删除项目「${project.name}」吗？其全部任务也会一并删除，此操作不可撤销。`"
-        confirm-text="删除"
-        danger
-        @confirm="confirmDelete"
+        :project="project"
+        :task-count="stats.total"
+        @archive="onArchiveFromDelete"
+        @permanent-delete="
+          () => {
+            deleting = false;
+            permanentDeleting = true;
+          }
+        "
         @cancel="deleting = false"
+      />
+
+      <!-- 永久删除二次确认 -->
+      <ConfirmDialog
+        :open="permanentDeleting"
+        title="永久删除项目"
+        :message="`确定永久删除「${project.name}」及其 ${stats.total} 个任务吗？此操作不可恢复。`"
+        confirm-text="永久删除"
+        danger
+        @confirm="confirmPermanentDelete"
+        @cancel="permanentDeleting = false"
       />
 
       <!-- 归档确认 -->
       <ConfirmDialog
         :open="archiving"
         title="归档项目"
-        :message="`确定归档项目「${project.name}」吗？归档后可在「已归档」筛选中找回并恢复。`"
+        :message="`确定归档项目「${project.name}」吗？归档后任务保留，可在「归档」视图中恢复。`"
         confirm-text="归档"
         @confirm="confirmArchive"
         @cancel="archiving = false"

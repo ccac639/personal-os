@@ -1,30 +1,57 @@
 <script setup lang="ts">
-import { FolderPlus, Layers, Plus, Search, SearchX } from '@lucide/vue';
+import { ArrowDownUp, FolderPlus, Layers, Plus, Search, SearchX, Star } from '@lucide/vue';
 import { computed, ref } from 'vue';
 
+import { useTaskStore } from '@/features/tasks/store';
+import { TaskForm } from '@/features/tasks';
+import type { TaskForm as TaskFormData } from '@/features/tasks/types';
 import {
   ConfirmDialog,
   ProjectCard,
+  ProjectDeleteDialog,
   ProjectForm,
+  StorageWarningBanner,
   TechTree,
   useProjectStore,
 } from '@/features/projects';
-import { PROJECT_FILTERS } from '@/features/projects/types';
+import { effectiveProgress, sortProjects } from '@/features/projects';
+import { PROJECT_FILTERS, PROJECT_SORT_OPTIONS, PROJECT_VIEWS } from '@/features/projects/types';
 import type { ProjectDetail, ProjectForm as ProjectFormType } from '@/features/projects/types';
-import { useTaskStore } from '@/features/tasks/store';
 
 const store = useProjectStore();
 const taskStore = useTaskStore();
 
 const formOpen = ref(false);
 const editing = ref<ProjectDetail | null>(null);
-const deleting = ref<ProjectDetail | null>(null);
 const archiving = ref<ProjectDetail | null>(null);
+/** 删除策略对话框 */
+const deleting = ref<ProjectDetail | null>(null);
+/** 永久删除二次确认 */
+const permanentDeleting = ref<ProjectDetail | null>(null);
 const techTreeOpen = ref(false);
+/** 快速创建任务的目标项目 */
+const quickTaskProject = ref<ProjectDetail | null>(null);
 
 /** 总览统计：任务完成率（全局） */
 const completion = computed(() => taskStore.summary.completion);
 const summary = computed(() => store.summary);
+
+/** 排序度量：每个项目的有效进度与未完成任务数 */
+const sortMetrics = computed(() => {
+  const progress = new Map<string, number>();
+  const unfinished = new Map<string, number>();
+  for (const p of store.projects) {
+    const stats = taskStore.projectStats(p.id);
+    progress.set(p.id, effectiveProgress(p, stats.progress));
+    unfinished.set(p.id, stats.total - stats.done);
+  }
+  return { progress, unfinished };
+});
+
+/** 搜索 + 状态 / 视图筛选 + 排序后的项目列表 */
+const visibleProjects = computed(() =>
+  sortProjects(store.filteredProjects, store.sortBy, store.sortDir, sortMetrics.value),
+);
 
 function openCreate() {
   editing.value = null;
@@ -42,13 +69,9 @@ function onFormSubmit(form: ProjectFormType) {
   formOpen.value = false;
 }
 
-function confirmDelete() {
-  if (deleting.value) {
-    // 级联清理该项目的任务
-    taskStore.removeByProject(deleting.value.id);
-    store.deleteProject(deleting.value.id);
-  }
-  deleting.value = null;
+function onQuickTaskSubmit(form: TaskFormData) {
+  taskStore.createTask(form);
+  quickTaskProject.value = null;
 }
 
 function confirmArchive() {
@@ -56,9 +79,41 @@ function confirmArchive() {
   archiving.value = null;
 }
 
+/** 删除策略一：归档并保留任务 */
+function onArchiveFromDelete(project: ProjectDetail) {
+  deleting.value = null;
+  store.archiveProject(project.id);
+}
+
+/** 删除策略二：永久删除（进入二次确认） */
+function onRequestPermanentDelete(project: ProjectDetail) {
+  deleting.value = null;
+  permanentDeleting.value = project;
+}
+
+function confirmPermanentDelete() {
+  if (permanentDeleting.value) {
+    taskStore.removeByProject(permanentDeleting.value.id);
+    store.deleteProject(permanentDeleting.value.id);
+  }
+  permanentDeleting.value = null;
+}
+
+/** 快捷视图与状态筛选互斥 */
+function selectView(view: (typeof PROJECT_VIEWS)[number]['value']) {
+  store.viewFilter = view;
+  if (view !== 'all') store.statusFilter = 'all';
+}
+
+function selectStatus(status: (typeof PROJECT_FILTERS)[number]['value']) {
+  store.statusFilter = status;
+  if (status !== 'all') store.viewFilter = 'all';
+}
+
 function clearFilters() {
   store.searchQuery = '';
   store.statusFilter = 'all';
+  store.viewFilter = 'all';
 }
 </script>
 
@@ -82,6 +137,12 @@ function clearFilters() {
       </button>
     </header>
 
+    <!-- 存储提示（损坏恢复 / 写入失败，非阻塞） -->
+    <StorageWarningBanner
+      :message="store.storageWarning"
+      @dismiss="store.dismissStorageWarning()"
+    />
+
     <!-- 统计条 -->
     <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
       <div class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-4">
@@ -102,8 +163,8 @@ function clearFilters() {
       </div>
     </div>
 
-    <!-- 搜索 + 状态筛选 -->
-    <div class="mb-5 flex flex-wrap items-center gap-3">
+    <!-- 搜索 + 快捷视图 + 排序 -->
+    <div class="mb-3 flex flex-wrap items-center gap-3">
       <div class="relative min-w-0 flex-1 sm:max-w-xs">
         <Search class="text-surface-800/40 absolute top-1/2 left-3 size-4 -translate-y-1/2" />
         <input
@@ -115,35 +176,73 @@ function clearFilters() {
       </div>
       <div class="flex flex-wrap items-center gap-1.5">
         <button
-          v-for="opt in PROJECT_FILTERS"
-          :key="opt.value"
+          v-for="view in PROJECT_VIEWS"
+          :key="view.value"
           type="button"
-          class="rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+          class="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
           :class="
-            store.statusFilter === opt.value
+            store.viewFilter === view.value
               ? 'bg-brand-600 text-surface-0'
               : 'border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 border'
           "
-          @click="store.statusFilter = opt.value"
+          @click="selectView(view.value)"
         >
-          {{ opt.label }}
+          <Star v-if="view.value === 'favorites'" class="size-3" />
+          {{ view.label }}
+        </button>
+      </div>
+      <div class="ml-auto flex items-center gap-1.5">
+        <select
+          v-model="store.sortBy"
+          class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 rounded-lg border px-2.5 py-1.5 text-xs transition outline-none focus:ring-4"
+          aria-label="项目排序方式"
+        >
+          <option v-for="opt in PROJECT_SORT_OPTIONS" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
+        <button
+          type="button"
+          class="border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-colors"
+          :title="store.sortDir === 'asc' ? '升序，点击切换' : '降序，点击切换'"
+          @click="store.sortDir = store.sortDir === 'asc' ? 'desc' : 'asc'"
+        >
+          <ArrowDownUp class="size-3" />
+          {{ store.sortDir === 'asc' ? '升序' : '降序' }}
         </button>
       </div>
     </div>
 
+    <!-- 状态筛选 -->
+    <div class="mb-5 flex flex-wrap items-center gap-1.5">
+      <button
+        v-for="opt in PROJECT_FILTERS"
+        :key="opt.value"
+        type="button"
+        class="rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+        :class="
+          store.statusFilter === opt.value
+            ? 'bg-brand-600 text-surface-0'
+            : 'border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 border'
+        "
+        @click="selectStatus(opt.value)"
+      >
+        {{ opt.label }}
+      </button>
+    </div>
+
     <!-- 项目卡片 -->
-    <div
-      v-if="store.filteredProjects.length"
-      class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
-    >
+    <div v-if="visibleProjects.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       <ProjectCard
-        v-for="project in store.filteredProjects"
+        v-for="project in visibleProjects"
         :key="project.id"
         :project="project"
         @edit="openEdit"
         @archive="(p) => (archiving = p)"
         @restore="(p) => store.restoreProject(p.id)"
         @delete="(p) => (deleting = p)"
+        @favorite="(p) => store.toggleFavorite(p.id)"
+        @quick-task="(p) => (quickTaskProject = p)"
       />
     </div>
 
@@ -181,7 +280,7 @@ function clearFilters() {
         <SearchX class="size-7" />
       </span>
       <h3 class="text-surface-900 mt-4 text-base font-semibold">没有匹配的项目</h3>
-      <p class="text-surface-800/60 mt-1 max-w-sm text-sm">换个关键词或状态试试。</p>
+      <p class="text-surface-800/60 mt-1 max-w-sm text-sm">换个关键词、状态或视图试试。</p>
       <button
         type="button"
         class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 mt-5 rounded-lg border px-4 py-2 text-sm font-medium transition-colors"
@@ -207,7 +306,7 @@ function clearFilters() {
       </div>
     </section>
 
-    <!-- 新建 / 编辑弹窗 -->
+    <!-- 新建 / 编辑项目弹窗 -->
     <ProjectForm
       :open="formOpen"
       :project="editing"
@@ -215,25 +314,44 @@ function clearFilters() {
       @close="formOpen = false"
     />
 
-    <!-- 删除确认 -->
-    <ConfirmDialog
-      :open="!!deleting"
-      title="删除项目"
-      :message="`确定删除项目「${deleting?.name ?? ''}」吗？其全部任务也会一并删除，此操作不可撤销。`"
-      confirm-text="删除"
-      danger
-      @confirm="confirmDelete"
-      @cancel="deleting = null"
+    <!-- 快速创建任务（关联当前项目） -->
+    <TaskForm
+      :open="!!quickTaskProject"
+      :task="null"
+      :project-id="quickTaskProject?.id"
+      @submit="onQuickTaskSubmit"
+      @close="quickTaskProject = null"
     />
 
     <!-- 归档确认 -->
     <ConfirmDialog
       :open="!!archiving"
       title="归档项目"
-      :message="`确定归档项目「${archiving?.name ?? ''}」吗？归档后可在「已归档」筛选中找回并恢复。`"
+      :message="`确定归档项目「${archiving?.name ?? ''}」吗？归档后任务保留，可在「归档」视图中恢复。`"
       confirm-text="归档"
       @confirm="confirmArchive"
       @cancel="archiving = null"
+    />
+
+    <!-- 删除策略选择（归档保留 / 永久删除含任务） -->
+    <ProjectDeleteDialog
+      :open="!!deleting"
+      :project="deleting"
+      :task-count="deleting ? taskStore.tasksByProject(deleting.id).length : 0"
+      @archive="onArchiveFromDelete"
+      @permanent-delete="onRequestPermanentDelete"
+      @cancel="deleting = null"
+    />
+
+    <!-- 永久删除二次确认 -->
+    <ConfirmDialog
+      :open="!!permanentDeleting"
+      title="永久删除项目"
+      :message="`确定永久删除「${permanentDeleting?.name ?? ''}」及其 ${permanentDeleting ? taskStore.tasksByProject(permanentDeleting.id).length : 0} 个任务吗？此操作不可恢复。`"
+      confirm-text="永久删除"
+      danger
+      @confirm="confirmPermanentDelete"
+      @cancel="permanentDeleting = null"
     />
   </div>
 </template>

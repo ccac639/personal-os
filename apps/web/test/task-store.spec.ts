@@ -3,8 +3,10 @@ import { createPinia, setActivePinia } from 'pinia';
 import type { TaskPriority } from '@personal-os/types';
 
 import { useProjectStore } from '@/features/projects/store';
+import { TASKS_KEY, TASKS_LEGACY_KEY, TASKS_VERSION } from '@/features/tasks/persistence';
 import { useTaskStore } from '@/features/tasks/store';
 import { SEED_TASKS } from '@/features/tasks/mock';
+import { subtaskStats } from '@/features/tasks/subtasks';
 import { TASK_PRIORITY_META } from '@/features/tasks/types';
 
 describe('task store', () => {
@@ -201,7 +203,7 @@ describe('task store', () => {
     expect(s.overdue).toBe(1);
   });
 
-  it('持久化：任务与排序策略写入 localStorage，重新加载可恢复', () => {
+  it('持久化：任务与排序策略写入 localStorage（版本信封），重新加载可恢复', () => {
     const store = useTaskStore();
     store.createTask({
       projectId: 'p-cli-toolkit',
@@ -212,16 +214,256 @@ describe('task store', () => {
     });
     store.setSort('dueDate');
 
-    const raw = localStorage.getItem('personal-os.tasks.v1');
+    const raw = localStorage.getItem(TASKS_KEY);
     expect(raw).not.toBeNull();
-    const parsed = JSON.parse(raw!);
-    expect(parsed.tasks.length).toBe(SEED_TASKS.length + 1);
-    expect(parsed.sortBy).toBe('dueDate');
+    const envelope = JSON.parse(raw!);
+    expect(envelope.version).toBe(TASKS_VERSION);
+    expect(envelope.data.tasks.length).toBe(SEED_TASKS.length + 1);
+    expect(envelope.data.sortBy).toBe('dueDate');
 
     setActivePinia(createPinia());
     const reloaded = useTaskStore();
     expect(reloaded.tasks.length).toBe(SEED_TASKS.length + 1);
     expect(reloaded.tasks.some((t) => t.title === '持久化测试任务')).toBe(true);
     expect(reloaded.sortBy).toBe('dueDate');
+  });
+
+  it('子任务：添加 / 完成 / 删除，父任务所属列不变，完成状态计入任务进度', () => {
+    const store = useTaskStore();
+    const id = 't-pos-3'; // todo 列
+    const columnBefore = store.taskById(id)!.status;
+
+    store.addSubtask(id, '拆分子步骤');
+    const t = store.taskById(id)!;
+    expect(t.subtasks).toHaveLength(3); // 种子已有 2 条
+    const added = t.subtasks[t.subtasks.length - 1]!;
+    expect(added.done).toBe(false);
+
+    store.toggleSubtask(id, added.id);
+    expect(store.taskById(id)!.subtasks.find((s) => s.id === added.id)?.done).toBe(true);
+    // 父任务仍在原列
+    expect(store.taskById(id)!.status).toBe(columnBefore);
+
+    const stats = subtaskStats(store.taskById(id)!);
+    expect(stats.total).toBe(3);
+    expect(stats.done).toBe(2);
+    expect(stats.progress).toBe(67);
+
+    store.removeSubtask(id, added.id);
+    expect(store.taskById(id)!.subtasks.some((s) => s.id === added.id)).toBe(false);
+  });
+
+  it('活动历史：创建 / 更新 / 移动 / 子任务都会记录，新的在前', () => {
+    const store = useTaskStore();
+    const task = store.createTask({
+      projectId: 'p-nas-monitor',
+      title: '历史测试任务',
+      priority: 'low',
+      status: 'todo',
+      tags: [],
+    });
+    store.updateTask(task.id, {
+      projectId: 'p-nas-monitor',
+      title: '历史测试任务（改）',
+      priority: 'high',
+      status: 'todo',
+      tags: [],
+    });
+    store.moveTask(task.id, 'done');
+    store.addSubtask(task.id, '小步骤');
+
+    const evts = store.taskEvents(task.id);
+    expect(evts).toHaveLength(4);
+    expect(evts[0]?.type).toBe('subtask');
+    expect(evts.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['created', 'updated', 'moved', 'subtask']),
+    );
+    // 按时间倒序
+    for (let i = 1; i < evts.length; i += 1) {
+      expect(evts[i - 1]!.createdAt >= evts[i]!.createdAt).toBe(true);
+    }
+  });
+
+  it('日期筛选：store 内 dateFilter 作用于可见列，原始列不受影响', () => {
+    const store = useTaskStore();
+    const all = store.tasksInColumn('p-personal-os', 'todo').length;
+
+    store.dateFilter = 'overdue';
+    const overdueVisible = store.visibleColumnTasks('p-personal-os', 'todo');
+    expect(overdueVisible.length).toBeLessThan(all);
+    for (const t of overdueVisible) {
+      expect(t.status).not.toBe('done');
+      expect(t.dueDate !== undefined && t.dueDate < '2026-08-13').toBe(true);
+    }
+
+    store.dateFilter = 'none';
+    const noneVisible = store.visibleColumnTasks('p-personal-os', 'todo');
+    for (const t of noneVisible) expect(t.dueDate).toBeUndefined();
+
+    // 原始列仍返回全部任务（既有 API 不变）
+    store.dateFilter = 'overdue';
+    expect(store.tasksInColumn('p-personal-os', 'todo').length).toBe(all);
+  });
+
+  it('批量移动：全部迁移状态并支持撤销恢复原列与原顺序', () => {
+    const store = useTaskStore();
+    const ids = store
+      .tasksByProject('p-personal-os')
+      .filter((t) => t.status === 'todo')
+      .map((t) => t.id);
+    expect(ids.length).toBeGreaterThanOrEqual(2);
+    const before = store
+      .tasksByProject('p-personal-os')
+      .map((t) => ({ id: t.id, status: t.status, order: t.order }));
+
+    store.batchMove(ids, 'done');
+    for (const id of ids) expect(store.taskById(id)?.status).toBe('done');
+    expect(store.undoInfo).not.toBeNull();
+
+    store.undo();
+    const after = store
+      .tasksByProject('p-personal-os')
+      .map((t) => ({ id: t.id, status: t.status, order: t.order }));
+    expect(after).toEqual(before);
+    expect(store.undoInfo).toBeNull();
+  });
+
+  it('批量设置优先级 / 标签：生效且可撤销', () => {
+    const store = useTaskStore();
+    const ids = store.tasksByProject('p-nas-monitor').map((t) => t.id);
+
+    store.batchSetPriority(ids, 'urgent');
+    for (const id of ids) expect(store.taskById(id)?.priority).toBe('urgent');
+
+    store.batchAddTag(ids, '批量标签');
+    for (const id of ids) expect(store.taskById(id)?.tags).toContain('批量标签');
+
+    store.batchRemoveTag(ids, '批量标签');
+    for (const id of ids) expect(store.taskById(id)?.tags).not.toContain('批量标签');
+
+    store.undo();
+    for (const id of ids) expect(store.taskById(id)?.tags).toContain('批量标签');
+  });
+
+  it('批量删除：移除全部选中任务，撤销恢复', () => {
+    const store = useTaskStore();
+    const ids = store.tasksByProject('p-nas-monitor').map((t) => t.id);
+    const totalBefore = store.tasks.length;
+
+    store.batchDelete(ids);
+    expect(store.taskById(ids[0]!)).toBeNull();
+    expect(store.tasks.length).toBe(totalBefore - ids.length);
+    expect(store.taskEvents(ids[0]!)).toHaveLength(0); // 事件级联清理
+
+    store.undo();
+    expect(store.tasks.length).toBe(totalBefore);
+    expect(store.taskById(ids[0]!)).not.toBeNull();
+  });
+
+  it('拖拽撤销：跨列移动与列内重排均可恢复到原始状态', () => {
+    const store = useTaskStore();
+    const id = 't-pos-1';
+    const before = { status: store.taskById(id)!.status, order: store.taskById(id)!.order };
+
+    store.moveTask(id, 'done');
+    expect(store.taskById(id)?.status).toBe('done');
+    store.undo();
+    expect(store.taskById(id)?.status).toBe(before.status);
+    expect(store.taskById(id)?.order).toBe(before.order);
+
+    // 列内重排撤销
+    const ids = store.tasksInColumn('p-personal-os', 'todo').map((t) => t.id);
+    const ordersBefore = new Map(ids.map((tid) => [tid, store.taskById(tid)!.order]));
+    store.reorderColumn('p-personal-os', 'todo', [...ids].reverse());
+    store.undo();
+    for (const tid of ids) {
+      expect(store.taskById(tid)!.order).toBe(ordersBefore.get(tid));
+    }
+  });
+
+  it('损坏数据安全恢复：JSON 损坏回退种子并给出提示', () => {
+    localStorage.setItem(TASKS_KEY, 'not-json{{{');
+    const store = useTaskStore();
+    expect(store.tasks.length).toBe(SEED_TASKS.length);
+    expect(store.storageWarning).toContain('无法读取');
+  });
+
+  it('损坏数据安全恢复：结构校验失败（任务缺字段）回退种子', () => {
+    localStorage.setItem(
+      TASKS_KEY,
+      JSON.stringify({
+        version: TASKS_VERSION,
+        data: { tasks: [{ id: 'x', title: 1 }], events: [], sortBy: 'order', sortDir: 'asc' },
+      }),
+    );
+    const store = useTaskStore();
+    expect(store.tasks.length).toBe(SEED_TASKS.length);
+    expect(store.storageWarning).not.toBeNull();
+  });
+
+  it('版本过新：拒绝读取并回退种子，提示升级', () => {
+    localStorage.setItem(
+      TASKS_KEY,
+      JSON.stringify({ version: TASKS_VERSION + 1, data: { tasks: [], events: [] } }),
+    );
+    const store = useTaskStore();
+    expect(store.tasks.length).toBe(SEED_TASKS.length);
+    expect(store.storageWarning).toContain('版本过新');
+  });
+
+  it('旧版本迁移：v1 数据自动升级为 v2（补 subtasks / events），旧 key 保留', () => {
+    // 模拟 v1 数据：无 subtasks / events 字段
+    const legacy = {
+      tasks: SEED_TASKS.map((t) => ({
+        id: t.id,
+        projectId: t.projectId,
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        priority: t.priority,
+        dueDate: t.dueDate,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
+        tags: t.tags,
+        order: t.order,
+      })),
+      sortBy: 'priority',
+      sortDir: 'desc',
+    };
+    localStorage.setItem(TASKS_LEGACY_KEY, JSON.stringify(legacy));
+
+    const store = useTaskStore();
+    expect(store.tasks.length).toBe(SEED_TASKS.length);
+    expect(store.sortBy).toBe('priority');
+    expect(store.sortDir).toBe('desc');
+    for (const t of store.tasks) expect(Array.isArray(t.subtasks)).toBe(true);
+    expect(store.storageWarning).toContain('旧版本升级');
+
+    const envelope = JSON.parse(localStorage.getItem(TASKS_KEY)!);
+    expect(envelope.version).toBe(TASKS_VERSION);
+    expect(localStorage.getItem(TASKS_LEGACY_KEY)).not.toBeNull();
+
+    setActivePinia(createPinia());
+    expect(useTaskStore().storageWarning).toBeNull();
+  });
+
+  it('写入失败不阻塞页面：操作仍在内存生效，并给出存储提示', () => {
+    const store = useTaskStore();
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota exceeded', 'QuotaExceededError');
+    });
+    try {
+      store.createTask({
+        projectId: 'p-blog',
+        title: '写失败的任务',
+        priority: 'medium',
+        status: 'todo',
+        tags: [],
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(store.tasks.some((t) => t.title === '写失败的任务')).toBe(true);
+    expect(store.storageWarning).toContain('存储空间不足');
   });
 });

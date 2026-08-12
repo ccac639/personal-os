@@ -2,14 +2,29 @@
  * 项目功能域类型定义
  *
  * 复用 @personal-os/types 的 Project / ProjectStatus 基础类型；
- * 仅在此补充前端展示所需的扩展字段（技术栈、活动记录等）。
+ * 仅在此补充前端展示所需的扩展字段（技术栈、收藏、进度模式、活动记录等）。
  */
 import type { Project, ProjectStatus } from '@personal-os/types';
 
-/** 前端扩展：项目（基础类型缺技术栈字段） */
+/** 项目进度模式 */
+export type ProjectProgressMode = 'auto' | 'manual';
+
+/** 项目排序键 */
+export type ProjectSortKey = 'updatedAt' | 'createdAt' | 'progress' | 'tasks' | 'name';
+
+/** 总览页快捷视图（与状态筛选互斥） */
+export type ProjectViewFilter = 'all' | 'favorites' | 'archived';
+
+/** 前端扩展：项目（基础类型缺技术栈 / 收藏 / 进度模式字段） */
 export interface ProjectDetail extends Project {
   /** 技术栈名称列表（项目卡片 / 详情展示用） */
   techStack: string[];
+  /** 是否收藏（置顶展示） */
+  favorite: boolean;
+  /** 进度计算模式：auto=任务完成比例；manual=手动设置 */
+  progressMode: ProjectProgressMode;
+  /** 手动进度 0-100（仅 progressMode=manual 时有意义） */
+  manualProgress?: number;
 }
 
 /** 项目表单输入（创建 / 编辑共用） */
@@ -75,4 +90,20 @@ export const PROJECT_FILTERS: { value: ProjectStatusFilter; label: string }[] = 
   { value: 'paused', label: '暂停' },
   { value: 'completed', label: '已完成' },
   { value: 'archived', label: '已归档' },
+];
+
+/** 快捷视图选项（全部 / 收藏 / 归档） */
+export const PROJECT_VIEWS: { value: ProjectViewFilter; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'favorites', label: '收藏' },
+  { value: 'archived', label: '归档' },
+];
+
+/** 排序选项 */
+export const PROJECT_SORT_OPTIONS: { value: ProjectSortKey; label: string }[] = [
+  { value: 'updatedAt', label: '最近更新' },
+  { value: 'createdAt', label: '创建时间' },
+  { value: 'progress', label: '完成进度' },
+  { value: 'tasks', label: '未完成任务数' },
+  { value: 'name', label: '名称' },
 ];

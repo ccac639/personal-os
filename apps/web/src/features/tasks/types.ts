@@ -2,16 +2,25 @@
  * 任务功能域类型定义
  *
  * 复用 @personal-os/types 的 Task / TaskStatus / TaskPriority 基础类型；
- * 仅在此补充前端展示所需的扩展字段（标签、列内排序权重）。
+ * 仅在此补充前端展示所需的扩展字段（标签、列内排序权重、子任务、活动历史）。
  */
 import type { Task, TaskPriority, TaskStatus } from '@personal-os/types';
 
-/** 前端扩展：任务（基础类型缺标签与列内排序权重） */
+/** 子任务（checklist 项） */
+export interface SubTask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+/** 前端扩展：任务（基础类型缺标签 / 排序权重 / 子任务） */
 export interface TaskItem extends Task {
   /** 标签列表 */
   tags: string[];
   /** 列内排序权重（越小越靠前），用于手动排序 */
   order: number;
+  /** 子任务 checklist（完成状态计入任务进度，不改变父任务所属列） */
+  subtasks: SubTask[];
 }
 
 /** 任务表单输入（创建 / 编辑共用） */
@@ -31,6 +40,31 @@ export type KanbanStatus = 'todo' | 'in-progress' | 'done';
 
 /** 排序键 */
 export type TaskSortKey = 'order' | 'priority' | 'dueDate' | 'createdAt' | 'updatedAt';
+
+/** 截止日期筛选 */
+export type TaskDateFilter = 'all' | 'today' | 'upcoming' | 'overdue' | 'none';
+
+/** 截止日期分组（列表 / 日期视图） */
+export type DueGroup = 'overdue' | 'today' | 'upcoming' | 'later' | 'none';
+
+/** 任务事件类型（详情抽屉活动历史） */
+export type TaskEventType = 'created' | 'updated' | 'moved' | 'deleted' | 'subtask';
+
+/** 任务活动历史条目 */
+export interface TaskEvent {
+  id: string;
+  taskId: string;
+  type: TaskEventType;
+  title: string;
+  /** ISO 时间 */
+  createdAt: string;
+}
+
+/** 撤销反馈信息 */
+export interface UndoInfo {
+  message: string;
+  at: number;
+}
 
 /** 单个项目的任务统计 */
 export interface TaskStats {
@@ -85,4 +119,20 @@ export const TASK_SORT_OPTIONS: { value: TaskSortKey; label: string }[] = [
   { value: 'dueDate', label: '截止日期' },
   { value: 'createdAt', label: '创建时间' },
   { value: 'updatedAt', label: '更新时间' },
+];
+
+export const TASK_DATE_FILTERS: { value: TaskDateFilter; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'today', label: '今天' },
+  { value: 'upcoming', label: '即将到期' },
+  { value: 'overdue', label: '逾期' },
+  { value: 'none', label: '无截止日期' },
+];
+
+export const DUE_GROUPS: { value: DueGroup; label: string }[] = [
+  { value: 'overdue', label: '已逾期' },
+  { value: 'today', label: '今天' },
+  { value: 'upcoming', label: '7 天内' },
+  { value: 'later', label: '更晚' },
+  { value: 'none', label: '无截止日期' },
 ];

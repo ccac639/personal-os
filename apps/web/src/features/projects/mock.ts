@@ -18,6 +18,8 @@ export const SEED_PROJECTS: ProjectDetail[] = [
     techStack: ['Vue 3', 'TypeScript', 'NestJS', 'MongoDB', 'Turborepo'],
     createdAt: '2025-11-02T09:00:00+08:00',
     updatedAt: '2026-08-12T22:40:00+08:00',
+    favorite: true,
+    progressMode: 'auto',
   },
   {
     id: 'p-cli-toolkit',
@@ -29,6 +31,8 @@ export const SEED_PROJECTS: ProjectDetail[] = [
     techStack: ['Node.js', 'TypeScript', 'pnpm'],
     createdAt: '2026-03-18T14:00:00+08:00',
     updatedAt: '2026-08-10T18:20:00+08:00',
+    favorite: false,
+    progressMode: 'auto',
   },
   {
     id: 'p-blog',
@@ -40,6 +44,9 @@ export const SEED_PROJECTS: ProjectDetail[] = [
     techStack: ['Nuxt', 'Markdown', 'Tailwind CSS'],
     createdAt: '2026-01-05T10:00:00+08:00',
     updatedAt: '2026-07-28T09:30:00+08:00',
+    favorite: false,
+    progressMode: 'manual',
+    manualProgress: 45,
   },
   {
     id: 'p-nas-monitor',
@@ -51,6 +58,8 @@ export const SEED_PROJECTS: ProjectDetail[] = [
     techStack: ['React', 'Node.js', 'InfluxDB'],
     createdAt: '2026-06-22T20:00:00+08:00',
     updatedAt: '2026-08-02T15:10:00+08:00',
+    favorite: false,
+    progressMode: 'auto',
   },
   {
     id: 'p-habit-app',
@@ -62,6 +71,8 @@ export const SEED_PROJECTS: ProjectDetail[] = [
     techStack: ['Flutter', 'Firebase'],
     createdAt: '2025-09-10T08:00:00+08:00',
     updatedAt: '2026-05-30T21:00:00+08:00',
+    favorite: false,
+    progressMode: 'auto',
   },
   {
     id: 'p-legacy-homepage',
@@ -73,6 +84,8 @@ export const SEED_PROJECTS: ProjectDetail[] = [
     techStack: ['Vue 2', 'Express'],
     createdAt: '2024-03-01T12:00:00+08:00',
     updatedAt: '2026-01-20T11:00:00+08:00',
+    favorite: false,
+    progressMode: 'auto',
   },
 ];
 
