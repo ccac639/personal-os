@@ -1,25 +1,19 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { CheckCircle2, ChevronRight, Loader2, XCircle, Zap } from '@lucide/vue';
+import { WORKFLOW_RUNS } from './mock';
+import type { WorkflowRun } from './types';
 
-interface WorkflowRun {
-  id: string;
-  name: string;
-  status: 'success' | 'running' | 'failed';
-  duration: string;
-  startedAt: string;
+interface Props {
+  /** 外部数据覆盖（测试 / 后续接 API） */
+  runs?: WorkflowRun[];
 }
 
-const runs: WorkflowRun[] = [
-  {
-    id: 'w1',
-    name: '每日代码审查流水线',
-    status: 'running',
-    duration: '2m 14s',
-    startedAt: '10 分钟前',
-  },
-  { id: 'w2', name: '依赖安全审计', status: 'success', duration: '48s', startedAt: '1 小时前' },
-  { id: 'w3', name: '博客自动发布', status: 'success', duration: '12s', startedAt: '3 小时前' },
-];
+const props = withDefaults(defineProps<Props>(), {
+  runs: undefined,
+});
+
+const runs = computed(() => props.runs ?? WORKFLOW_RUNS);
 
 const STATUS_CONFIG: Record<
   WorkflowRun['status'],
@@ -30,9 +24,11 @@ const STATUS_CONFIG: Record<
   failed: { label: '失败', icon: XCircle, cls: 'text-red-600 bg-red-500/10' },
 };
 
-const successRate = Math.round(
-  (runs.filter((r) => r.status === 'success').length / runs.length) * 100,
-);
+const successRate = computed(() => {
+  const total = runs.value.length;
+  if (total === 0) return 0;
+  return Math.round((runs.value.filter((r) => r.status === 'success').length / total) * 100);
+});
 </script>
 
 <template>
@@ -42,7 +38,17 @@ const successRate = Math.round(
       <span class="text-surface-800/50 text-xs tabular-nums">成功率 {{ successRate }}%</span>
     </div>
 
-    <ul class="flex-1 space-y-2">
+    <!-- 空态 -->
+    <div
+      v-if="runs.length === 0"
+      class="flex flex-1 flex-col items-center justify-center gap-2 py-8"
+    >
+      <Zap class="text-surface-800/30 size-6" />
+      <p class="text-surface-800/50 text-xs">暂无工作流运行</p>
+    </div>
+
+    <!-- 运行列表（高度受控，不撑破首页） -->
+    <ul v-else class="max-h-[240px] flex-1 space-y-2 overflow-y-auto pr-0.5">
       <li
         v-for="run in runs"
         :key="run.id"
@@ -59,8 +65,17 @@ const successRate = Math.round(
           />
         </span>
         <div class="min-w-0 flex-1">
-          <p class="text-surface-900 truncate text-sm font-medium">{{ run.name }}</p>
-          <p class="text-surface-800/50 text-xs">{{ run.duration }} · {{ run.startedAt }}</p>
+          <p class="text-surface-900 truncate text-sm font-medium">
+            {{ run.name }}
+            <span class="ml-1 text-[10px] font-normal" :class="STATUS_CONFIG[run.status].cls.split(' ')[0]">
+              {{ STATUS_CONFIG[run.status].label }}
+            </span>
+          </p>
+          <!-- 失败原因摘要（红色，截断不换行） -->
+          <p v-if="run.status === 'failed' && run.failureReason" class="text-red-600/80 truncate text-[11px]">
+            {{ run.failureReason }}
+          </p>
+          <p v-else class="text-surface-800/50 text-xs">{{ run.duration }} · {{ run.startedAt }}</p>
         </div>
         <ChevronRight
           class="text-surface-800/30 size-4 opacity-0 transition group-hover:opacity-100"
@@ -68,6 +83,7 @@ const successRate = Math.round(
       </li>
     </ul>
 
+    <!-- 查看全部：只走已有路由 /workflows -->
     <router-link
       to="/workflows"
       class="text-brand-600 hover:text-brand-700 border-surface-100 mt-3 flex items-center justify-between border-t pt-2.5 text-xs transition"

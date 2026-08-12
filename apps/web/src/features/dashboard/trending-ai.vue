@@ -1,93 +1,56 @@
 <script setup lang="ts">
-import { TrendingUp, Star, ExternalLink } from '@lucide/vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { ExternalLink, RefreshCw, Star, TrendingUp } from '@lucide/vue';
+import { GITHUB_TREND, TREND_SNAPSHOT_DATE } from './mock';
+import type { GithubTrendItem } from './types';
 
-/**
- * GitHub 每周 Star 增长 Top 10 AI 项目
- * 数据来源：AI 于 2026-08-12 搜索抓取 github.com/trending?since=weekly
- * （真实快照，按"本周新增 Star"排序）
- */
-interface TrendingRepo {
-  repo: string;
-  desc: string;
-  lang: string;
-  total: number;
-  week: number;
+interface Props {
+  /** 外部数据覆盖（测试注入） */
+  items?: GithubTrendItem[];
+  /** 初始加载状态（测试注入；默认 loading 后自动 ready） */
+  initialState?: LoadState;
 }
 
-const SNAPSHOT_DATE = '2026-08-12';
+const props = withDefaults(defineProps<Props>(), {
+  items: undefined,
+  initialState: 'loading',
+});
 
-const topRepos: TrendingRepo[] = [
-  {
-    repo: 'TencentCloud/TencentDB-Agent-Memory',
-    desc: 'TencentDB Agent Memory — AI Agent 团队级记忆中心：对话/文档/代码转四个可复用记忆资产',
-    lang: 'TypeScript',
-    total: 19900,
-    week: 7017,
-  },
-  {
-    repo: 'cloudflare/computer',
-    desc: 'Give your agent a computer 👾 给 Agent 一台电脑（Cloudflare 出品）',
-    lang: 'TypeScript',
-    total: 7600,
-    week: 6775,
-  },
-  {
-    repo: 'zhaoxuya520/reverse-skill',
-    desc: '逆向/渗透/安全研究技能路由包，AI 自动路由 + 自举工具链，支持 Claude Code / Cursor / Cline',
-    lang: 'PowerShell',
-    total: 23968,
-    week: 6730,
-  },
-  {
-    repo: 'firecrawl/pdf-inspector',
-    desc: '快速 Rust PDF 检查/分类/文本提取库，智能识别扫描件 vs 文本 PDF',
-    lang: 'Rust',
-    total: 14717,
-    week: 5367,
-  },
-  {
-    repo: 'virgiliojr94/book-to-skill',
-    desc: '把任意技术书 PDF 转成 Claude Code Skill，边工作边学习查阅',
-    lang: 'Python',
-    total: 20518,
-    week: 4155,
-  },
-  {
-    repo: 'esengine/DeepSeek-Reasonix',
-    desc: 'DeepSeek 原生终端 AI 编码 Agent，围绕 prefix-cache 稳定性设计',
-    lang: 'Go',
-    total: 33974,
-    week: 3517,
-  },
-  {
-    repo: 'Comfy-Org/ComfyUI',
-    desc: '最强大模块化 Diffusion 模型 GUI / API / 后端，图节点接口',
-    lang: 'Python',
-    total: 126831,
-    week: 3252,
-  },
-  {
-    repo: 'lyogavin/airllm',
-    desc: 'AirLLM：单张 4GB GPU 跑 70B 模型推理',
-    lang: 'Jupyter',
-    total: 30776,
-    week: 2798,
-  },
-  {
-    repo: 'semantica-agi/semantica',
-    desc: 'Graph-Native 基础设施，为 Context 与可问责 AI 系统而生',
-    lang: 'Python',
-    total: 4914,
-    week: 2712,
-  },
-  {
-    repo: 'huangruiteng/loopx',
-    desc: '轻量 loop 工程状态内核，长跑 AI Agent 团队跨 Codex/Claude Code 通用',
-    lang: 'Python',
-    total: 4174,
-    week: 2687,
-  },
-];
+type LoadState = 'loading' | 'ready' | 'error';
+
+const state = ref<LoadState>(props.initialState);
+const items = ref<GithubTrendItem[]>(props.items ?? []);
+let timer: ReturnType<typeof setTimeout> | null = null;
+/** 首帧是否已应用 initialState（error 只在首帧生效，重试总是走成功路径） */
+let appliedInitial = false;
+
+/** 模拟异步加载（本地 mock；后续接 API 时替换为真实请求） */
+function load() {
+  state.value = 'loading';
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => {
+    items.value = props.items ?? GITHUB_TREND;
+    state.value = 'ready';
+  }, 500);
+}
+
+function retry() {
+  load();
+}
+
+onMounted(() => {
+  if (props.initialState === 'error' && !appliedInitial) {
+    appliedInitial = true;
+    state.value = 'error';
+    return;
+  }
+  appliedInitial = true;
+  load();
+});
+
+onBeforeUnmount(() => {
+  if (timer) clearTimeout(timer);
+});
 
 const rankColors = [
   'bg-amber-500 text-white', // 1
@@ -96,13 +59,11 @@ const rankColors = [
   'bg-surface-800/50 text-surface-900', // 4+
 ];
 
-function rankClass(index: number) {
-  return rankColors[index] ?? rankColors[3];
+function rankClass(rank: number) {
+  return rankColors[rank - 1] ?? rankColors[3];
 }
 
-function formatStars(n: number) {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-}
+const isEmpty = computed(() => state.value === 'ready' && items.value.length === 0);
 </script>
 
 <template>
@@ -117,54 +78,82 @@ function formatStars(n: number) {
         class="bg-brand-500/10 text-brand-600 rounded-full px-2 py-0.5 text-[10px] font-medium"
         title="数据由 AI 于 2026-08-12 搜索抓取 github.com/trending?since=weekly"
       >
-        AI 搜索 · {{ SNAPSHOT_DATE }}
+        AI 搜索 · {{ TREND_SNAPSHOT_DATE }}
       </span>
     </div>
 
-    <!-- Top 10 列表 -->
-    <ol class="flex-1 space-y-1">
-      <li v-for="(repo, index) in topRepos" :key="repo.repo">
+    <!-- loading：skeleton -->
+    <div v-if="state === 'loading'" class="flex-1 space-y-1.5" aria-busy="true" role="status">
+      <div
+        v-for="i in 6"
+        :key="i"
+        class="animate-pulse space-y-1.5 rounded-md px-1.5 py-[5px]"
+      >
+        <div class="bg-surface-100 h-3 w-2/3 rounded" />
+        <div class="bg-surface-100/70 h-2.5 w-5/6 rounded" />
+      </div>
+    </div>
+
+    <!-- error：可重试 -->
+    <div v-else-if="state === 'error'" class="flex flex-1 flex-col items-center justify-center gap-2 py-8">
+      <p class="text-surface-800/60 text-xs">趋势数据加载失败</p>
+      <button
+        type="button"
+        class="border-surface-100 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition focus-visible:ring-2 focus-visible:outline-none"
+        @click="retry"
+      >
+        <RefreshCw class="size-3.5" />
+        重试
+      </button>
+    </div>
+
+    <!-- 空态 -->
+    <div v-else-if="isEmpty" class="flex flex-1 flex-col items-center justify-center gap-2 py-8">
+      <Star class="text-surface-800/30 size-6" />
+      <p class="text-surface-800/50 text-xs">本周暂无趋势数据</p>
+    </div>
+
+    <!-- ready：Top 10 列表 -->
+    <ol v-else class="flex-1 space-y-1">
+      <li v-for="repo in items" :key="repo.name">
         <a
-          :href="`https://github.com/${repo.repo}`"
+          :href="repo.url"
           target="_blank"
           rel="noopener noreferrer"
           class="hover:bg-surface-50 group flex items-center gap-2 rounded-md px-1.5 py-[5px] transition"
-          :title="`${repo.desc}\n总 Star: ${repo.total.toLocaleString()}`"
+          :title="`${repo.description}\n总 Star: ${repo.stars}`"
         >
-          <!-- 排名 -->
+          <!-- 排名：窄屏不挤压 -->
           <span
-            class="flex size-4.5 shrink-0 items-center justify-center rounded text-[10px] font-bold"
-            :class="rankClass(index)"
+            class="flex size-4.5 shrink-0 items-center justify-center rounded text-[10px] font-bold tabular-nums"
+            :class="rankClass(repo.rank)"
           >
-            {{ index + 1 }}
+            {{ repo.rank }}
           </span>
 
           <!-- 仓库信息 -->
           <span class="min-w-0 flex-1">
             <span class="flex items-center gap-1">
-              <span
-                v-if="repo.lang"
-                class="size-2 shrink-0 rounded-full"
-                :style="{ backgroundColor: 'var(--color-brand-500)' }"
-              />
-              <span class="text-surface-900 truncate text-xs font-medium">{{ repo.repo }}</span>
+              <span class="text-surface-900 truncate text-xs font-medium">{{ repo.name }}</span>
               <ExternalLink
                 class="text-surface-800/30 group-hover:text-surface-800/70 size-3 shrink-0 opacity-0 transition group-hover:opacity-100"
               />
             </span>
-            <span class="text-surface-800/50 block truncate text-[10px]">{{ repo.desc }}</span>
+            <span class="text-surface-800/50 line-clamp-2 block text-[10px] leading-4">
+              {{ repo.description }}
+            </span>
           </span>
 
-          <!-- 本周 star -->
+          <!-- star：增长绿色强调 -->
           <span class="shrink-0 text-right">
             <span
               class="flex items-center justify-end gap-0.5 text-xs font-semibold text-green-600 tabular-nums"
             >
               <Star class="size-3 fill-current" />
-              +{{ formatStars(repo.week) }}
+              {{ repo.deltaStars }}
             </span>
             <span class="text-surface-800/40 block text-[10px] tabular-nums">
-              {{ formatStars(repo.total) }} ★
+              {{ repo.stars }} ★
             </span>
           </span>
         </a>
