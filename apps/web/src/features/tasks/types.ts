@@ -24,6 +24,14 @@ export interface TaskItem extends Task {
   subtasks: SubTask[];
   /** 前置依赖任务 id 列表（未完成的前置会让本任务显示「受阻」） */
   dependsOn: string[];
+  /** 估时（分钟） */
+  estimatedMinutes?: number;
+  /** 实际投入（分钟；专注完成自动累加，可手动修正覆盖） */
+  actualMinutes?: number;
+  /** 完成定义（DoD，任务达成标准） */
+  dod?: string;
+  /** 阻塞原因（任务受阻时填写） */
+  blockedReason?: string;
 }
 
 /** 任务表单输入（创建 / 编辑共用） */
@@ -36,6 +44,45 @@ export interface TaskForm {
   /** YYYY-MM-DD */
   dueDate?: string;
   tags: string[];
+  /** 估时（分钟） */
+  estimatedMinutes?: number;
+  /** 完成定义（DoD） */
+  dod?: string;
+  /** 阻塞原因 */
+  blockedReason?: string;
+  /** 模板子任务标题列表（应用模板时创建 checklist） */
+  subtasks?: string[];
+}
+
+/** 任务模板（内置 + 个人自定义） */
+export interface TaskTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  /** 应用模板后的任务标题 */
+  title: string;
+  /** 应用模板后的任务描述 */
+  taskDescription?: string;
+  priority: TaskPriority;
+  tags: string[];
+  /** 子任务标题列表（应用时生成 checklist） */
+  subtasks: string[];
+  /** 完成定义 */
+  dod?: string;
+  /** 估时（分钟） */
+  estimatedMinutes?: number;
+  /** 相对今天的默认截止天数（不填则无截止日期） */
+  defaultDueDays?: number;
+  /** 是否内置模板（内置不可删除） */
+  builtin: boolean;
+}
+
+/** 归档的日计划（每日计划历史，含完成状态） */
+export interface FocusPlanDay {
+  /** YYYY-MM-DD */
+  date: string;
+  items: FocusItem[];
+  doneIds: string[];
 }
 
 /** 看板列状态（cancelled 不进看板） */

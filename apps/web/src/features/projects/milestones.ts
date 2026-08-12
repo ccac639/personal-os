@@ -24,6 +24,38 @@ export interface MilestoneDerived extends Milestone, MilestoneProgress {
   overdue: boolean;
 }
 
+/** 里程碑展示状态（列表 / 时间轴降级说明用） */
+export type MilestoneDisplayState =
+  'done' | 'overdue' | 'due-soon' | 'no-date' | 'no-tasks' | 'normal';
+
+export const MILESTONE_STATE_META: Record<
+  MilestoneDisplayState,
+  { label: string; cls: string; reason: string }
+> = {
+  done: { label: '已完成', cls: 'text-green-600 bg-green-500/10', reason: '里程碑已完成' },
+  overdue: {
+    label: '已逾期',
+    cls: 'text-red-600 bg-red-500/10',
+    reason: '截止日期已过且未完成',
+  },
+  'due-soon': {
+    label: '即将到期',
+    cls: 'text-amber-600 bg-amber-500/10',
+    reason: '距离截止日期不足 7 天',
+  },
+  'no-date': {
+    label: '未设置日期',
+    cls: 'text-surface-800/60 bg-surface-100',
+    reason: '未设置开始或截止日期',
+  },
+  'no-tasks': {
+    label: '未关联任务',
+    cls: 'text-surface-800/60 bg-surface-100',
+    reason: '未关联任何任务，进度恒为 0',
+  },
+  normal: { label: '正常', cls: 'text-sky-600 bg-sky-500/10', reason: '按计划推进中' },
+};
+
 /** 里程碑进度计算（纯函数） */
 export function milestoneProgress(
   milestone: Pick<Milestone, 'taskIds'>,
@@ -59,6 +91,49 @@ export function milestoneRisk(
   );
   if (daysLeft <= 7) return 'at-risk';
   return 'on-track';
+}
+
+/**
+ * 里程碑展示状态（纯函数）
+ * 优先级：done > overdue > due-soon（≤7 天）> no-date > no-tasks > normal
+ */
+export function milestoneState(
+  milestone: Pick<Milestone, 'status' | 'dueDate' | 'taskIds'>,
+  today: string,
+): MilestoneDisplayState {
+  if (milestone.status === 'done') return 'done';
+  if (milestone.dueDate && milestone.dueDate < today) return 'overdue';
+  if (milestone.dueDate) {
+    const daysLeft = Math.round(
+      (new Date(`${milestone.dueDate}T00:00:00`).getTime() -
+        new Date(`${today}T00:00:00`).getTime()) /
+        86_400_000,
+    );
+    if (daysLeft <= 7) return 'due-soon';
+  }
+  if (!milestone.dueDate) return 'no-date';
+  if (milestone.taskIds.length === 0) return 'no-tasks';
+  return 'normal';
+}
+
+/** 清洗里程碑关联任务：去重、保序、丢弃空串（有效任务过滤由调用方结合任务列表完成） */
+export function sanitizeMilestoneTaskIds(taskIds: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of taskIds) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+/** 里程碑中未完成关联任务数（完成提醒 / 风险提示用） */
+export function unfinishedLinkedCount(
+  milestone: Pick<Milestone, 'taskIds'>,
+  taskDone: (taskId: string) => boolean,
+): number {
+  return milestone.taskIds.filter((id) => !taskDone(id)).length;
 }
 
 /** 里程碑排序（纯函数）：done 排最后，其余按 order、dueDate 升序 */

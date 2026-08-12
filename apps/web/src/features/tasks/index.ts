@@ -27,8 +27,32 @@ export {
   canAddDependency,
   isBlocked,
   blockingDependencies,
+  dependentsOf,
 } from './dependencies';
-export { formatTimer, settleMs, msToMinutes } from './focus';
+export {
+  formatTimer,
+  settleMs,
+  msToMinutes,
+  focusEligibleTask,
+  dailyFocusMinutes,
+  focusStreak,
+  archivePlanDay,
+  migrateUndone,
+  mergePlanItems,
+} from './focus';
+export {
+  BUILTIN_TEMPLATES,
+  allTemplates,
+  applyTemplate,
+  loadCustomTemplates,
+  saveCustomTemplates,
+  createCustomTemplate,
+  deleteCustomTemplate,
+  normalizeTemplate,
+} from './templates';
+export { taskEstimate, taskActualMinutes, estimateSummary, formatHoursShort } from './estimates';
+export { serializeTasks, parseTasksJson, hasTaskCycle, removeTaskCycles } from './transfer';
+export type { TasksImportResult, TasksImportReport } from './transfer';
 export type {
   TaskItem,
   KanbanStatus,
@@ -42,6 +66,8 @@ export type {
   TaskEvent,
   UndoInfo,
   FocusItem,
+  FocusPlanDay,
   FocusSession,
   RunningFocus,
+  TaskTemplate,
 } from './types';

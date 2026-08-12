@@ -19,6 +19,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { formatDateTime, relativeTime } from '@/features/projects/utils';
 import { blockingDependencies, canAddDependency } from './dependencies';
 import { subtaskStats } from './subtasks';
+import { taskEstimate, formatHoursShort } from './estimates';
 import { useTaskStore } from './store';
 import { TASK_PRIORITY_META, TASK_STATUS_META } from './types';
 import type { TaskEvent, TaskItem } from './types';
@@ -70,6 +71,26 @@ const isFocus = computed(() =>
 );
 const focusMinutes = computed(() => (props.taskId ? store.taskFocusMinutes(props.taskId) : 0));
 const lastFocus = computed(() => (props.taskId ? store.lastFocusAt(props.taskId) : null));
+/** 估时 / 实际投入 / 偏差（估时 = 表单填写；实际 = 手动 + 专注） */
+const estimate = computed(() =>
+  task.value ? taskEstimate(task.value, store.focusSessions) : null,
+);
+/** 内联编辑实际投入 */
+const editingActual = ref(false);
+const actualDraft = ref<number | null>(null);
+
+function startEditActual() {
+  if (!task.value) return;
+  actualDraft.value = task.value.actualMinutes ?? 0;
+  editingActual.value = true;
+}
+
+function saveActual() {
+  if (props.taskId && actualDraft.value !== null) {
+    store.setActualMinutes(props.taskId, actualDraft.value);
+  }
+  editingActual.value = false;
+}
 
 watch(
   () => props.open,
@@ -188,6 +209,16 @@ function addToFocus() {
               <p v-else class="text-surface-800/40 text-sm">暂无描述</p>
             </section>
 
+            <!-- 完成定义（DoD） -->
+            <section v-if="task.dod">
+              <h3 class="text-surface-800/50 mb-1.5 text-xs font-medium">完成定义（DoD）</h3>
+              <p
+                class="border-brand-500/30 bg-brand-500/5 text-surface-800/80 rounded-lg border px-3 py-2 text-sm leading-6"
+              >
+                {{ task.dod }}
+              </p>
+            </section>
+
             <!-- 元信息 -->
             <section>
               <h3 class="text-surface-800/50 mb-1.5 text-xs font-medium">属性</h3>
@@ -227,6 +258,56 @@ function addToFocus() {
                 >
                   <Timer class="size-3" />
                   累计专注 {{ focusMinutes }} 分钟
+                </span>
+                <span
+                  v-if="estimate?.estimatedMinutes != null"
+                  class="flex items-center gap-1 rounded bg-sky-500/10 px-1.5 py-0.5 text-xs text-sky-600"
+                >
+                  估时 {{ formatHoursShort(estimate.estimatedMinutes) }}
+                </span>
+                <span v-if="estimate" class="text-surface-800/50 flex items-center gap-1 text-xs">
+                  已投入 {{ formatHoursShort(estimate.actualMinutes) }}
+                  <span v-if="estimate.varianceMinutes !== null && !editingActual">
+                    <span
+                      :class="estimate.varianceMinutes >= 0 ? 'text-green-600' : 'text-amber-600'"
+                    >
+                      （{{ estimate.varianceMinutes >= 0 ? '余' : '超' }}
+                      {{ formatHoursShort(Math.abs(estimate.varianceMinutes)) }}）
+                    </span>
+                    <button
+                      type="button"
+                      class="text-surface-800/40 hover:text-brand-600 ml-0.5 rounded p-0.5 transition-colors"
+                      :title="'手动修正实际投入（覆盖自动累计）'"
+                      aria-label="修正实际投入"
+                      @click="startEditActual"
+                    >
+                      <Pencil class="size-3" />
+                    </button>
+                  </span>
+                  <span v-else-if="editingActual" class="ml-1 flex items-center gap-1">
+                    <input
+                      v-model.number="actualDraft"
+                      type="number"
+                      min="0"
+                      step="5"
+                      class="border-surface-100 focus:border-brand-500 w-20 rounded-lg border px-1.5 py-0.5 text-xs transition outline-none"
+                      aria-label="实际投入分钟"
+                    />
+                    <button
+                      type="button"
+                      class="text-brand-600 rounded px-1 text-xs font-medium hover:underline"
+                      @click="saveActual"
+                    >
+                      保存
+                    </button>
+                    <button
+                      type="button"
+                      class="text-surface-800/40 hover:text-surface-900 rounded px-1 text-xs"
+                      @click="editingActual = false"
+                    >
+                      取消
+                    </button>
+                  </span>
                 </span>
               </div>
               <div class="mt-2 flex flex-wrap gap-1.5">
@@ -375,6 +456,17 @@ function addToFocus() {
                 </button>
               </div>
               <p v-if="depError" class="mt-1 text-xs text-red-600">{{ depError }}</p>
+
+              <!-- 阻塞原因（受阻时填写，编辑走「编辑」按钮） -->
+              <div
+                v-if="task.blockedReason"
+                class="mt-2 rounded-lg border border-amber-200 bg-amber-500/5 px-2.5 py-2"
+              >
+                <p class="text-xs font-medium text-amber-700">阻塞原因</p>
+                <p class="mt-0.5 text-xs leading-5 whitespace-pre-wrap text-amber-800/80">
+                  {{ task.blockedReason }}
+                </p>
+              </div>
             </section>
 
             <!-- 子任务 checklist -->

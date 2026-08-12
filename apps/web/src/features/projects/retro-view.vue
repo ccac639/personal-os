@@ -1,11 +1,29 @@
 <script setup lang="ts">
-import { AlertTriangle, Archive, Download, Eye, FileJson, Pencil, Save, Trash2 } from '@lucide/vue';
+import {
+  AlertTriangle,
+  Archive,
+  Download,
+  Eye,
+  FileJson,
+  Pencil,
+  Save,
+  Trash2,
+  Upload,
+} from '@lucide/vue';
 import { computed, ref } from 'vue';
 
 import { useProjectStore } from './store';
 import { useTaskStore } from '@/features/tasks/store';
-import { buildHealthStats, buildRetroTemplate, buildSnapshot } from './health';
-import type { HealthStats } from './health';
+import {
+  buildHealthStats,
+  buildRetroMarkdown,
+  buildRetroTemplate,
+  buildRiskRules,
+  buildSnapshot,
+} from './health';
+import type { HealthStats, RiskRule } from './health';
+import { parseSnapshotJson } from './persistence';
+import type { ProjectSnapshot } from './types';
 import type { ProjectDetail, Retrospective } from './types';
 import ConfirmDialog from './confirm-dialog.vue';
 import SnapshotViewer from './snapshot-viewer.vue';
@@ -30,6 +48,21 @@ const health = computed<HealthStats>(() =>
       taskStore.tasksByProject(props.project.id).some((t) => t.id === s.taskId),
     ),
     today,
+  }),
+);
+
+/** 健康风险规则（进度落后 / 临近截止 / 长期无活动 / 阻塞 / 专注偏差） */
+const rules = computed<RiskRule[]>(() =>
+  buildRiskRules({
+    project: props.project,
+    tasks: taskStore.tasksByProject(props.project.id),
+    milestones: store.milestonesOf(props.project.id),
+    activities: store.projectActivities(props.project.id),
+    focusSessions: taskStore.focusSessions.filter((s) =>
+      taskStore.tasksByProject(props.project.id).some((t) => t.id === s.taskId),
+    ),
+    today,
+    latestActivityAt: store.latestActivity(props.project.id)?.createdAt ?? null,
   }),
 );
 
@@ -62,6 +95,51 @@ function startEdit() {
 function saveDraft() {
   store.saveRetrospective(props.project.id, draft.value);
   editing.value = false;
+}
+
+/** 导出复盘 Markdown（下载 .md，纯前端） */
+function exportMarkdown() {
+  const md = buildRetroMarkdown({
+    project: props.project,
+    health: health.value,
+    rules: rules.value,
+    retro: retro.value ? { ...retro.value } : null,
+    tasks: taskStore.tasksByProject(props.project.id),
+  });
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `retro-${props.project.name}-${today}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** 快照导入：文件 → 解析 → 预览 → 确认入库 */
+const importingSnapshot = ref(false);
+const importPreview = ref<
+  { ok: true; snapshot: ProjectSnapshot } | { ok: false; reason: string } | null
+>(null);
+
+function onImportFile(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = String(reader.result ?? '');
+    importPreview.value = parseSnapshotJson(text);
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function confirmImportSnapshot() {
+  if (importPreview.value?.ok) {
+    store.addSnapshot(importPreview.value.snapshot);
+    importingSnapshot.value = false;
+    importPreview.value = null;
+  }
 }
 
 /** 生成归档快照 */
@@ -144,6 +222,28 @@ function formatHours(minutes: number): string {
           }}<span class="text-surface-800/50 text-sm"> / {{ health.activity30d }}</span>
         </p>
       </div>
+    </section>
+
+    <!-- 健康风险规则 -->
+    <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
+      <h2 class="text-surface-900 mb-3 flex items-center gap-2 text-sm font-semibold">
+        <AlertTriangle class="size-4 text-amber-500" />
+        健康风险
+      </h2>
+      <div v-if="rules.length" class="flex flex-wrap gap-1.5">
+        <span
+          v-for="r in rules"
+          :key="r.key"
+          class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
+          :class="
+            r.level === 'danger' ? 'bg-red-500/10 text-red-600' : 'bg-amber-500/10 text-amber-600'
+          "
+        >
+          <AlertTriangle class="size-3" />
+          {{ r.label }}：{{ r.detail }}
+        </span>
+      </div>
+      <p v-else class="text-surface-800/40 text-xs">暂无异常，项目按计划推进。</p>
     </section>
 
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -231,15 +331,26 @@ function formatHours(minutes: number): string {
           <Pencil class="text-brand-600 size-4" />
           复盘笔记
         </h2>
-        <button
-          v-if="!editing"
-          type="button"
-          class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
-          @click="startEdit"
-        >
-          <Pencil class="size-3.5" />
-          {{ retro ? '编辑' : '生成模板' }}
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            v-if="retro"
+            type="button"
+            class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
+            @click="exportMarkdown"
+          >
+            <Download class="size-3.5" />
+            导出 Markdown
+          </button>
+          <button
+            v-if="!editing"
+            type="button"
+            class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
+            @click="startEdit"
+          >
+            <Pencil class="size-3.5" />
+            {{ retro ? '编辑' : '生成摘要' }}
+          </button>
+        </div>
       </div>
 
       <div v-if="editing" class="space-y-3">
@@ -296,7 +407,7 @@ function formatHours(minutes: number): string {
         </div>
       </div>
       <p v-else class="text-surface-800/40 py-6 text-center text-sm">
-        尚未撰写复盘笔记，点击「生成模板」基于当前健康数据预填。
+        尚未撰写复盘笔记，点击「生成摘要」基于健康数据预填。
       </p>
     </section>
 
@@ -307,17 +418,31 @@ function formatHours(minutes: number): string {
           <Archive class="text-brand-600 size-4" />
           归档快照
         </h2>
-        <button
-          type="button"
-          class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-          @click="snapshoting = true"
-        >
-          <Archive class="size-3.5" />
-          生成快照
-        </button>
+        <div class="flex items-center gap-2">
+          <label
+            class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
+          >
+            <Upload class="size-3.5" />
+            导入快照
+            <input
+              type="file"
+              accept=".json,application/json"
+              class="hidden"
+              @change="onImportFile"
+            />
+          </label>
+          <button
+            type="button"
+            class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            @click="snapshoting = true"
+          >
+            <Archive class="size-3.5" />
+            生成快照
+          </button>
+        </div>
       </div>
       <p class="text-surface-800/50 mb-4 text-xs">
-        快照包含项目元数据、任务、里程碑、活动记录与复盘笔记，仅保存在本地，可导出 JSON。
+        快照包含项目元数据、任务、里程碑、活动记录与复盘笔记，仅保存在本地，可导出 / 导入 JSON。
       </p>
       <div v-if="snapshots.length" class="space-y-2">
         <div
@@ -392,5 +517,89 @@ function formatHours(minutes: number): string {
       @confirm="confirmDeleteSnapshot"
       @cancel="deletingSnapshotId = null"
     />
+
+    <!-- 快照导入预览 -->
+    <div
+      v-if="importPreview !== null"
+      class="fixed inset-0 z-40 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="导入快照预览"
+    >
+      <div class="bg-surface-900/30 absolute inset-0" @click="importPreview = null" />
+      <div
+        class="border-surface-100 bg-surface-0 shadow-float relative w-full max-w-md rounded-xl border p-5"
+      >
+        <template v-if="importPreview.ok">
+          <h3 class="text-surface-900 text-base font-semibold">导入快照预览</h3>
+          <p class="text-surface-800/60 mt-1 text-sm">
+            将导入以下历史快照（仅作为归档记录，不覆盖当前数据）：
+          </p>
+          <dl class="mt-4 space-y-2 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-surface-800/50">快照时间</dt>
+              <dd class="text-surface-900">
+                {{ importPreview.snapshot.createdAt.slice(0, 16).replace('T', ' ') }}
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-surface-800/50">项目</dt>
+              <dd class="text-surface-900 max-w-[60%] truncate">
+                {{ importPreview.snapshot.data.project.name }}
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-surface-800/50">内容</dt>
+              <dd class="text-surface-900">
+                {{ importPreview.snapshot.data.tasks.length }} 任务 ·
+                {{ importPreview.snapshot.data.milestones.length }} 里程碑 ·
+                {{ importPreview.snapshot.data.activities.length }} 活动
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-surface-800/50">所属项目</dt>
+              <dd class="text-surface-900">
+                {{
+                  importPreview.snapshot.data.project.id === props.project.id
+                    ? '当前项目'
+                    : '其他项目（原样归档）'
+                }}
+              </dd>
+            </div>
+          </dl>
+          <div class="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors"
+              @click="importPreview = null"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="bg-brand-600 hover:bg-brand-700 text-surface-0 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
+              @click="confirmImportSnapshot"
+            >
+              确认导入
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <h3 class="text-surface-900 text-base font-semibold">导入失败</h3>
+          <p class="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600">
+            {{ importPreview?.ok === false ? importPreview.reason : '未知错误' }}
+          </p>
+          <div class="mt-5 flex justify-end">
+            <button
+              type="button"
+              class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors"
+              @click="importPreview = null"
+            >
+              关闭
+            </button>
+          </div>
+        </template>
+      </div>
+    </div>
   </div>
 </template>

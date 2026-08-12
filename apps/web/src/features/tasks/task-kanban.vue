@@ -94,7 +94,7 @@ function openDrawer(task: TaskItem) {
 
 function onFormSubmit(form: TaskFormData) {
   if (editing.value) store.updateTask(editing.value.id, form);
-  else store.createTask(form);
+  else store.createTask(form, form.subtasks);
   formOpen.value = false;
 }
 

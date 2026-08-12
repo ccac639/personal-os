@@ -16,9 +16,11 @@
  *   任务增加 dependsOn（前置依赖）。
  */
 import { SEED_TASKS } from './mock';
+import { isValidDateStr } from '@/features/projects/plan';
 import type { TaskPriority, TaskStatus } from '@personal-os/types';
 import type {
   FocusItem,
+  FocusPlanDay,
   FocusSession,
   RunningFocus,
   SubTask,
@@ -50,7 +52,7 @@ export interface TaskUiPrefs {
   quickFilter: TaskQuickFilter;
 }
 
-/** 任务 v3 信封数据 */
+/** 任务 v3 信封数据（v3 内向后兼容扩展：估时 / DoD / 每日计划） */
 export interface PersistedTaskState {
   tasks: TaskItem[];
   events: TaskEvent[];
@@ -59,6 +61,10 @@ export interface PersistedTaskState {
   focus: FocusItem[];
   focusSessions: FocusSession[];
   runningFocus: RunningFocus | null;
+  /** 今日计划已勾选完成的任务 id（独立于看板状态） */
+  focusDone: string[];
+  /** 已归档的日计划（每日计划历史） */
+  focusHistory: FocusPlanDay[];
 }
 
 /** 迁移 / 引用清理报告 */
@@ -127,6 +133,10 @@ export function normalizeTask(raw: unknown): TaskItem | null {
   if (subtasks.some((x) => x === null)) return null;
   const dependsRaw = Array.isArray(t.dependsOn) ? t.dependsOn : [];
   if (!dependsRaw.every(str)) return null;
+  const positiveNum = (x: unknown): number | undefined => {
+    if (typeof x !== 'number' || !Number.isFinite(x) || x < 0) return undefined;
+    return Math.round(x);
+  };
   return {
     id: t.id,
     projectId: str(t.projectId) ? t.projectId : undefined,
@@ -135,13 +145,18 @@ export function normalizeTask(raw: unknown): TaskItem | null {
     status: t.status as TaskStatus,
     priority: t.priority as TaskPriority,
     assigneeId: str(t.assigneeId) ? t.assigneeId : undefined,
-    dueDate: str(t.dueDate) ? t.dueDate : undefined,
+    dueDate: isValidDateStr(t.dueDate) ? t.dueDate : undefined,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
     tags: t.tags as string[],
     order: t.order,
     subtasks: subtasks as SubTask[],
     dependsOn: dependsRaw as string[],
+    estimatedMinutes: positiveNum(t.estimatedMinutes),
+    actualMinutes: positiveNum(t.actualMinutes),
+    dod: str(t.dod) && t.dod.trim() ? t.dod.trim() : undefined,
+    blockedReason:
+      str(t.blockedReason) && t.blockedReason.trim() ? t.blockedReason.trim() : undefined,
   };
 }
 
@@ -149,7 +164,14 @@ export function normalizeTaskList(raw: unknown): TaskItem[] | null {
   if (!Array.isArray(raw)) return null;
   const list = raw.map(normalizeTask);
   if (list.some((x) => x === null)) return null;
-  return list as TaskItem[];
+  const seen = new Set<string>();
+  const out: TaskItem[] = [];
+  for (const t of list as TaskItem[]) {
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    out.push(t);
+  }
+  return out;
 }
 
 export function normalizeEvent(raw: unknown): TaskEvent | null {
@@ -178,13 +200,58 @@ export function normalizeEventList(raw: unknown): TaskEvent[] | null {
   if (!Array.isArray(raw)) return null;
   const list = raw.map(normalizeEvent);
   if (list.some((x) => x === null)) return null;
-  return list as TaskEvent[];
+  const seen = new Set<string>();
+  const out: TaskEvent[] = [];
+  for (const e of list as TaskEvent[]) {
+    if (seen.has(e.id)) continue;
+    seen.add(e.id);
+    out.push(e);
+  }
+  return out;
 }
 
 export function normalizeFocusItem(raw: unknown): FocusItem | null {
   if (!isPlainObject(raw)) return null;
   if (!str(raw.taskId) || typeof raw.plannedMinutes !== 'number') return null;
   return { taskId: raw.taskId, plannedMinutes: Math.max(0, Math.round(raw.plannedMinutes)) };
+}
+
+/** 归档日计划归一化（纯函数；无效项丢弃） */
+export function normalizeFocusPlanDay(raw: unknown): FocusPlanDay | null {
+  if (!isPlainObject(raw)) return null;
+  if (!isValidDateStr(raw.date)) return null;
+  const itemsRaw = Array.isArray(raw.items) ? raw.items : [];
+  const itemsList = itemsRaw.map(normalizeFocusItem);
+  if (itemsList.some((x) => x === null)) return null;
+  const seen = new Set<string>();
+  const items: FocusItem[] = [];
+  for (const f of itemsList as FocusItem[]) {
+    if (seen.has(f.taskId)) continue;
+    seen.add(f.taskId);
+    items.push(f);
+  }
+  const doneRaw = Array.isArray(raw.doneIds) ? raw.doneIds : [];
+  if (!doneRaw.every(str)) return null;
+  return {
+    date: raw.date,
+    items,
+    doneIds: [...new Set(doneRaw as string[])],
+  };
+}
+
+export function normalizeFocusPlanList(raw: unknown): FocusPlanDay[] | null {
+  if (!Array.isArray(raw)) return null;
+  const list = raw.map(normalizeFocusPlanDay);
+  if (list.some((x) => x === null)) return null;
+  const seen = new Set<string>();
+  const out: FocusPlanDay[] = [];
+  for (const d of list as FocusPlanDay[]) {
+    if (seen.has(d.date)) continue;
+    seen.add(d.date);
+    out.push(d);
+  }
+  // 日期降序（最近在前）
+  return out.sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 
 export function normalizeFocusSession(raw: unknown): FocusSession | null {
@@ -239,19 +306,40 @@ export function normalizePersistedState(raw: unknown): PersistedTaskState | null
   const events = normalizeEventList(eventsRaw);
   if (events === null) return null;
   const focusRaw = Array.isArray(raw.focus) ? raw.focus : [];
-  const focus = focusRaw.map(normalizeFocusItem);
-  if (focus.some((x) => x === null)) return null;
+  const focusList = focusRaw.map(normalizeFocusItem);
+  if (focusList.some((x) => x === null)) return null;
+  const focusSeen = new Set<string>();
+  const focus: FocusItem[] = [];
+  for (const f of focusList as FocusItem[]) {
+    if (focusSeen.has(f.taskId)) continue;
+    focusSeen.add(f.taskId);
+    focus.push(f);
+  }
   const sessionsRaw = Array.isArray(raw.focusSessions) ? raw.focusSessions : [];
-  const sessions = sessionsRaw.map(normalizeFocusSession);
-  if (sessions.some((x) => x === null)) return null;
+  const sessionList = sessionsRaw.map(normalizeFocusSession);
+  if (sessionList.some((x) => x === null)) return null;
+  const sessionSeen = new Set<string>();
+  const sessions: FocusSession[] = [];
+  for (const s of sessionList as FocusSession[]) {
+    if (sessionSeen.has(s.id)) continue;
+    sessionSeen.add(s.id);
+    sessions.push(s);
+  }
+  const doneRaw = Array.isArray(raw.focusDone) ? raw.focusDone : [];
+  if (!doneRaw.every(str)) return null;
+  const historyRaw = Array.isArray(raw.focusHistory) ? raw.focusHistory : [];
+  const history = normalizeFocusPlanList(historyRaw);
+  if (history === null) return null;
   return {
     tasks,
     events,
     sortBy: str(raw.sortBy) ? (raw.sortBy as TaskSortKey) : 'order',
     sortDir: raw.sortDir === 'asc' || raw.sortDir === 'desc' ? raw.sortDir : 'asc',
-    focus: focus as FocusItem[],
-    focusSessions: sessions as FocusSession[],
+    focus,
+    focusSessions: sessions,
     runningFocus: normalizeRunningFocus(raw.runningFocus),
+    focusDone: [...new Set(doneRaw as string[])],
+    focusHistory: history,
   };
 }
 
@@ -344,6 +432,8 @@ function cloneSeeds(): PersistedTaskState {
     focus: [],
     focusSessions: [],
     runningFocus: null,
+    focusDone: [],
+    focusHistory: [],
   };
 }
 
@@ -366,6 +456,8 @@ function migrateLegacyState(): PersistedTaskState | null {
       focus: [],
       focusSessions: [],
       runningFocus: null,
+      focusDone: [],
+      focusHistory: [],
     };
   } catch {
     return null;
@@ -392,6 +484,8 @@ function migrateV2State(): PersistedTaskState | null {
       focus: [],
       focusSessions: [],
       runningFocus: null,
+      focusDone: [],
+      focusHistory: [],
     };
   } catch {
     return null;
@@ -441,6 +535,14 @@ export function cleanupInvalidRefs(
       focusSessions: state.focusSessions.filter((s) => keptIds.has(s.taskId)),
       runningFocus:
         state.runningFocus && keptIds.has(state.runningFocus.taskId) ? state.runningFocus : null,
+      focusDone: (state.focusDone ?? []).filter((id) => keptIds.has(id)),
+      focusHistory: (state.focusHistory ?? [])
+        .map((day) => ({
+          ...day,
+          items: day.items.filter((i) => keptIds.has(i.taskId)),
+          doneIds: day.doneIds.filter((id) => keptIds.has(id)),
+        }))
+        .filter((day) => day.items.length > 0 || day.doneIds.length > 0),
     },
     report: { cleanedProjectRefs, cleanedDependencyRefs },
   };

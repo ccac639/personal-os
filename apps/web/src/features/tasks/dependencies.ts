@@ -126,3 +126,8 @@ export function blockingDependencies(task: TaskItem, byId: Map<string, TaskItem>
   }
   return out;
 }
+
+/** 依赖本任务的任务列表（反向依赖，抽屉「被依赖」区展示） */
+export function dependentsOf(taskId: string, tasks: TaskItem[]): TaskItem[] {
+  return tasks.filter((t) => t.dependsOn.includes(taskId));
+}

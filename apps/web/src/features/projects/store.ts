@@ -28,7 +28,8 @@ import {
   saveSnapshots,
 } from './persistence';
 import { withProgressMode } from './progress';
-import { sortMilestones } from './milestones';
+import { isValidDateStr } from './plan';
+import { sanitizeMilestoneTaskIds, sortMilestones } from './milestones';
 import type {
   Milestone,
   MilestoneForm,
@@ -313,7 +314,7 @@ export const useProjectStore = defineStore('projects', () => {
       dueDate: input.dueDate || undefined,
       status: input.status,
       order: siblings.length ? Math.max(...siblings.map((m) => m.order)) + 1 : 0,
-      taskIds: [...input.taskIds],
+      taskIds: sanitizeMilestoneTaskIds(input.taskIds),
       createdAt: now,
       updatedAt: now,
     };
@@ -364,6 +365,46 @@ export const useProjectStore = defineStore('projects', () => {
     const tmp = a.order;
     a.order = b.order;
     b.order = tmp;
+  }
+
+  /** 按拖拽结果重排里程碑（orderedIds 为同项目内完整顺序；纯前端，无越界校验需求） */
+  function reorderMilestones(projectId: string, orderedIds: string[]): void {
+    const map = new Map(milestones.value.map((m) => [m.id, m]));
+    orderedIds.forEach((id, index) => {
+      const m = map.get(id);
+      if (m && m.projectId === projectId) m.order = index;
+    });
+  }
+
+  /** 拖拽调整里程碑日期（时间轴用）；startDate 晚于 dueDate 时自动校正 */
+  function updateMilestoneDates(id: string, patch: { startDate?: string; dueDate?: string }): void {
+    const m = milestoneById(id);
+    if (!m) return;
+    const start =
+      patch.startDate && isValidDateStr(patch.startDate) ? patch.startDate : m.startDate;
+    const due = patch.dueDate && isValidDateStr(patch.dueDate) ? patch.dueDate : m.dueDate;
+    m.startDate = start;
+    m.dueDate = due;
+    if (m.startDate && m.dueDate && m.startDate > m.dueDate) {
+      m.startDate = m.dueDate;
+    }
+    m.updatedAt = new Date().toISOString();
+    addActivity(m.projectId, 'milestone', '调整里程碑日期', m.title);
+  }
+
+  /** 导入项目包（作为新项目插入；任务由调用方经 taskStore.importTasks 导入） */
+  function importProjectBundle(bundle: {
+    project: ProjectDetail;
+    milestones: Milestone[];
+    activities: ProjectActivity[];
+    retrospective: Retrospective | null;
+  }): string {
+    projects.value.unshift(bundle.project);
+    milestones.value.push(...bundle.milestones);
+    activities.value.push(...bundle.activities);
+    if (bundle.retrospective) retrospectives.value.push(bundle.retrospective);
+    addActivity(bundle.project.id, 'created', '导入项目', bundle.project.name);
+    return bundle.project.id;
   }
 
   /** 清理里程碑中指向不存在任务的引用（迁移 / 任务删除后调用） */
@@ -470,7 +511,10 @@ export const useProjectStore = defineStore('projects', () => {
     setMilestoneDone,
     deleteMilestone,
     moveMilestone,
+    reorderMilestones,
+    updateMilestoneDates,
     cleanupMilestoneRefs,
+    importProjectBundle,
     retrospectiveOf,
     saveRetrospective,
     snapshotsOf,

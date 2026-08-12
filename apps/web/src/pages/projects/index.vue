@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDownUp, FolderPlus, Layers, Plus, Search, SearchX, Star } from '@lucide/vue';
+import { ArrowDownUp, FolderPlus, Layers, Plus, Search, SearchX, Star, Upload } from '@lucide/vue';
 import { computed, ref } from 'vue';
 
 import { useTaskStore } from '@/features/tasks/store';
@@ -15,6 +15,8 @@ import {
   useProjectStore,
 } from '@/features/projects';
 import { effectiveProgress, sortProjects } from '@/features/projects';
+import { parseProjectBundle } from '@/features/projects/transfer';
+import type { ProjectImportResult } from '@/features/projects/transfer';
 import { PROJECT_FILTERS, PROJECT_SORT_OPTIONS, PROJECT_VIEWS } from '@/features/projects/types';
 import type { ProjectDetail, ProjectForm as ProjectFormType } from '@/features/projects/types';
 
@@ -70,7 +72,7 @@ function onFormSubmit(form: ProjectFormType) {
 }
 
 function onQuickTaskSubmit(form: TaskFormData) {
-  taskStore.createTask(form);
+  taskStore.createTask(form, form.subtasks);
   quickTaskProject.value = null;
 }
 
@@ -115,6 +117,42 @@ function clearFilters() {
   store.statusFilter = 'all';
   store.viewFilter = 'all';
 }
+
+/** 项目导入：文件 → 解析（校验 / 清理 / 新 id）→ 预览 → 确认作为新项目导入 */
+const importResult = ref<ProjectImportResult | null>(null);
+const importing = ref(false);
+
+function onImportFile(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    importResult.value = parseProjectBundle(String(reader.result ?? ''));
+    importing.value = true;
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function confirmImport() {
+  if (importResult.value?.ok) {
+    const bundle = importResult.value.bundle;
+    store.importProjectBundle({
+      project: bundle.data.project,
+      milestones: bundle.data.milestones,
+      activities: bundle.data.activities,
+      retrospective: bundle.data.retrospective,
+    });
+    taskStore.importTasks(bundle.data.tasks);
+    store.searchQuery = '';
+    store.statusFilter = 'all';
+    store.viewFilter = 'all';
+    store.statusFilter = bundle.data.project.status;
+  }
+  importing.value = false;
+  importResult.value = null;
+}
 </script>
 
 <template>
@@ -127,14 +165,28 @@ function clearFilters() {
           个人项目与任务管理：总览、看板与活动记录（本地 mock 持久化）
         </p>
       </div>
-      <button
-        type="button"
-        class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
-        @click="openCreate"
-      >
-        <Plus class="size-4" />
-        新建项目
-      </button>
+      <div class="flex items-center gap-2">
+        <label
+          class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex cursor-pointer items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors"
+        >
+          <Upload class="size-4" />
+          导入项目
+          <input
+            type="file"
+            accept=".json,application/json"
+            class="hidden"
+            @change="onImportFile"
+          />
+        </label>
+        <button
+          type="button"
+          class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
+          @click="openCreate"
+        >
+          <Plus class="size-4" />
+          新建项目
+        </button>
+      </div>
     </header>
 
     <!-- 存储提示（损坏恢复 / 写入失败，非阻塞）+ 迁移提示 -->
@@ -372,5 +424,98 @@ function clearFilters() {
       @confirm="confirmPermanentDelete"
       @cancel="permanentDeleting = null"
     />
+
+    <!-- 项目导入预览 -->
+    <div
+      v-if="importing && importResult !== null"
+      class="fixed inset-0 z-40 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="导入项目预览"
+    >
+      <div
+        class="bg-surface-900/30 absolute inset-0"
+        @click="
+          importing = false;
+          importResult = null;
+        "
+      />
+      <div
+        class="border-surface-100 bg-surface-0 shadow-float relative w-full max-w-md rounded-xl border p-5"
+      >
+        <template v-if="importResult.ok">
+          <h3 class="text-surface-900 text-base font-semibold">导入项目预览</h3>
+          <p class="text-surface-800/60 mt-1 text-sm">
+            将作为<strong class="text-surface-900">新项目</strong>导入（重新生成
+            id，不覆盖现有数据）：
+          </p>
+          <dl class="mt-4 space-y-2 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-surface-800/50">项目名称</dt>
+              <dd class="text-surface-900 max-w-[60%] truncate">
+                {{ importResult.bundle.data.project.name }}
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-surface-800/50">状态</dt>
+              <dd class="text-surface-900">{{ importResult.bundle.data.project.status }}</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-surface-800/50">内容</dt>
+              <dd class="text-surface-900">
+                {{ importResult.bundle.data.tasks.length }} 任务 ·
+                {{ importResult.bundle.data.milestones.length }} 里程碑 ·
+                {{ importResult.bundle.data.activities.length }} 活动
+              </dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-surface-800/50">安全处理</dt>
+              <dd class="text-surface-900 text-right">
+                跳过 {{ importResult.report.skippedInvalid }} · 清依赖
+                {{ importResult.report.cleanedDeps }} · 去循环
+                {{ importResult.report.removedCycles }}
+              </dd>
+            </div>
+          </dl>
+          <div class="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors"
+              @click="
+                importing = false;
+                importResult = null;
+              "
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="bg-brand-600 hover:bg-brand-700 text-surface-0 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
+              @click="confirmImport"
+            >
+              确认导入
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <h3 class="text-surface-900 text-base font-semibold">导入失败</h3>
+          <p class="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600">
+            {{ importResult.ok === false ? importResult.reason : '未知错误' }}
+          </p>
+          <div class="mt-5 flex justify-end">
+            <button
+              type="button"
+              class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors"
+              @click="
+                importing = false;
+                importResult = null;
+              "
+            >
+              关闭
+            </button>
+          </div>
+        </template>
+      </div>
+    </div>
   </div>
 </template>

@@ -16,7 +16,23 @@ import type { TaskPriority, TaskStatus } from '@personal-os/types';
 import { useProjectStore } from '@/features/projects/store';
 import { canAddDependency } from './dependencies';
 import { filterTasksByDate } from './filter';
-import { buildFocusSession, focusEventTitle, pausedFocus, resumedFocus } from './focus';
+import {
+  buildFocusSession,
+  dailyFocusMinutes,
+  focusEligibleTask,
+  focusEventTitle,
+  pausedFocus,
+  resumedFocus,
+} from './focus';
+import { archivePlanDay, focusStreak, mergePlanItems, migrateUndone } from './focus';
+import {
+  BUILTIN_TEMPLATES,
+  createCustomTemplate,
+  deleteCustomTemplate as removeCustomTemplate,
+  loadCustomTemplates,
+  saveCustomTemplates,
+} from './templates';
+import type { TaskTemplate } from './types';
 import {
   loadTaskState,
   loadTasksUi,
@@ -28,6 +44,7 @@ import { addSubtaskTo, subtaskStats } from './subtasks';
 import { FOCUS_MAX, TASK_PRIORITY_META, TASK_STATUS_META } from './types';
 import type {
   FocusItem,
+  FocusPlanDay,
   FocusSession,
   RunningFocus,
   TaskDateFilter,
@@ -71,6 +88,12 @@ export const useTaskStore = defineStore('tasks', () => {
   const focus = ref<FocusItem[]>(loaded.data.focus);
   const focusSessions = ref<FocusSession[]>(loaded.data.focusSessions);
   const runningFocus = ref<RunningFocus | null>(loaded.data.runningFocus);
+  /** 今日计划已勾选完成的任务 id（独立于看板状态） */
+  const focusDone = ref<string[]>(loaded.data.focusDone);
+  /** 已归档的日计划（每日计划历史） */
+  const focusHistory = ref<FocusPlanDay[]>(loaded.data.focusHistory);
+  /** 个人自定义任务模板 */
+  const customTemplates = ref<TaskTemplate[]>(loadCustomTemplates());
   const storageWarning = ref<string | null>(loaded.notice);
   const migrationNotice = ref<string | null>(null);
 
@@ -105,7 +128,7 @@ export const useTaskStore = defineStore('tasks', () => {
   }
 
   watch(
-    [tasks, events, focus, focusSessions, runningFocus, sortBy, sortDir],
+    [tasks, events, focus, focusSessions, runningFocus, focusDone, focusHistory, sortBy, sortDir],
     () => {
       handleSave(
         saveTaskState({
@@ -116,6 +139,8 @@ export const useTaskStore = defineStore('tasks', () => {
           focus: focus.value,
           focusSessions: focusSessions.value,
           runningFocus: runningFocus.value,
+          focusDone: focusDone.value,
+          focusHistory: focusHistory.value,
         }),
       );
     },
@@ -290,7 +315,7 @@ export const useTaskStore = defineStore('tasks', () => {
 
   // ── CRUD ──
 
-  function createTask(input: TaskForm): TaskItem {
+  function createTask(input: TaskForm, templateSubtasks?: string[]): TaskItem {
     const now = new Date().toISOString();
     const task: TaskItem = {
       id: uid(),
@@ -304,11 +329,32 @@ export const useTaskStore = defineStore('tasks', () => {
       order: nextOrder(input.projectId ?? '', input.status),
       createdAt: now,
       updatedAt: now,
-      subtasks: [],
+      subtasks: templateSubtasks?.length
+        ? templateSubtasks
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((title) => ({
+              id: uid('st-'),
+              title,
+              done: false,
+            }))
+        : [],
       dependsOn: [],
+      estimatedMinutes:
+        input.estimatedMinutes != null &&
+        Number.isFinite(input.estimatedMinutes) &&
+        input.estimatedMinutes >= 0
+          ? Math.round(input.estimatedMinutes)
+          : undefined,
+      actualMinutes: undefined,
+      dod: input.dod?.trim() || undefined,
+      blockedReason: input.blockedReason?.trim() || undefined,
     };
     tasks.value.push(task);
     recordEvent(task.id, 'created', '创建任务');
+    if (templateSubtasks?.length) {
+      recordEvent(task.id, 'subtask', `按模板创建 ${task.subtasks.length} 个子任务`);
+    }
     if (task.projectId) {
       projectStore.addActivity(task.projectId, 'task', '创建任务', task.title);
     }
@@ -325,13 +371,21 @@ export const useTaskStore = defineStore('tasks', () => {
     t.status = input.status;
     t.dueDate = input.dueDate || undefined;
     t.tags = input.tags;
+    t.estimatedMinutes =
+      input.estimatedMinutes != null &&
+      Number.isFinite(input.estimatedMinutes) &&
+      input.estimatedMinutes >= 0
+        ? Math.round(input.estimatedMinutes)
+        : undefined;
+    t.dod = input.dod?.trim() || undefined;
+    t.blockedReason = input.blockedReason?.trim() || undefined;
     // 状态变更时移到目标列末尾
     if (statusChanged) t.order = nextOrder(t.projectId ?? '', t.status);
     t.updatedAt = new Date().toISOString();
     recordEvent(t.id, 'updated', statusChanged ? '更新任务并变更状态' : '更新任务');
   }
 
-  /** 删除任务后清理其相关引用（依赖、今日聚焦、专注记录、运行中计时器） */
+  /** 删除任务后清理其相关引用（依赖、今日聚焦、专注记录、运行中计时器、里程碑关联） */
   function cleanupTaskRefs(removedIds: Set<string>): void {
     for (const t of tasks.value) {
       if (t.dependsOn.some((d) => removedIds.has(d))) {
@@ -340,9 +394,19 @@ export const useTaskStore = defineStore('tasks', () => {
     }
     focus.value = focus.value.filter((f) => !removedIds.has(f.taskId));
     focusSessions.value = focusSessions.value.filter((s) => !removedIds.has(s.taskId));
+    focusDone.value = focusDone.value.filter((id) => !removedIds.has(id));
+    focusHistory.value = focusHistory.value
+      .map((day) => ({
+        ...day,
+        items: day.items.filter((i) => !removedIds.has(i.taskId)),
+        doneIds: day.doneIds.filter((id) => !removedIds.has(id)),
+      }))
+      .filter((day) => day.items.length > 0 || day.doneIds.length > 0);
     if (runningFocus.value && removedIds.has(runningFocus.value.taskId)) {
       runningFocus.value = null;
     }
+    // 里程碑中指向已删除任务的引用一并清理（不产生悬空引用）
+    projectStore.cleanupMilestoneRefs(new Set(tasks.value.map((t) => t.id)));
   }
 
   function deleteTask(id: string): void {
@@ -363,6 +427,20 @@ export const useTaskStore = defineStore('tasks', () => {
     tasks.value = tasks.value.filter((t) => t.projectId !== projectId);
     events.value = events.value.filter((e) => !idSet.has(e.taskId));
     cleanupTaskRefs(idSet);
+  }
+
+  /** 批量导入任务（id 已由 parseTasksJson 重新生成，无冲突；追加到各自状态列末尾） */
+  function importTasks(list: TaskItem[]): number {
+    const now = new Date().toISOString();
+    for (const t of list) {
+      const order = nextOrder(t.projectId ?? '', t.status);
+      tasks.value.push({ ...t, order, updatedAt: now });
+      recordEvent(t.id, 'created', '导入任务');
+      if (t.projectId) {
+        projectStore.addActivity(t.projectId, 'task', '导入任务', t.title);
+      }
+    }
+    return list.length;
   }
 
   // ── 移动 / 重排（带撤销） ──
@@ -468,10 +546,13 @@ export const useTaskStore = defineStore('tasks', () => {
     return focus.value.map((f) => byId.get(f.taskId)).filter((t): t is TaskItem => t !== null);
   });
 
-  /** 加入今日聚焦；超上限或任务不存在时返回 false */
+  /** 加入今日聚焦；任务不存在 / 已完成 / 已取消 / 所在项目已归档时拒绝 */
   function addToFocus(taskId: string, plannedMinutes: number): boolean {
     const t = taskById(taskId);
     if (!t) return false;
+    if (!focusEligibleTask(t)) return false;
+    const project = t.projectId ? projectStore.projectById(t.projectId) : null;
+    if (project && project.status === 'archived') return false;
     const existing = focus.value.find((f) => f.taskId === taskId);
     const minutes = Math.max(0, Math.round(plannedMinutes)) || 25;
     if (existing) {
@@ -485,6 +566,23 @@ export const useTaskStore = defineStore('tasks', () => {
 
   function removeFromFocus(taskId: string): void {
     focus.value = focus.value.filter((f) => f.taskId !== taskId);
+  }
+
+  /** 手动调整今日聚焦顺序（from/to 为当前列表下标） */
+  function reorderFocus(from: number, to: number): void {
+    const list = focus.value;
+    if (from < 0 || to < 0 || from >= list.length || to >= list.length || from === to) return;
+    const [item] = list.splice(from, 1);
+    if (!item) return;
+    list.splice(to, 0, item);
+  }
+
+  /** 今日累计专注分钟数（按 endedAt 归属当天） */
+  const todayFocusMinutes = computed(() => dailyFocusMinutes(focusSessions.value, todayStr()));
+
+  /** 计时器异常恢复：清空运行中计时器（任务缺失 / 已完成时使用） */
+  function resetRunningFocus(): void {
+    runningFocus.value = null;
   }
 
   /** 任务累计专注分钟数 */
@@ -533,24 +631,122 @@ export const useTaskStore = defineStore('tasks', () => {
     runningFocus.value = resumedFocus(runningFocus.value, Date.now());
   }
 
-  /** 完成专注：记录到 sessions 与活动历史，但不改变任务状态 */
+  /** 完成专注：记录到 sessions 与活动历史，实际投入自动累加，但不改变任务状态 */
   function completeFocus(): FocusSession | null {
     if (!runningFocus.value) return null;
     const session = buildFocusSession(runningFocus.value, 'completed', Date.now());
     focusSessions.value.push(session);
     recordEvent(session.taskId, 'focus', focusEventTitle(session));
     runningFocus.value = null;
+    accumulateActual(session.taskId, session.minutes);
     return session;
   }
 
-  /** 放弃专注：同样记录（status=abandoned），不改变任务状态 */
+  /** 放弃专注：同样记录（status=abandoned），实际投入同样累加，不改变任务状态 */
   function abandonFocus(): FocusSession | null {
     if (!runningFocus.value) return null;
     const session = buildFocusSession(runningFocus.value, 'abandoned', Date.now());
     focusSessions.value.push(session);
     recordEvent(session.taskId, 'focus', focusEventTitle(session));
     runningFocus.value = null;
+    accumulateActual(session.taskId, session.minutes);
     return session;
+  }
+
+  /** 专注结算后把分钟数累加到任务实际投入（手动覆盖过的值同样累加，偏差可在抽屉修正） */
+  function accumulateActual(taskId: string, minutes: number): void {
+    const t = taskById(taskId);
+    if (!t) return;
+    t.actualMinutes = (t.actualMinutes ?? 0) + minutes;
+  }
+
+  /** 手动覆盖任务实际投入（分钟；0 清空） */
+  function setActualMinutes(taskId: string, minutes: number): void {
+    const t = taskById(taskId);
+    if (!t) return;
+    const value = Number.isFinite(minutes) && minutes >= 0 ? Math.round(minutes) : 0;
+    t.actualMinutes = value > 0 ? value : undefined;
+    t.updatedAt = new Date().toISOString();
+    recordEvent(t.id, 'updated', value > 0 ? `调整实际投入为 ${value} 分钟` : '清空实际投入');
+  }
+
+  // ── 每日计划（今日聚焦升级） ──
+
+  function isPlanDone(taskId: string): boolean {
+    return focusDone.value.includes(taskId);
+  }
+
+  /** 勾选 / 取消今日计划完成（独立于看板状态） */
+  function togglePlanDone(taskId: string): void {
+    focusDone.value = isPlanDone(taskId)
+      ? focusDone.value.filter((id) => id !== taskId)
+      : [...focusDone.value, taskId];
+  }
+
+  /** 今日计划完成列表（含任务信息） */
+  const planDoneTasks = computed<TaskItem[]>(() => {
+    const byId = taskMap.value;
+    return focusDone.value.map((id) => byId.get(id)).filter((t): t is TaskItem => t !== null);
+  });
+
+  /** 最近一个历史日（无记录时为 null） */
+  const latestHistoryDay = computed<FocusPlanDay | null>(() => focusHistory.value[0] ?? null);
+
+  /** 最近历史日的未完成项（供「迁移未完成到今天」提示与操作） */
+  const pendingRollover = computed<FocusItem[]>(() =>
+    latestHistoryDay.value ? migrateUndone(latestHistoryDay.value) : [],
+  );
+
+  /** 连续专注天数（按完成专注记录逐日回溯） */
+  const focusStreakDays = computed(() => focusStreak(focusSessions.value, todayStr()));
+
+  /** 归档今天：把今日计划（含完成状态）写入历史，清空今日 */
+  function archiveToday(): void {
+    const day = archivePlanDay(todayStr(), focus.value, focusDone.value);
+    focusHistory.value = [day, ...focusHistory.value.filter((h) => h.date !== day.date)];
+    focus.value = [];
+    focusDone.value = [];
+  }
+
+  /** 把最近历史日的未完成项迁移到今天（去重合并；不修改历史记录） */
+  function rolloverPending(): number {
+    const source = latestHistoryDay.value;
+    if (!source) return 0;
+    const undone = migrateUndone(source);
+    const merged = mergePlanItems(focus.value, undone);
+    if (merged.length === focus.value.length) return 0;
+    const added = merged.length - focus.value.length;
+    focus.value = merged;
+    return added;
+  }
+
+  /** 从模板创建（应用模板值；subtasks 由组件直接调用 addSubtask 填充） */
+  function templateFor(templateId: string): TaskTemplate | null {
+    return (
+      [...customTemplates.value, ...BUILTIN_TEMPLATES].find((t) => t.id === templateId) ?? null
+    );
+  }
+
+  /** 保存个人自定义模板（从当前任务表单内容提取） */
+  function saveCustomTemplate(input: Omit<TaskTemplate, 'id' | 'builtin'>): {
+    ok: boolean;
+    reason?: string;
+  } {
+    const result = createCustomTemplate(customTemplates.value, input);
+    customTemplates.value = result.list;
+    const saved = saveCustomTemplates(customTemplates.value);
+    if (!saved.ok) storageWarning.value = saved.reason ?? '本地存储写入失败';
+    return saved;
+  }
+
+  /** 删除自定义模板（内置不可删） */
+  function removeCustomTemplateById(id: string): boolean {
+    const result = removeCustomTemplate(customTemplates.value, id);
+    if (!result.removed) return false;
+    customTemplates.value = result.list;
+    const saved = saveCustomTemplates(customTemplates.value);
+    if (!saved.ok) storageWarning.value = saved.reason ?? '本地存储写入失败';
+    return true;
   }
 
   // ── 批量操作（带撤销） ──
@@ -685,6 +881,9 @@ export const useTaskStore = defineStore('tasks', () => {
     focus,
     focusSessions,
     runningFocus,
+    focusDone,
+    focusHistory,
+    customTemplates,
     sortBy,
     sortDir,
     dateFilter,
@@ -696,6 +895,11 @@ export const useTaskStore = defineStore('tasks', () => {
     selectedTasks,
     undoInfo,
     focusTasks,
+    todayFocusMinutes,
+    focusStreakDays,
+    planDoneTasks,
+    latestHistoryDay,
+    pendingRollover,
     taskById,
     tasksByProject,
     tasksInColumn,
@@ -707,6 +911,7 @@ export const useTaskStore = defineStore('tasks', () => {
     updateTask,
     deleteTask,
     removeByProject,
+    importTasks,
     moveTask,
     reorderColumn,
     setSort,
@@ -725,6 +930,16 @@ export const useTaskStore = defineStore('tasks', () => {
     removeDependency,
     addToFocus,
     removeFromFocus,
+    reorderFocus,
+    resetRunningFocus,
+    isPlanDone,
+    togglePlanDone,
+    archiveToday,
+    rolloverPending,
+    setActualMinutes,
+    templateFor,
+    saveCustomTemplate,
+    removeCustomTemplateById,
     startFocus,
     pauseFocus,
     resumeFocus,

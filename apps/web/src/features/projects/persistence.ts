@@ -15,6 +15,8 @@
  *   新增里程碑、复盘笔记、归档快照三个独立信封。
  */
 import { SEED_ACTIVITIES, SEED_PROJECTS } from './mock';
+import { isValidDateStr } from './plan';
+import { sanitizeMilestoneTaskIds } from './milestones';
 import type { ProjectStatus } from '@personal-os/types';
 import type { TaskItem } from '@/features/tasks/types';
 import type {
@@ -142,8 +144,8 @@ export function normalizeProject(raw: unknown): ProjectDetail | null {
     progressMode,
     manualProgress,
     goal: str(p.goal) ? p.goal : undefined,
-    startDate: str(p.startDate) ? p.startDate : undefined,
-    targetDate: str(p.targetDate) ? p.targetDate : undefined,
+    startDate: isValidDateStr(p.startDate) ? p.startDate : undefined,
+    targetDate: isValidDateStr(p.targetDate) ? p.targetDate : undefined,
     estimatedHours: numPositive(p.estimatedHours),
   };
 }
@@ -152,7 +154,15 @@ export function normalizeProjectList(raw: unknown): ProjectDetail[] | null {
   if (!Array.isArray(raw)) return null;
   const list = raw.map(normalizeProject);
   if (list.some((x) => x === null)) return null;
-  return list as ProjectDetail[];
+  // 清洗重复 id（保留首次出现）
+  const seen = new Set<string>();
+  const out: ProjectDetail[] = [];
+  for (const p of list as ProjectDetail[]) {
+    if (seen.has(p.id)) continue;
+    seen.add(p.id);
+    out.push(p);
+  }
+  return out;
 }
 
 export function normalizeMilestone(raw: unknown): Milestone | null {
@@ -177,11 +187,11 @@ export function normalizeMilestone(raw: unknown): Milestone | null {
     projectId: m.projectId,
     title: m.title,
     description: str(m.description) ? m.description : undefined,
-    startDate: str(m.startDate) ? m.startDate : undefined,
-    dueDate: str(m.dueDate) ? m.dueDate : undefined,
+    startDate: isValidDateStr(m.startDate) ? m.startDate : undefined,
+    dueDate: isValidDateStr(m.dueDate) ? m.dueDate : undefined,
     status: m.status as MilestoneStatus,
     order: m.order,
-    taskIds: m.taskIds as string[],
+    taskIds: sanitizeMilestoneTaskIds(m.taskIds as string[]),
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,
   };
@@ -191,7 +201,14 @@ export function normalizeMilestoneList(raw: unknown): Milestone[] | null {
   if (!Array.isArray(raw)) return null;
   const list = raw.map(normalizeMilestone);
   if (list.some((x) => x === null)) return null;
-  return list as Milestone[];
+  const seen = new Set<string>();
+  const out: Milestone[] = [];
+  for (const m of list as Milestone[]) {
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    out.push(m);
+  }
+  return out;
 }
 
 export function normalizeActivity(raw: unknown): ProjectActivity | null {
@@ -221,7 +238,14 @@ export function normalizeActivityList(raw: unknown): ProjectActivity[] | null {
   if (!Array.isArray(raw)) return null;
   const list = raw.map(normalizeActivity);
   if (list.some((x) => x === null)) return null;
-  return list as ProjectActivity[];
+  const seen = new Set<string>();
+  const out: ProjectActivity[] = [];
+  for (const a of list as ProjectActivity[]) {
+    if (seen.has(a.id)) continue;
+    seen.add(a.id);
+    out.push(a);
+  }
+  return out;
 }
 
 export function normalizeRetrospective(raw: unknown): Retrospective | null {
@@ -305,7 +329,34 @@ export function normalizeSnapshotList(raw: unknown): ProjectSnapshot[] | null {
   if (!Array.isArray(raw)) return null;
   const list = raw.map(normalizeSnapshot);
   if (list.some((x) => x === null)) return null;
-  return list as ProjectSnapshot[];
+  const seen = new Set<string>();
+  const out: ProjectSnapshot[] = [];
+  for (const s of list as ProjectSnapshot[]) {
+    if (seen.has(s.id)) continue;
+    seen.add(s.id);
+    out.push(s);
+  }
+  return out;
+}
+
+/** 快照序列化（与导出一致，保证可重新导入） */
+export function serializeSnapshot(snapshot: ProjectSnapshot): string {
+  return JSON.stringify(snapshot, null, 2);
+}
+
+/** 快照 JSON 解析（纯函数）：导出文件必须能原样导回 */
+export function parseSnapshotJson(
+  text: string,
+): { ok: true; snapshot: ProjectSnapshot } | { ok: false; reason: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { ok: false, reason: 'JSON 解析失败，文件可能已损坏' };
+  }
+  const snapshot = normalizeSnapshot(parsed);
+  if (!snapshot) return { ok: false, reason: '快照数据结构不合法，无法导入' };
+  return { ok: true, snapshot };
 }
 
 export function normalizeUiPrefs(raw: unknown): ProjectUiPrefs {
@@ -573,10 +624,10 @@ export function milestoneFromForm(
   return {
     title: form.title.trim(),
     description: form.description?.trim() || undefined,
-    startDate: form.startDate || undefined,
-    dueDate: form.dueDate || undefined,
+    startDate: isValidDateStr(form.startDate) ? form.startDate : undefined,
+    dueDate: isValidDateStr(form.dueDate) ? form.dueDate : undefined,
     status: form.status,
-    taskIds: [...form.taskIds],
+    taskIds: sanitizeMilestoneTaskIds(form.taskIds),
     order: existing?.order ?? 0,
     updatedAt: existing?.updatedAt ?? now,
   };

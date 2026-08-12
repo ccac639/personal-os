@@ -25,8 +25,47 @@ export {
 } from './types';
 export { effectiveProgress } from './progress';
 export { sortProjects } from './sort';
-export { milestoneProgress, milestoneRisk, sortMilestones } from './milestones';
-export { buildHealthStats, buildRetroTemplate, buildSnapshot } from './health';
+export {
+  milestoneProgress,
+  milestoneRisk,
+  milestoneState,
+  sortMilestones,
+  sanitizeMilestoneTaskIds,
+  unfinishedLinkedCount,
+  MILESTONE_STATE_META,
+} from './milestones';
+export type { MilestoneDisplayState } from './milestones';
+export {
+  timelineWindow,
+  buildTimelineCells,
+  timelinePosition,
+  milestoneBar,
+  planMissingInfo,
+  estimateInfo,
+  collectPlanDates,
+  addDays,
+  dayDiff,
+  isValidDateStr,
+  toDateStr,
+} from './plan';
+export type {
+  TimelineScale,
+  TimelineCell,
+  TimelineWindow,
+  TimelinePosition,
+  EstimateInfo,
+} from './plan';
+export {
+  buildHealthStats,
+  buildRiskRules,
+  buildRetroTemplate,
+  buildRetroMarkdown,
+  buildSnapshot,
+} from './health';
+export type { HealthRange, RiskRule, RiskLevel, RiskRuleInput } from './health';
+export { parseSnapshotJson, serializeSnapshot } from './persistence';
+export { serializeProjectBundle, parseProjectBundle } from './transfer';
+export type { ProjectBundle, ProjectImportResult, ProjectImportReport } from './transfer';
 export type {
   ProjectDetail,
   ProjectActivity,

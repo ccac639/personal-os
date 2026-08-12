@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import {
+  AlertTriangle,
   Archive,
   ArrowLeft,
   CalendarClock,
   ClipboardList,
+  Download,
   Flag,
   Pencil,
   Plus,
   RotateCcw,
   Tag,
   Trash2,
+  TrendingUp,
+  Upload,
   User,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
@@ -27,6 +31,9 @@ import {
   StorageWarningBanner,
   useProjectStore,
 } from '@/features/projects';
+import { buildRiskRules } from '@/features/projects/health';
+import { estimateInfo } from '@/features/projects/plan';
+import { effectiveProgress } from '@/features/projects/progress';
 import { PROJECT_STATUS_META } from '@/features/projects/types';
 import type {
   ProjectActivityType,
@@ -34,6 +41,9 @@ import type {
 } from '@/features/projects/types';
 import { formatDateTime, formatDate, relativeTime } from '@/features/projects/utils';
 import { TaskForm, TaskKanban, useTaskStore } from '@/features/tasks';
+import { estimateSummary } from '@/features/tasks/estimates';
+import { parseTasksJson, serializeTasks } from '@/features/tasks/transfer';
+import type { TasksImportResult } from '@/features/tasks/transfer';
 import type { TaskForm as TaskFormData } from '@/features/tasks/types';
 
 type TabKey = 'overview' | 'tasks' | 'plan' | 'retro' | 'activity';
@@ -87,6 +97,97 @@ const milestoneProgress = computed(() => {
   return Math.round((done / list.length) * 100);
 });
 
+/** 执行概览：三种进度来源并存，明确区分 */
+const overviewProgress = computed(() => {
+  const taskP = stats.value.progress;
+  const effective = effectiveProgress(project.value!, taskP);
+  return {
+    overall: effective,
+    overallSource:
+      project.value!.progressMode === 'manual'
+        ? '手动设置（进度设置面板维护）'
+        : '自动 = 任务完成比例',
+    task: taskP,
+    taskSource: '已完成任务 / 未取消任务',
+    milestone: milestoneProgress.value,
+    milestoneSource: '已完成里程碑 / 里程碑总数',
+  };
+});
+
+/** 项目累计专注分钟数（跨该项目的全部任务） */
+const projectFocusMinutes = computed(() => {
+  const taskIds = new Set(taskStore.tasksByProject(projectId.value).map((t) => t.id));
+  return taskStore.focusSessions
+    .filter((s) => taskIds.has(s.taskId))
+    .reduce((sum, s) => sum + s.minutes, 0);
+});
+
+/** 工时信息：预计 / 已完成（专注折算）/ 剩余 */
+const hours = computed(() => estimateInfo(project.value!, projectFocusMinutes.value));
+
+/** 任务估时偏差汇总（Σ任务估时 vs Σ实际投入） */
+const estimateSummaryInfo = computed(() =>
+  estimateSummary(taskStore.tasksByProject(projectId.value), taskStore.focusSessions),
+);
+
+/** 受阻任务数（存在未完成前置） */
+const blockedCount = computed(
+  () =>
+    taskStore.tasksByProject(projectId.value).filter((t) => taskStore.isBlockedTask(t.id)).length,
+);
+
+/** 风险摘要：规则化输出（进度落后 / 临近截止 / 长期无活动 / 阻塞 / 专注偏差） */
+const riskSummary = computed<{ label: string; value: string; tone: 'danger' | 'warn' | 'ok' }[]>(
+  () => {
+    const today = formatDate(new Date().toISOString()) || '';
+    return buildRiskRules({
+      project: project.value!,
+      tasks: taskStore.tasksByProject(projectId.value),
+      milestones: store.milestonesOf(projectId.value),
+      activities: activities.value,
+      focusSessions: taskStore.focusSessions,
+      today,
+      latestActivityAt: latest.value?.createdAt ?? null,
+    }).map((r) => ({ label: r.label, value: r.detail, tone: r.level }));
+  },
+);
+
+/** 任务导入 / 导出（JSON，预览后确认） */
+const importingTasks = ref(false);
+const tasksImportResult = ref<TasksImportResult | null>(null);
+
+function exportTasksJson() {
+  const text = serializeTasks(taskStore.tasksByProject(projectId.value));
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `tasks-${project.value!.name}-${formatDate(new Date().toISOString()) ?? ''}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function onTasksImportFile(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    tasksImportResult.value = parseTasksJson(String(reader.result ?? ''), projectId.value);
+    importingTasks.value = true;
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function confirmTasksImport() {
+  if (tasksImportResult.value?.ok) {
+    taskStore.importTasks(tasksImportResult.value.tasks);
+  }
+  importingTasks.value = false;
+  tasksImportResult.value = null;
+}
+
 function goBack() {
   router.push('/projects');
 }
@@ -116,7 +217,7 @@ function confirmArchive() {
 }
 
 function onQuickTaskSubmit(form: TaskFormData) {
-  taskStore.createTask(form);
+  taskStore.createTask(form, form.subtasks);
   quickTaskOpen.value = false;
   tab.value = 'tasks';
 }
@@ -297,6 +398,210 @@ function onQuickTaskSubmit(form: TaskFormData) {
 
       <!-- 概览 -->
       <div v-if="tab === 'overview'" class="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <!-- 执行概览：三种进度 + 日期工时 + 风险摘要 -->
+        <section
+          class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5 lg:col-span-2"
+        >
+          <h2 class="text-surface-900 mb-4 flex items-center gap-2 text-sm font-semibold">
+            <TrendingUp class="text-brand-600 size-4" />
+            执行概览
+          </h2>
+
+          <!-- 三种进度来源（明确区分，避免误解） -->
+          <div class="space-y-3.5">
+            <div>
+              <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                <span class="text-surface-800/70 font-medium">总体进度</span>
+                <span class="text-surface-900 font-semibold">{{ overviewProgress.overall }}%</span>
+              </div>
+              <div class="bg-surface-100 h-2 overflow-hidden rounded-full">
+                <div
+                  class="h-full rounded-full transition-all"
+                  :class="overviewProgress.overall >= 100 ? 'bg-green-500' : 'bg-brand-500'"
+                  :style="{ width: `${overviewProgress.overall}%` }"
+                />
+              </div>
+              <p class="text-surface-800/40 mt-1 text-xs">{{ overviewProgress.overallSource }}</p>
+            </div>
+            <div>
+              <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                <span class="text-surface-800/70 font-medium">任务进度</span>
+                <span class="text-surface-900 font-semibold">{{ overviewProgress.task }}%</span>
+              </div>
+              <div class="bg-surface-100 h-2 overflow-hidden rounded-full">
+                <div
+                  class="h-full rounded-full bg-sky-500 transition-all"
+                  :style="{ width: `${overviewProgress.task}%` }"
+                />
+              </div>
+              <p class="text-surface-800/40 mt-1 text-xs">{{ overviewProgress.taskSource }}</p>
+            </div>
+            <div v-if="overviewProgress.milestone !== null">
+              <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                <span class="text-surface-800/70 font-medium">里程碑进度</span>
+                <span class="text-surface-900 font-semibold"
+                  >{{ overviewProgress.milestone }}%</span
+                >
+              </div>
+              <div class="bg-surface-100 h-2 overflow-hidden rounded-full">
+                <div
+                  class="h-full rounded-full bg-indigo-500 transition-all"
+                  :style="{ width: `${overviewProgress.milestone}%` }"
+                />
+              </div>
+              <p class="text-surface-800/40 mt-1 text-xs">{{ overviewProgress.milestoneSource }}</p>
+            </div>
+            <div v-else>
+              <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                <span class="text-surface-800/70 font-medium">里程碑进度</span>
+              </div>
+              <p class="text-surface-800/40 text-xs">
+                暂无里程碑，无法计算里程碑进度（前往「计划」页创建）。
+              </p>
+            </div>
+          </div>
+
+          <!-- 日期与工时 -->
+          <dl class="mt-5 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div class="border-surface-100 bg-surface-50 rounded-lg border p-3">
+              <dt class="text-surface-800/50 text-xs">目标完成日期</dt>
+              <dd class="text-surface-900 mt-1 font-medium break-words">
+                {{ project.targetDate ?? '未设置' }}
+              </dd>
+            </div>
+            <div class="border-surface-100 bg-surface-50 rounded-lg border p-3">
+              <dt class="text-surface-800/50 text-xs">预计投入</dt>
+              <dd class="text-surface-900 mt-1 font-medium">
+                {{ hours.estimatedHours != null ? `${hours.estimatedHours} 小时` : '未设置' }}
+              </dd>
+            </div>
+            <div class="border-surface-100 bg-surface-50 rounded-lg border p-3">
+              <dt class="text-surface-800/50 text-xs">已完成投入</dt>
+              <dd class="text-surface-900 mt-1 font-medium">
+                {{ projectFocusMinutes === 0 ? '暂无专注记录' : `${hours.doneHours} 小时` }}
+              </dd>
+            </div>
+            <div class="border-surface-100 bg-surface-50 rounded-lg border p-3">
+              <dt class="text-surface-800/50 text-xs">剩余投入</dt>
+              <dd class="text-surface-900 mt-1 font-medium">
+                {{ hours.remainingHours === null ? '未设置预计' : `${hours.remainingHours} 小时` }}
+              </dd>
+            </div>
+          </dl>
+
+          <!-- 任务估时偏差汇总 -->
+          <div
+            v-if="estimateSummaryInfo.estimatedCount > 0"
+            class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-3 py-2 text-xs"
+            :class="
+              estimateSummaryInfo.varianceDirection === 'behind'
+                ? 'border-amber-200 bg-amber-500/5 text-amber-700'
+                : estimateSummaryInfo.varianceDirection === 'ahead'
+                  ? 'border-green-200 bg-green-500/5 text-green-700'
+                  : 'border-surface-100 bg-surface-50 text-surface-800/60'
+            "
+          >
+            <span>{{ estimateSummaryInfo.estimatedCount }} 个任务有估时</span>
+            <span>Σ估时 {{ estimateSummaryInfo.estimatedMinutes }} 分钟</span>
+            <span>Σ实际 {{ estimateSummaryInfo.actualMinutes }} 分钟</span>
+            <span v-if="estimateSummaryInfo.varianceMinutes !== null">
+              {{
+                estimateSummaryInfo.varianceMinutes >= 0
+                  ? `进度余量 ${estimateSummaryInfo.varianceMinutes} 分钟（实际投入低于估时）`
+                  : `超出估时 ${Math.abs(estimateSummaryInfo.varianceMinutes)} 分钟`
+              }}
+            </span>
+          </div>
+
+          <!-- 风险摘要 -->
+          <div class="mt-5">
+            <h3 class="text-surface-800/50 mb-2 text-xs font-medium">风险摘要</h3>
+            <div v-if="riskSummary.length" class="flex flex-wrap gap-1.5">
+              <span
+                v-for="r in riskSummary"
+                :key="r.label"
+                class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
+                :class="
+                  r.tone === 'danger'
+                    ? 'bg-red-500/10 text-red-600'
+                    : r.tone === 'warn'
+                      ? 'bg-amber-500/10 text-amber-600'
+                      : 'bg-green-500/10 text-green-600'
+                "
+              >
+                <AlertTriangle v-if="r.tone !== 'ok'" class="size-3" />
+                {{ r.label }}：{{ r.value }}
+              </span>
+            </div>
+            <p v-else class="text-surface-800/40 text-xs">
+              {{
+                stats.total === 0 && store.milestonesOf(project.id).length === 0
+                  ? '暂无任务与里程碑数据，无法评估风险。'
+                  : '暂无异常，项目按计划推进。'
+              }}
+            </p>
+          </div>
+        </section>
+
+        <div class="space-y-4">
+          <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
+            <h2 class="text-surface-900 mb-4 text-sm font-semibold">任务统计</h2>
+            <div class="mb-4 flex items-end justify-between">
+              <p class="text-surface-900 text-3xl font-semibold">
+                {{ stats.progress }}<span class="text-surface-800/50 text-base">%</span>
+              </p>
+              <p class="text-surface-800/50 text-xs">完成率</p>
+            </div>
+            <div class="bg-surface-100 mb-5 h-2 overflow-hidden rounded-full">
+              <div
+                class="h-full rounded-full transition-all"
+                :class="stats.progress >= 100 ? 'bg-green-500' : 'bg-brand-500'"
+                :style="{ width: `${stats.progress}%` }"
+              />
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-center">
+              <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
+                <p class="text-lg font-semibold text-sky-600">{{ stats.todo }}</p>
+                <p class="text-surface-800/50 mt-0.5 text-xs">待办</p>
+              </div>
+              <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
+                <p class="text-lg font-semibold text-amber-600">{{ stats.inProgress }}</p>
+                <p class="text-surface-800/50 mt-0.5 text-xs">进行中</p>
+              </div>
+              <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
+                <p class="text-lg font-semibold text-green-600">{{ stats.done }}</p>
+                <p class="text-surface-800/50 mt-0.5 text-xs">已完成</p>
+              </div>
+            </div>
+            <div class="mt-3 space-y-1.5">
+              <p
+                v-if="stats.overdue > 0"
+                class="rounded-lg bg-red-500/10 px-3 py-2 text-center text-xs font-medium text-red-600"
+              >
+                {{ stats.overdue }} 个任务已逾期
+              </p>
+              <p
+                v-if="blockedCount > 0"
+                class="rounded-lg bg-amber-500/10 px-3 py-2 text-center text-xs font-medium text-amber-600"
+              >
+                {{ blockedCount }} 个任务受阻（存在未完成前置）
+              </p>
+              <p
+                v-if="stats.overdue === 0 && blockedCount === 0"
+                class="text-surface-800/40 text-center text-xs"
+              >
+                暂无逾期与受阻任务
+              </p>
+            </div>
+          </section>
+
+          <!-- 进度模式编辑器（自动 / 手动，带说明） -->
+          <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
+            <ProgressEditor :project="project" />
+          </section>
+        </div>
+
+        <!-- 项目信息 -->
         <section
           class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5 lg:col-span-2"
         >
@@ -314,8 +619,16 @@ function onQuickTaskSubmit(form: TaskFormData) {
               </dd>
             </div>
             <div class="flex items-start gap-3">
+              <dt class="text-surface-800/50 w-16 shrink-0">目标</dt>
+              <dd class="text-surface-800/80 min-w-0 leading-6 break-words">
+                {{ project.goal ?? '—' }}
+              </dd>
+            </div>
+            <div class="flex items-start gap-3">
               <dt class="text-surface-800/50 w-16 shrink-0">描述</dt>
-              <dd class="text-surface-800/80 leading-6">{{ project.description ?? '—' }}</dd>
+              <dd class="text-surface-800/80 min-w-0 leading-6 break-words">
+                {{ project.description ?? '—' }}
+              </dd>
             </div>
             <div class="flex items-start gap-3">
               <dt class="text-surface-800/50 w-16 shrink-0">技术栈</dt>
@@ -353,79 +666,38 @@ function onQuickTaskSubmit(form: TaskFormData) {
             </div>
           </dl>
         </section>
-
-        <div class="space-y-4">
-          <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
-            <h2 class="text-surface-900 mb-4 text-sm font-semibold">任务统计</h2>
-            <div class="mb-4 flex items-end justify-between">
-              <p class="text-surface-900 text-3xl font-semibold">
-                {{ stats.progress }}<span class="text-surface-800/50 text-base">%</span>
-              </p>
-              <p class="text-surface-800/50 text-xs">完成率</p>
-            </div>
-            <div class="bg-surface-100 mb-5 h-2 overflow-hidden rounded-full">
-              <div
-                class="h-full rounded-full transition-all"
-                :class="stats.progress >= 100 ? 'bg-green-500' : 'bg-brand-500'"
-                :style="{ width: `${stats.progress}%` }"
-              />
-            </div>
-            <div class="grid grid-cols-3 gap-2 text-center">
-              <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
-                <p class="text-lg font-semibold text-sky-600">{{ stats.todo }}</p>
-                <p class="text-surface-800/50 mt-0.5 text-xs">待办</p>
-              </div>
-              <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
-                <p class="text-lg font-semibold text-amber-600">{{ stats.inProgress }}</p>
-                <p class="text-surface-800/50 mt-0.5 text-xs">进行中</p>
-              </div>
-              <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
-                <p class="text-lg font-semibold text-green-600">{{ stats.done }}</p>
-                <p class="text-surface-800/50 mt-0.5 text-xs">已完成</p>
-              </div>
-            </div>
-            <p
-              v-if="stats.overdue > 0"
-              class="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-center text-xs font-medium text-red-600"
-            >
-              {{ stats.overdue }} 个任务已逾期
-            </p>
-            <p v-else class="text-surface-800/40 mt-3 text-center text-xs">暂无逾期任务</p>
-          </section>
-
-          <!-- 进度模式编辑器（自动 / 手动，带说明） -->
-          <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
-            <ProgressEditor :project="project" />
-          </section>
-
-          <!-- 里程碑进度（自动模式下与任务进度并列；两者定义不同） -->
-          <section
-            v-if="project.progressMode === 'auto' && milestoneProgress !== null"
-            class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5"
-          >
-            <h2 class="text-surface-900 mb-4 text-sm font-semibold">里程碑进度</h2>
-            <div class="mb-4 flex items-end justify-between">
-              <p class="text-surface-900 text-3xl font-semibold">
-                {{ milestoneProgress }}<span class="text-surface-800/50 text-base">%</span>
-              </p>
-              <p class="text-surface-800/50 text-xs">已完成里程碑 / 总数</p>
-            </div>
-            <div class="bg-surface-100 mb-2 h-2 overflow-hidden rounded-full">
-              <div
-                class="h-full rounded-full transition-all"
-                :class="milestoneProgress >= 100 ? 'bg-green-500' : 'bg-indigo-500'"
-                :style="{ width: `${milestoneProgress}%` }"
-              />
-            </div>
-            <p class="text-surface-800/40 text-xs leading-5">
-              任务进度 = 已完成任务占比；里程碑进度 = 已完成里程碑占比，两者独立计算。
-            </p>
-          </section>
-        </div>
       </div>
 
       <!-- 任务看板 -->
       <div v-else-if="tab === 'tasks'" class="mt-5">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p class="text-surface-800/50 text-xs">
+            导出当前项目任务 JSON；导入时自动校验、清理无效依赖与循环依赖，预览后确认。
+          </p>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
+              :disabled="taskStore.tasksByProject(project.id).length === 0"
+              @click="exportTasksJson"
+            >
+              <Download class="size-3.5" />
+              导出任务
+            </button>
+            <label
+              class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
+            >
+              <Upload class="size-3.5" />
+              导入任务
+              <input
+                type="file"
+                accept=".json,application/json"
+                class="hidden"
+                @change="onTasksImportFile"
+              />
+            </label>
+          </div>
+        </div>
         <TaskKanban :project-id="project.id" />
       </div>
 
@@ -522,6 +794,100 @@ function onQuickTaskSubmit(form: TaskFormData) {
         @confirm="confirmArchive"
         @cancel="archiving = false"
       />
+
+      <!-- 任务导入预览 -->
+      <div
+        v-if="importingTasks && tasksImportResult !== null"
+        class="fixed inset-0 z-40 flex items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-label="导入任务预览"
+      >
+        <div
+          class="bg-surface-900/30 absolute inset-0"
+          @click="
+            importingTasks = false;
+            tasksImportResult = null;
+          "
+        />
+        <div
+          class="border-surface-100 bg-surface-0 shadow-float relative w-full max-w-md rounded-xl border p-5"
+        >
+          <template v-if="tasksImportResult.ok">
+            <h3 class="text-surface-900 text-base font-semibold">导入任务预览</h3>
+            <p class="text-surface-800/60 mt-1 text-sm">
+              将导入 {{ tasksImportResult.tasks.length }} 个任务到「{{ project.name }}」：
+            </p>
+            <div class="mt-4 space-y-1.5 text-sm">
+              <p class="text-surface-800/70 flex justify-between">
+                <span class="text-surface-800/50">有效任务</span>
+                <span>{{ tasksImportResult.tasks.length }} 个</span>
+              </p>
+              <p class="text-surface-800/70 flex justify-between">
+                <span class="text-surface-800/50">跳过非法条目</span>
+                <span>{{ tasksImportResult.report.skippedInvalid }} 个</span>
+              </p>
+              <p class="text-surface-800/70 flex justify-between">
+                <span class="text-surface-800/50">清理无效依赖</span>
+                <span>{{ tasksImportResult.report.cleanedDeps }} 条</span>
+              </p>
+              <p class="text-surface-800/70 flex justify-between">
+                <span class="text-surface-800/50">移除循环依赖</span>
+                <span>{{ tasksImportResult.report.removedCycles }} 条</span>
+              </p>
+            </div>
+            <div class="bg-surface-50 mt-4 max-h-40 space-y-1 overflow-y-auto rounded-lg p-2.5">
+              <p
+                v-for="t in tasksImportResult.tasks.slice(0, 20)"
+                :key="t.id"
+                class="text-surface-800/70 truncate text-xs"
+              >
+                {{ t.title }}
+              </p>
+              <p v-if="tasksImportResult.tasks.length > 20" class="text-surface-800/40 text-xs">
+                …共 {{ tasksImportResult.tasks.length }} 个
+              </p>
+            </div>
+            <div class="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors"
+                @click="
+                  importingTasks = false;
+                  tasksImportResult = null;
+                "
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                class="bg-brand-600 hover:bg-brand-700 text-surface-0 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
+                @click="confirmTasksImport"
+              >
+                确认导入
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <h3 class="text-surface-900 text-base font-semibold">导入失败</h3>
+            <p class="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600">
+              {{ tasksImportResult.ok === false ? tasksImportResult.reason : '未知错误' }}
+            </p>
+            <div class="mt-5 flex justify-end">
+              <button
+                type="button"
+                class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors"
+                @click="
+                  importingTasks = false;
+                  tasksImportResult = null;
+                "
+              >
+                关闭
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
     </template>
   </div>
 </template>
