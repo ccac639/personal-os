@@ -32,6 +32,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '开发中' },
   },
   {
+    path: '/projects/:id',
+    name: 'project-detail',
+    component: () => import('@/pages/projects/[id].vue'),
+    meta: { title: '项目详情' },
+  },
+  {
     path: '/achievements',
     name: 'achievements',
     component: () => import('@/pages/achievements/index.vue'),
