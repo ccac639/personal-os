@@ -38,6 +38,10 @@ const description = ref('');
 const status = ref<ProjectStatus>('active');
 const tagsText = ref('');
 const techText = ref('');
+const goal = ref('');
+const startDate = ref('');
+const targetDate = ref('');
+const estimatedHours = ref<number | undefined>(undefined);
 const error = ref('');
 
 const STATUS_OPTIONS = (Object.keys(PROJECT_STATUS_META) as ProjectStatus[]).filter(
@@ -54,6 +58,10 @@ watch(
     status.value = p?.status === 'archived' ? 'active' : (p?.status ?? 'active');
     tagsText.value = p?.tags.join('，') ?? '';
     techText.value = p?.techStack.join('，') ?? '';
+    goal.value = p?.goal ?? '';
+    startDate.value = p?.startDate ?? '';
+    targetDate.value = p?.targetDate ?? '';
+    estimatedHours.value = p?.estimatedHours;
     error.value = '';
   },
   { immediate: true },
@@ -71,12 +79,20 @@ function submit() {
     error.value = '请输入项目名称';
     return;
   }
+  if (startDate.value && targetDate.value && targetDate.value < startDate.value) {
+    error.value = '目标完成日期不能早于开始日期';
+    return;
+  }
   emit('submit', {
     name: name.value,
     description: description.value.trim() || undefined,
     status: status.value,
     tags: splitList(tagsText.value),
     techStack: splitList(techText.value),
+    goal: goal.value.trim() || undefined,
+    startDate: startDate.value || undefined,
+    targetDate: targetDate.value || undefined,
+    estimatedHours: estimatedHours.value,
   });
 }
 </script>
@@ -125,6 +141,58 @@ function submit() {
             {{ PROJECT_STATUS_META[s].label }}
           </option>
         </select>
+      </div>
+
+      <!-- 计划字段 -->
+      <div>
+        <label class="text-surface-800/70 mb-1.5 block text-xs font-medium" for="pf-goal">
+          项目目标
+        </label>
+        <textarea
+          id="pf-goal"
+          v-model="goal"
+          rows="2"
+          class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 w-full resize-none rounded-lg border px-3 py-2 text-sm transition outline-none focus:ring-4"
+          placeholder="一句话说明本期要实现的目标（计划视图展示）"
+        />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-surface-800/70 mb-1.5 block text-xs font-medium" for="pf-start">
+            开始日期
+          </label>
+          <input
+            id="pf-start"
+            v-model="startDate"
+            type="date"
+            class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 w-full rounded-lg border px-3 py-2 text-sm transition outline-none focus:ring-4"
+          />
+        </div>
+        <div>
+          <label class="text-surface-800/70 mb-1.5 block text-xs font-medium" for="pf-target">
+            目标完成日期
+          </label>
+          <input
+            id="pf-target"
+            v-model="targetDate"
+            type="date"
+            class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 w-full rounded-lg border px-3 py-2 text-sm transition outline-none focus:ring-4"
+          />
+        </div>
+      </div>
+      <div>
+        <label class="text-surface-800/70 mb-1.5 block text-xs font-medium" for="pf-hours">
+          预计投入（小时）
+        </label>
+        <input
+          id="pf-hours"
+          v-model.number="estimatedHours"
+          type="number"
+          min="0"
+          step="1"
+          class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 w-full rounded-lg border px-3 py-2 text-sm transition outline-none focus:ring-4"
+          placeholder="可选，用于计划视图"
+        />
       </div>
 
       <div>

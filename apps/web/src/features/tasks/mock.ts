@@ -19,6 +19,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 0,
     createdAt: '2026-08-05T10:00:00+08:00',
     updatedAt: '2026-08-12T22:00:00+08:00',
+    dependsOn: [],
     subtasks: [
       { id: 's-pos-1-1', title: '项目总览与 CRUD', done: true },
       { id: 's-pos-1-2', title: '任务看板拖拽', done: true },
@@ -37,6 +38,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 0,
     createdAt: '2026-07-20T09:00:00+08:00',
     updatedAt: '2026-08-11T20:30:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
   {
@@ -51,6 +53,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 1,
     createdAt: '2026-08-08T15:00:00+08:00',
     updatedAt: '2026-08-08T15:00:00+08:00',
+    dependsOn: [],
     subtasks: [
       { id: 's-pos-3-1', title: '选定流式接口协议', done: true },
       { id: 's-pos-3-2', title: '实现 SSE 客户端', done: false },
@@ -67,6 +70,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 2,
     createdAt: '2026-08-10T11:00:00+08:00',
     updatedAt: '2026-08-10T11:00:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
   {
@@ -79,6 +83,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 1,
     createdAt: '2026-07-15T10:00:00+08:00',
     updatedAt: '2026-08-02T16:00:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
   {
@@ -91,6 +96,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 3,
     createdAt: '2026-08-01T09:00:00+08:00',
     updatedAt: '2026-08-05T18:00:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
 
@@ -106,6 +112,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 0,
     createdAt: '2026-07-25T14:00:00+08:00',
     updatedAt: '2026-08-10T18:20:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
   {
@@ -119,6 +126,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 0,
     createdAt: '2026-08-03T10:00:00+08:00',
     updatedAt: '2026-08-09T20:00:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
   {
@@ -131,6 +139,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 0,
     createdAt: '2026-08-06T09:00:00+08:00',
     updatedAt: '2026-08-06T09:00:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
 
@@ -146,6 +155,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 0,
     createdAt: '2026-06-10T10:00:00+08:00',
     updatedAt: '2026-07-15T10:00:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
   {
@@ -159,6 +169,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 0,
     createdAt: '2026-07-01T09:00:00+08:00',
     updatedAt: '2026-07-01T09:00:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
 
@@ -174,6 +185,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 0,
     createdAt: '2026-08-02T15:10:00+08:00',
     updatedAt: '2026-08-02T15:10:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
   {
@@ -186,6 +198,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 1,
     createdAt: '2026-08-02T15:20:00+08:00',
     updatedAt: '2026-08-02T15:20:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
 
@@ -200,6 +213,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 0,
     createdAt: '2026-04-10T10:00:00+08:00',
     updatedAt: '2026-05-20T18:00:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
   {
@@ -212,6 +226,7 @@ export const SEED_TASKS: TaskItem[] = [
     order: 1,
     createdAt: '2026-03-01T10:00:00+08:00',
     updatedAt: '2026-05-28T09:00:00+08:00',
+    dependsOn: [],
     subtasks: [],
   },
 ];

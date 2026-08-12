@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   CalendarClock,
   ClipboardList,
+  Flag,
   Pencil,
   Plus,
   RotateCcw,
@@ -20,7 +21,9 @@ import {
   ProjectContextBar,
   ProjectDeleteDialog,
   ProjectForm,
+  ProjectPlanView,
   ProgressEditor,
+  RetroView,
   StorageWarningBanner,
   useProjectStore,
 } from '@/features/projects';
@@ -33,7 +36,7 @@ import { formatDateTime, formatDate, relativeTime } from '@/features/projects/ut
 import { TaskForm, TaskKanban, useTaskStore } from '@/features/tasks';
 import type { TaskForm as TaskFormData } from '@/features/tasks/types';
 
-type TabKey = 'overview' | 'tasks' | 'activity';
+type TabKey = 'overview' | 'tasks' | 'plan' | 'retro' | 'activity';
 
 const route = useRoute();
 const router = useRouter();
@@ -59,6 +62,8 @@ const quickTaskOpen = ref(false);
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: '概览' },
   { key: 'tasks', label: '任务' },
+  { key: 'plan', label: '计划' },
+  { key: 'retro', label: '复盘' },
   { key: 'activity', label: '活动记录' },
 ];
 
@@ -70,7 +75,17 @@ const ACTIVITY_META: Record<ProjectActivityType, { label: string; icon: Componen
     restored: { label: '恢复', icon: RotateCcw, cls: 'bg-green-500/10 text-green-600' },
     deleted: { label: '删除', icon: Trash2, cls: 'bg-red-500/10 text-red-600' },
     task: { label: '任务', icon: ClipboardList, cls: 'bg-amber-500/10 text-amber-600' },
+    milestone: { label: '里程碑', icon: Flag, cls: 'bg-indigo-500/10 text-indigo-600' },
+    snapshot: { label: '快照', icon: Archive, cls: 'bg-surface-100 text-surface-800/60' },
   };
+
+/** 里程碑进度（自动模式下与任务进度并列展示；定义 = 已完成里程碑数 / 总数） */
+const milestoneProgress = computed(() => {
+  const list = store.milestonesOf(projectId.value);
+  if (!list.length) return null;
+  const done = list.filter((m) => m.status === 'done').length;
+  return Math.round((done / list.length) * 100);
+});
 
 function goBack() {
   router.push('/projects');
@@ -87,7 +102,7 @@ function onArchiveFromDelete() {
   store.archiveProject(projectId.value);
 }
 
-/** 删除策略二：永久删除（二次确认后级联清理任务） */
+/** 删除策略二：永久删除（二次确认后级联清理任务 / 今日聚焦 / 专注记录 / 里程碑 / 复盘 / 快照） */
 function confirmPermanentDelete() {
   taskStore.removeByProject(projectId.value);
   store.deleteProject(projectId.value);
@@ -230,14 +245,23 @@ function onQuickTaskSubmit(form: TaskFormData) {
         </div>
       </header>
 
-      <!-- 存储提示 -->
-      <div class="mt-4">
+      <!-- 存储提示 + 迁移提示 -->
+      <div class="mt-4 space-y-2">
         <StorageWarningBanner
           :message="store.storageWarning || taskStore.storageWarning"
           @dismiss="
             () => {
               store.dismissStorageWarning();
               taskStore.dismissStorageWarning();
+            }
+          "
+        />
+        <StorageWarningBanner
+          :message="store.migrationNotice || taskStore.migrationNotice"
+          @dismiss="
+            () => {
+              store.dismissMigrationNotice();
+              taskStore.dismissMigrationNotice();
             }
           "
         />
@@ -373,12 +397,46 @@ function onQuickTaskSubmit(form: TaskFormData) {
           <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
             <ProgressEditor :project="project" />
           </section>
+
+          <!-- 里程碑进度（自动模式下与任务进度并列；两者定义不同） -->
+          <section
+            v-if="project.progressMode === 'auto' && milestoneProgress !== null"
+            class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5"
+          >
+            <h2 class="text-surface-900 mb-4 text-sm font-semibold">里程碑进度</h2>
+            <div class="mb-4 flex items-end justify-between">
+              <p class="text-surface-900 text-3xl font-semibold">
+                {{ milestoneProgress }}<span class="text-surface-800/50 text-base">%</span>
+              </p>
+              <p class="text-surface-800/50 text-xs">已完成里程碑 / 总数</p>
+            </div>
+            <div class="bg-surface-100 mb-2 h-2 overflow-hidden rounded-full">
+              <div
+                class="h-full rounded-full transition-all"
+                :class="milestoneProgress >= 100 ? 'bg-green-500' : 'bg-indigo-500'"
+                :style="{ width: `${milestoneProgress}%` }"
+              />
+            </div>
+            <p class="text-surface-800/40 text-xs leading-5">
+              任务进度 = 已完成任务占比；里程碑进度 = 已完成里程碑占比，两者独立计算。
+            </p>
+          </section>
         </div>
       </div>
 
       <!-- 任务看板 -->
       <div v-else-if="tab === 'tasks'" class="mt-5">
         <TaskKanban :project-id="project.id" />
+      </div>
+
+      <!-- 计划视图：目标 / 里程碑 / 时间轴 -->
+      <div v-else-if="tab === 'plan'" class="mt-5">
+        <ProjectPlanView :project="project" />
+      </div>
+
+      <!-- 复盘视图：健康统计 / 趋势 / 复盘笔记 / 归档快照 -->
+      <div v-else-if="tab === 'retro'" class="mt-5">
+        <RetroView :project="project" />
       </div>
 
       <!-- 活动记录 -->

@@ -137,11 +137,27 @@ function clearFilters() {
       </button>
     </header>
 
-    <!-- 存储提示（损坏恢复 / 写入失败，非阻塞） -->
-    <StorageWarningBanner
-      :message="store.storageWarning"
-      @dismiss="store.dismissStorageWarning()"
-    />
+    <!-- 存储提示（损坏恢复 / 写入失败，非阻塞）+ 迁移提示 -->
+    <div class="space-y-2">
+      <StorageWarningBanner
+        :message="store.storageWarning || taskStore.storageWarning"
+        @dismiss="
+          () => {
+            store.dismissStorageWarning();
+            taskStore.dismissStorageWarning();
+          }
+        "
+      />
+      <StorageWarningBanner
+        :message="store.migrationNotice || taskStore.migrationNotice"
+        @dismiss="
+          () => {
+            store.dismissMigrationNotice();
+            taskStore.dismissMigrationNotice();
+          }
+        "
+      />
+    </div>
 
     <!-- 统计条 -->
     <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">

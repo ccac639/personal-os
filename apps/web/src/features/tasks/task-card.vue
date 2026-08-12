@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { CalendarClock, CheckSquare, Pencil, Square, Trash2 } from '@lucide/vue';
+import { CalendarClock, CheckSquare, Link2Off, Pencil, Square, Timer, Trash2 } from '@lucide/vue';
 import { computed } from 'vue';
 
 import { isOverdue } from '@/features/projects/utils';
+import { isBlocked } from './dependencies';
 import { subtaskStats } from './subtasks';
+import { useTaskStore } from './store';
 import { TASK_PRIORITY_META } from './types';
 import type { TaskItem } from './types';
 
@@ -23,9 +25,14 @@ const emit = defineEmits<{
   dragend: [e: DragEvent];
 }>();
 
+const store = useTaskStore();
 const priority = computed(() => TASK_PRIORITY_META[props.task.priority]);
 const overdue = computed(() => isOverdue(props.task.dueDate));
 const sub = computed(() => subtaskStats(props.task));
+const taskMap = computed(() => new Map(store.tasks.map((t) => [t.id, t])));
+const blocked = computed(() => isBlocked(props.task, taskMap.value));
+const isTodayFocus = computed(() => store.focus.some((f) => f.taskId === props.task.id));
+const focusMinutes = computed(() => store.taskFocusMinutes(props.task.id));
 </script>
 
 <template>
@@ -49,7 +56,10 @@ const sub = computed(() => subtaskStats(props.task));
         <CheckSquare v-if="selected" class="text-brand-600 size-4" />
         <Square v-else class="size-4" />
       </button>
-      <p class="text-surface-900 min-w-0 flex-1 text-sm leading-snug font-medium">
+      <p
+        class="text-surface-900 min-w-0 flex-1 text-sm leading-snug font-medium"
+        :class="{ 'text-surface-800/50 line-through': task.status === 'done' }"
+      >
         {{ task.title }}
       </p>
       <div class="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
@@ -95,6 +105,14 @@ const sub = computed(() => subtaskStats(props.task));
     </div>
 
     <div class="mt-2 flex flex-wrap items-center gap-1.5">
+      <!-- 受阻标记（克制：仅图标 + 悬停提示） -->
+      <span
+        v-if="blocked"
+        class="flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-600"
+        title="存在未完成的前置任务，可在详情中查看"
+      >
+        <Link2Off class="size-3" />
+      </span>
       <span
         class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium"
         :class="priority.badge"
@@ -107,6 +125,21 @@ const sub = computed(() => subtaskStats(props.task));
         class="border-surface-100 bg-surface-50 text-surface-800/60 rounded border px-1.5 py-0.5 text-xs"
       >
         {{ tag }}
+      </span>
+      <span
+        v-if="isTodayFocus"
+        class="text-brand-600 bg-brand-500/10 flex items-center rounded px-1.5 py-0.5 text-xs"
+        title="今日聚焦任务"
+      >
+        <Timer class="size-3" />
+      </span>
+      <span
+        v-if="focusMinutes > 0"
+        class="text-surface-800/50 flex items-center gap-0.5 rounded px-1 py-0.5 text-xs"
+        title="累计专注时长"
+      >
+        <Timer class="size-3" />
+        {{ focusMinutes }} 分
       </span>
       <span
         v-if="task.dueDate"

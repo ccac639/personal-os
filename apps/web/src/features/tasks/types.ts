@@ -2,7 +2,8 @@
  * 任务功能域类型定义
  *
  * 复用 @personal-os/types 的 Task / TaskStatus / TaskPriority 基础类型；
- * 仅在此补充前端展示所需的扩展字段（标签、列内排序权重、子任务、活动历史）。
+ * 仅在此补充前端展示所需的扩展字段（标签、列内排序权重、子任务、活动历史、
+ * 前置依赖、今日聚焦、专注记录）。
  */
 import type { Task, TaskPriority, TaskStatus } from '@personal-os/types';
 
@@ -13,7 +14,7 @@ export interface SubTask {
   done: boolean;
 }
 
-/** 前端扩展：任务（基础类型缺标签 / 排序权重 / 子任务） */
+/** 前端扩展：任务（基础类型缺标签 / 排序权重 / 子任务 / 前置依赖） */
 export interface TaskItem extends Task {
   /** 标签列表 */
   tags: string[];
@@ -21,6 +22,8 @@ export interface TaskItem extends Task {
   order: number;
   /** 子任务 checklist（完成状态计入任务进度，不改变父任务所属列） */
   subtasks: SubTask[];
+  /** 前置依赖任务 id 列表（未完成的前置会让本任务显示「受阻」） */
+  dependsOn: string[];
 }
 
 /** 任务表单输入（创建 / 编辑共用） */
@@ -47,8 +50,11 @@ export type TaskDateFilter = 'all' | 'today' | 'upcoming' | 'overdue' | 'none';
 /** 截止日期分组（列表 / 日期视图） */
 export type DueGroup = 'overdue' | 'today' | 'upcoming' | 'later' | 'none';
 
+/** 看板快捷筛选（个人项目无 assignee，故不提供负责人维度） */
+export type TaskQuickFilter = 'all' | 'focus' | 'thisWeek' | 'blocked';
+
 /** 任务事件类型（详情抽屉活动历史） */
-export type TaskEventType = 'created' | 'updated' | 'moved' | 'deleted' | 'subtask';
+export type TaskEventType = 'created' | 'updated' | 'moved' | 'deleted' | 'subtask' | 'focus';
 
 /** 任务活动历史条目 */
 export interface TaskEvent {
@@ -58,6 +64,41 @@ export interface TaskEvent {
   title: string;
   /** ISO 时间 */
   createdAt: string;
+}
+
+/** 今日聚焦项（跨项目，最多 5 个） */
+export interface FocusItem {
+  taskId: string;
+  /** 预计专注分钟数 */
+  plannedMinutes: number;
+}
+
+/** 专注记录状态 */
+export type FocusSessionStatus = 'completed' | 'abandoned';
+
+/** 一条完成的专注记录 */
+export interface FocusSession {
+  id: string;
+  taskId: string;
+  /** ISO 时间 */
+  startedAt: string;
+  /** ISO 时间 */
+  endedAt: string;
+  /** 实际专注分钟数（至少 1） */
+  minutes: number;
+  status: FocusSessionStatus;
+}
+
+/** 进行中的专注计时器（持久化，刷新可恢复） */
+export interface RunningFocus {
+  taskId: string;
+  /** 本次连续计时开始时间（暂停不重置） */
+  startedAt: string;
+  /** 已累计的毫秒数（不含当前连续段） */
+  accumulatedMs: number;
+  status: 'running' | 'paused';
+  /** 最近一次恢复运行的时间 */
+  lastResumeAt: string;
 }
 
 /** 撤销反馈信息 */
@@ -136,3 +177,14 @@ export const DUE_GROUPS: { value: DueGroup; label: string }[] = [
   { value: 'later', label: '更晚' },
   { value: 'none', label: '无截止日期' },
 ];
+
+/** 看板快捷筛选选项 */
+export const TASK_QUICK_FILTERS: { value: TaskQuickFilter; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'focus', label: '今日聚焦' },
+  { value: 'thisWeek', label: '本周到期' },
+  { value: 'blocked', label: '阻塞' },
+];
+
+/** 今日聚焦上限 */
+export const FOCUS_MAX = 5;

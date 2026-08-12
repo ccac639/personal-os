@@ -4,31 +4,45 @@
  * 职责：
  * - 统一封装 localStorage 读写（组件 / store 不得直接访问 localStorage）；
  * - 带版本字段的信封格式 { version, data }，支持严格结构校验；
- * - 旧版本（v1 裸数组）自动迁移；损坏 / 版本过新 / 写入失败时降级到种子或
- *   返回失败原因，保证页面可用。
+ * - v1（裸数组）与 v2（旧信封）自动迁移到 v3，旧 key 保留可回滚；
+ * - 损坏 / 版本过新 / 写入失败时降级到种子或返回失败原因，保证页面可用。
  *
  * 版本历史：
- * - v1（legacy）：裸数组，无信封、无校验；
- * - v2（当前）：{ version: 2, data } 信封，项目增加 favorite / progressMode。
+ * - v1（legacy）：projects 裸数组 / activities 裸数组，无信封；
+ * - v2：{ version: 2, data: ProjectDetail[] } 信封，项目增加 favorite / progressMode；
+ * - v3（当前）：{ version: 3, data: { projects, milestones } }，
+ *   项目增加计划字段（goal / startDate / targetDate / estimatedHours），
+ *   新增里程碑、复盘笔记、归档快照三个独立信封。
  */
 import { SEED_ACTIVITIES, SEED_PROJECTS } from './mock';
 import type { ProjectStatus } from '@personal-os/types';
+import type { TaskItem } from '@/features/tasks/types';
 import type {
+  Milestone,
+  MilestoneForm,
+  MilestoneStatus,
   ProjectActivity,
   ProjectActivityType,
   ProjectDetail,
   ProjectProgressMode,
+  ProjectSnapshot,
   ProjectSortKey,
   ProjectStatusFilter,
   ProjectViewFilter,
+  Retrospective,
 } from './types';
 
-export const PROJECTS_VERSION = 2;
-export const PROJECTS_KEY = 'personal-os.projects.v2';
+export const PROJECTS_VERSION = 3;
+export const PROJECTS_KEY = 'personal-os.projects.v3';
+export const PROJECTS_V2_KEY = 'personal-os.projects.v2';
 export const PROJECTS_LEGACY_KEY = 'personal-os.projects.v1';
-export const ACTIVITIES_KEY = 'personal-os.projects.activities.v2';
+export const ACTIVITIES_KEY = 'personal-os.projects.activities.v3';
+export const ACTIVITIES_V2_KEY = 'personal-os.projects.activities.v2';
 export const ACTIVITIES_LEGACY_KEY = 'personal-os.projects.activities.v1';
-export const PROJECTS_UI_KEY = 'personal-os.projects.ui.v2';
+export const PROJECTS_UI_KEY = 'personal-os.projects.ui.v3';
+export const PROJECTS_UI_V2_KEY = 'personal-os.projects.ui.v2';
+export const RETROSPECTIVES_KEY = 'personal-os.projects.retrospectives.v3';
+export const SNAPSHOTS_KEY = 'personal-os.projects.snapshots.v3';
 
 export const PROJECT_UI_DEFAULTS = {
   searchQuery: '',
@@ -44,6 +58,12 @@ export interface ProjectUiPrefs {
   viewFilter: ProjectViewFilter;
   sortBy: ProjectSortKey;
   sortDir: 'asc' | 'desc';
+}
+
+/** 项目 v3 信封数据：项目列表 + 里程碑列表 */
+export interface PersistedProjectData {
+  projects: ProjectDetail[];
+  milestones: Milestone[];
 }
 
 /** 读取结果：data 一定可用（失败时已回退种子），notice 为可展示的非阻塞提示 */
@@ -62,7 +82,10 @@ const ACTIVITY_TYPES = new Set<ProjectActivityType>([
   'restored',
   'deleted',
   'task',
+  'milestone',
+  'snapshot',
 ]);
+const MILESTONE_STATUSES = new Set<MilestoneStatus>(['planned', 'in-progress', 'done']);
 
 function isPlainObject(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -76,6 +99,10 @@ function num01(x: unknown): number | undefined {
   return typeof x === 'number' && Number.isFinite(x)
     ? Math.min(100, Math.max(0, Math.round(x)))
     : undefined;
+}
+
+function numPositive(x: unknown): number | undefined {
+  return typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.round(x) : undefined;
 }
 
 // ── 严格结构校验 + 归一化 ──
@@ -114,6 +141,10 @@ export function normalizeProject(raw: unknown): ProjectDetail | null {
     favorite: p.favorite === true,
     progressMode,
     manualProgress,
+    goal: str(p.goal) ? p.goal : undefined,
+    startDate: str(p.startDate) ? p.startDate : undefined,
+    targetDate: str(p.targetDate) ? p.targetDate : undefined,
+    estimatedHours: numPositive(p.estimatedHours),
   };
 }
 
@@ -122,6 +153,45 @@ export function normalizeProjectList(raw: unknown): ProjectDetail[] | null {
   const list = raw.map(normalizeProject);
   if (list.some((x) => x === null)) return null;
   return list as ProjectDetail[];
+}
+
+export function normalizeMilestone(raw: unknown): Milestone | null {
+  if (!isPlainObject(raw)) return null;
+  const m = raw;
+  if (
+    !str(m.id) ||
+    !str(m.projectId) ||
+    !str(m.title) ||
+    !str(m.createdAt) ||
+    !str(m.updatedAt) ||
+    !str(m.status) ||
+    !MILESTONE_STATUSES.has(m.status as MilestoneStatus) ||
+    typeof m.order !== 'number' ||
+    !Array.isArray(m.taskIds) ||
+    !m.taskIds.every(str)
+  ) {
+    return null;
+  }
+  return {
+    id: m.id,
+    projectId: m.projectId,
+    title: m.title,
+    description: str(m.description) ? m.description : undefined,
+    startDate: str(m.startDate) ? m.startDate : undefined,
+    dueDate: str(m.dueDate) ? m.dueDate : undefined,
+    status: m.status as MilestoneStatus,
+    order: m.order,
+    taskIds: m.taskIds as string[],
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
+  };
+}
+
+export function normalizeMilestoneList(raw: unknown): Milestone[] | null {
+  if (!Array.isArray(raw)) return null;
+  const list = raw.map(normalizeMilestone);
+  if (list.some((x) => x === null)) return null;
+  return list as Milestone[];
 }
 
 export function normalizeActivity(raw: unknown): ProjectActivity | null {
@@ -152,6 +222,90 @@ export function normalizeActivityList(raw: unknown): ProjectActivity[] | null {
   const list = raw.map(normalizeActivity);
   if (list.some((x) => x === null)) return null;
   return list as ProjectActivity[];
+}
+
+export function normalizeRetrospective(raw: unknown): Retrospective | null {
+  if (!isPlainObject(raw)) return null;
+  const r = raw;
+  if (!str(r.projectId) || !str(r.done) || !str(r.blockers) || !str(r.next) || !str(r.lessons)) {
+    return null;
+  }
+  return {
+    projectId: r.projectId,
+    done: r.done,
+    blockers: r.blockers,
+    next: r.next,
+    lessons: r.lessons,
+    updatedAt: str(r.updatedAt) ? r.updatedAt : new Date().toISOString(),
+  };
+}
+
+export function normalizeRetrospectiveList(raw: unknown): Retrospective[] | null {
+  if (!Array.isArray(raw)) return null;
+  const list = raw.map(normalizeRetrospective);
+  if (list.some((x) => x === null)) return null;
+  return list as Retrospective[];
+}
+
+export function normalizeSnapshot(raw: unknown): ProjectSnapshot | null {
+  if (!isPlainObject(raw)) return null;
+  const s = raw;
+  if (!str(s.id) || !str(s.projectId) || !str(s.createdAt) || !isPlainObject(s.data)) {
+    return null;
+  }
+  const project = normalizeProject(s.data.project);
+  if (!project) return null;
+  const tasksRaw = Array.isArray(s.data.tasks) ? s.data.tasks : [];
+  const milestonesRaw = Array.isArray(s.data.milestones) ? s.data.milestones : [];
+  const activitiesRaw = Array.isArray(s.data.activities) ? s.data.activities : [];
+  // 快照中的任务 / 里程碑 / 活动做宽松校验：任一不合法则该快照无效
+  const tasks = tasksRaw
+    .map(normalizeSnapshotTask)
+    .filter((x) => x !== null) as unknown[] as TaskItem[];
+  if (tasksRaw.length !== 0 && tasks.length !== tasksRaw.length) return null;
+  const milestones = milestonesRaw
+    .map(normalizeMilestone)
+    .filter((x): x is Milestone => x !== null);
+  if (milestonesRaw.length !== 0 && milestones.length !== milestonesRaw.length) return null;
+  const activities = activitiesRaw
+    .map(normalizeActivity)
+    .filter((x): x is ProjectActivity => x !== null);
+  if (activitiesRaw.length !== 0 && activities.length !== activitiesRaw.length) return null;
+  return {
+    id: s.id,
+    projectId: s.projectId,
+    createdAt: s.createdAt,
+    data: {
+      project,
+      tasks,
+      milestones,
+      activities,
+      retrospective: s.data.retrospective ? normalizeRetrospective(s.data.retrospective) : null,
+    },
+  };
+}
+
+/** 快照内任务的宽松归一化（避免依赖任务持久化层，仅保留快照展示所需字段） */
+function normalizeSnapshotTask(raw: unknown): unknown {
+  if (!isPlainObject(raw)) return null;
+  if (
+    !str(raw.id) ||
+    !str(raw.title) ||
+    !str(raw.status) ||
+    !str(raw.priority) ||
+    !str(raw.createdAt) ||
+    !str(raw.updatedAt)
+  ) {
+    return null;
+  }
+  return raw;
+}
+
+export function normalizeSnapshotList(raw: unknown): ProjectSnapshot[] | null {
+  if (!Array.isArray(raw)) return null;
+  const list = raw.map(normalizeSnapshot);
+  if (list.some((x) => x === null)) return null;
+  return list as ProjectSnapshot[];
 }
 
 export function normalizeUiPrefs(raw: unknown): ProjectUiPrefs {
@@ -242,8 +396,8 @@ function cloneActivities(list: ProjectActivity[]): ProjectActivity[] {
 
 // ── 领域加载 / 保存 ──
 
-/** 旧版 v1（裸数组）→ v2 归一化迁移 */
-function migrateLegacyProjects(): ProjectDetail[] | null {
+/** v1（裸数组）→ 归一化 */
+function migrateV1Projects(): ProjectDetail[] | null {
   try {
     const raw = localStorage.getItem(PROJECTS_LEGACY_KEY);
     if (!raw) return null;
@@ -251,6 +405,62 @@ function migrateLegacyProjects(): ProjectDetail[] | null {
   } catch {
     return null;
   }
+}
+
+/** v2（旧信封，data 为数组）→ v3 结构 */
+function migrateV2Projects(): PersistedProjectData | null {
+  try {
+    const raw = localStorage.getItem(PROJECTS_V2_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainObject(parsed) || typeof parsed.version !== 'number' || !('data' in parsed)) {
+      return null;
+    }
+    if (parsed.version > 3) return null;
+    const projects = normalizeProjectList(parsed.data);
+    if (projects === null) return null;
+    return { projects, milestones: [] };
+  } catch {
+    return null;
+  }
+}
+
+export function loadProjectsData(): LoadResult<PersistedProjectData> {
+  const outcome = readEnvelope(PROJECTS_KEY, PROJECTS_VERSION, (raw) => {
+    if (!isPlainObject(raw)) return null;
+    const projects = normalizeProjectList(raw.projects);
+    if (projects === null) return null;
+    const milestones = normalizeMilestoneList(Array.isArray(raw.milestones) ? raw.milestones : []);
+    if (milestones === null) return null;
+    return { projects, milestones };
+  });
+  if (outcome.status === 'ok') return { data: outcome.data, notice: null };
+  if (outcome.status === 'newer') {
+    return {
+      data: { projects: cloneProjects(SEED_PROJECTS), milestones: [] },
+      notice: `本地项目数据版本过新（v${outcome.version}），已使用示例数据，请升级应用`,
+    };
+  }
+  // 尝试 v2 → v3，再 v1 → v3
+  const fromV2 = migrateV2Projects();
+  if (fromV2) {
+    writeEnvelope(PROJECTS_KEY, PROJECTS_VERSION, fromV2);
+    return { data: fromV2, notice: '本地项目数据已从旧版本升级' };
+  }
+  const fromV1 = migrateV1Projects();
+  if (fromV1) {
+    const migrated = { projects: fromV1, milestones: [] };
+    writeEnvelope(PROJECTS_KEY, PROJECTS_VERSION, migrated);
+    return { data: migrated, notice: '本地项目数据已从旧版本升级' };
+  }
+  return {
+    data: { projects: cloneProjects(SEED_PROJECTS), milestones: [] },
+    notice: '本地项目数据无法读取，已恢复为示例数据',
+  };
+}
+
+export function saveProjectsData(data: PersistedProjectData): SaveResult {
+  return writeEnvelope(PROJECTS_KEY, PROJECTS_VERSION, data);
 }
 
 function migrateLegacyActivities(): ProjectActivity[] | null {
@@ -263,51 +473,79 @@ function migrateLegacyActivities(): ProjectActivity[] | null {
   }
 }
 
-export function loadProjectsData(): LoadResult<ProjectDetail[]> {
-  const outcome = readEnvelope(PROJECTS_KEY, PROJECTS_VERSION, normalizeProjectList);
-  if (outcome.status === 'ok') return { data: outcome.data, notice: null };
-  if (outcome.status === 'empty' || outcome.status === 'corrupt' || outcome.status === 'newer') {
-    const legacy = migrateLegacyProjects();
-    if (legacy) {
-      // 迁移成功后立即以新格式落盘，旧 key 保留不删（可回滚）
-      writeEnvelope(PROJECTS_KEY, PROJECTS_VERSION, legacy);
-      return { data: legacy, notice: '本地项目数据已从旧版本升级' };
-    }
+function migrateV2Activities(): ProjectActivity[] | null {
+  try {
+    const raw = localStorage.getItem(ACTIVITIES_V2_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainObject(parsed) || !('data' in parsed)) return null;
+    return normalizeActivityList(parsed.data);
+  } catch {
+    return null;
   }
-  if (outcome.status === 'newer') {
-    return {
-      data: cloneProjects(SEED_PROJECTS),
-      notice: `本地项目数据版本过新（v${outcome.version}），已使用示例数据，请升级应用`,
-    };
-  }
-  return {
-    data: cloneProjects(SEED_PROJECTS),
-    notice: '本地项目数据无法读取，已恢复为示例数据',
-  };
 }
 
 export function loadActivitiesData(): LoadResult<ProjectActivity[]> {
   const outcome = readEnvelope(ACTIVITIES_KEY, PROJECTS_VERSION, normalizeActivityList);
   if (outcome.status === 'ok') return { data: outcome.data, notice: null };
-  const legacy = migrateLegacyActivities();
-  if (legacy) {
-    writeEnvelope(ACTIVITIES_KEY, PROJECTS_VERSION, legacy);
-    return { data: legacy, notice: null };
+  const fromV2 = migrateV2Activities();
+  if (fromV2) {
+    writeEnvelope(ACTIVITIES_KEY, PROJECTS_VERSION, fromV2);
+    return { data: fromV2, notice: null };
+  }
+  const fromV1 = migrateLegacyActivities();
+  if (fromV1) {
+    writeEnvelope(ACTIVITIES_KEY, PROJECTS_VERSION, fromV1);
+    return { data: fromV1, notice: null };
   }
   return { data: cloneActivities(SEED_ACTIVITIES), notice: null };
-}
-
-export function saveProjectsData(data: ProjectDetail[]): SaveResult {
-  return writeEnvelope(PROJECTS_KEY, PROJECTS_VERSION, data);
 }
 
 export function saveActivitiesData(data: ProjectActivity[]): SaveResult {
   return writeEnvelope(ACTIVITIES_KEY, PROJECTS_VERSION, data);
 }
 
+// ── 复盘笔记 ──
+
+export function loadRetrospectives(): LoadResult<Retrospective[]> {
+  const outcome = readEnvelope(RETROSPECTIVES_KEY, PROJECTS_VERSION, normalizeRetrospectiveList);
+  if (outcome.status === 'ok') return { data: outcome.data, notice: null };
+  return { data: [], notice: null };
+}
+
+export function saveRetrospectives(data: Retrospective[]): SaveResult {
+  return writeEnvelope(RETROSPECTIVES_KEY, PROJECTS_VERSION, data);
+}
+
+// ── 归档快照 ──
+
+export function loadSnapshots(): LoadResult<ProjectSnapshot[]> {
+  const outcome = readEnvelope(SNAPSHOTS_KEY, PROJECTS_VERSION, normalizeSnapshotList);
+  if (outcome.status === 'ok') return { data: outcome.data, notice: null };
+  return { data: [], notice: null };
+}
+
+export function saveSnapshots(data: ProjectSnapshot[]): SaveResult {
+  return writeEnvelope(SNAPSHOTS_KEY, PROJECTS_VERSION, data);
+}
+
+// ── UI 偏好 ──
+
 export function loadProjectsUi(): ProjectUiPrefs {
   const outcome = readEnvelope(PROJECTS_UI_KEY, PROJECTS_VERSION, normalizeUiPrefs);
-  return outcome.status === 'ok' ? outcome.data : { ...PROJECT_UI_DEFAULTS };
+  if (outcome.status === 'ok') return outcome.data;
+  // 兼容旧 v2 UI key
+  try {
+    const raw = localStorage.getItem(PROJECTS_UI_V2_KEY);
+    if (raw) {
+      const prefs = normalizeUiPrefs(JSON.parse(raw));
+      writeEnvelope(PROJECTS_UI_KEY, PROJECTS_VERSION, prefs);
+      return prefs;
+    }
+  } catch {
+    /* 忽略 */
+  }
+  return { ...PROJECT_UI_DEFAULTS };
 }
 
 export function saveProjectsUi(prefs: ProjectUiPrefs): SaveResult {
@@ -318,8 +556,28 @@ export function saveProjectsUi(prefs: ProjectUiPrefs): SaveResult {
 export function clearLegacyProjectsKeys(): void {
   try {
     localStorage.removeItem(PROJECTS_LEGACY_KEY);
+    localStorage.removeItem(PROJECTS_V2_KEY);
     localStorage.removeItem(ACTIVITIES_LEGACY_KEY);
+    localStorage.removeItem(ACTIVITIES_V2_KEY);
   } catch {
     /* 忽略 */
   }
+}
+
+/** 里程碑表单 → 可编辑的 Milestone 辅助（store 使用） */
+export function milestoneFromForm(
+  form: MilestoneForm,
+  existing: Milestone | null,
+): Omit<Milestone, 'id' | 'projectId' | 'createdAt'> {
+  const now = new Date().toISOString();
+  return {
+    title: form.title.trim(),
+    description: form.description?.trim() || undefined,
+    startDate: form.startDate || undefined,
+    dueDate: form.dueDate || undefined,
+    status: form.status,
+    taskIds: [...form.taskIds],
+    order: existing?.order ?? 0,
+    updatedAt: existing?.updatedAt ?? now,
+  };
 }

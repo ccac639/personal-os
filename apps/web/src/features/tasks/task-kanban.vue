@@ -15,6 +15,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import ConfirmDialog from '@/features/projects/confirm-dialog.vue';
 import { classifyKanbanKey, isEditableTarget } from './keyboard';
 import BatchToolbar from './batch-toolbar.vue';
+import FocusPanel from './focus-panel.vue';
 import { useTaskStore } from './store';
 import TaskCard from './task-card.vue';
 import TaskDrawer from './task-drawer.vue';
@@ -25,6 +26,7 @@ import {
   KANBAN_STATUSES,
   TASK_DATE_FILTERS,
   TASK_PRIORITY_META,
+  TASK_QUICK_FILTERS,
   TASK_SORT_OPTIONS,
   TASK_STATUS_META,
 } from './types';
@@ -331,6 +333,28 @@ function performDrop(status: KanbanStatus, beforeId: string | null) {
       </button>
     </div>
 
+    <!-- 快捷筛选：今日聚焦 / 本周到期 / 阻塞 -->
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="text-surface-800/50 text-xs">快捷</span>
+      <button
+        v-for="opt in TASK_QUICK_FILTERS"
+        :key="opt.value"
+        type="button"
+        class="rounded-full px-2.5 py-1 text-xs font-medium transition-colors"
+        :class="
+          store.quickFilter === opt.value
+            ? 'bg-brand-600 text-surface-0'
+            : 'border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 border'
+        "
+        @click="store.quickFilter = opt.value"
+      >
+        {{ opt.label }}
+      </button>
+    </div>
+
+    <!-- 今日聚焦面板（跨项目，最多 5 个） -->
+    <FocusPanel :project-id="projectId" />
+
     <!-- 日期分组视图 -->
     <div v-if="store.viewMode === 'date'" class="space-y-4">
       <div
@@ -560,6 +584,7 @@ function performDrop(status: KanbanStatus, beforeId: string | null) {
           if (t) deleting = t;
         }
       "
+      @jump="(id) => (activeTaskId = id)"
     />
 
     <!-- 删除确认 -->

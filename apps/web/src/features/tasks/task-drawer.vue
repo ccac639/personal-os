@@ -1,12 +1,27 @@
 <script setup lang="ts">
-import { CalendarClock, Check, Circle, ListTodo, Pencil, Plus, Tag, Trash2, X } from '@lucide/vue';
+import {
+  ArrowRight,
+  CalendarClock,
+  Check,
+  Circle,
+  Link2,
+  Link2Off,
+  ListTodo,
+  Pencil,
+  Plus,
+  Tag,
+  Timer,
+  Trash2,
+  X,
+} from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { formatDateTime, relativeTime } from '@/features/projects/utils';
+import { blockingDependencies, canAddDependency } from './dependencies';
 import { subtaskStats } from './subtasks';
 import { useTaskStore } from './store';
 import { TASK_PRIORITY_META, TASK_STATUS_META } from './types';
-import type { TaskEvent } from './types';
+import type { TaskEvent, TaskItem } from './types';
 
 const props = defineProps<{
   /** 打开时传入任务 id；null 且 open 时显示空态 */
@@ -18,19 +33,51 @@ const emit = defineEmits<{
   close: [];
   edit: [taskId: string];
   delete: [taskId: string];
+  /** 跳转到依赖任务（抽屉内切换） */
+  jump: [taskId: string];
 }>();
 
 const store = useTaskStore();
 const newSubtask = ref('');
+const depError = ref('');
+const selectedDepId = ref('');
 
 const task = computed(() => (props.taskId ? store.taskById(props.taskId) : null));
 const stats = computed(() => subtaskStats(task.value ?? { subtasks: [] }));
 const events = computed<TaskEvent[]>(() => (props.taskId ? store.taskEvents(props.taskId) : []));
 
+const blocking = computed<TaskItem[]>(() =>
+  task.value ? blockingDependencies(task.value, new Map(store.tasks.map((t) => [t.id, t]))) : [],
+);
+/** 依赖本任务的任务（反向） */
+const dependents = computed<TaskItem[]>(() => {
+  const t = task.value;
+  if (!t) return [];
+  return store.tasks.filter((x) => x.dependsOn.includes(t.id));
+});
+/** 可选前置：同项目其他任务，且不违反依赖规则 */
+const depCandidates = computed<TaskItem[]>(() => {
+  const t = task.value;
+  if (!t) return [];
+  const byId = new Map(store.tasks.map((x) => [x.id, x]));
+  return store.tasks.filter(
+    (x) => x.projectId === t.projectId && canAddDependency(t, x.id, byId).ok,
+  );
+});
+
+const isFocus = computed(() =>
+  props.taskId ? store.focus.some((f) => f.taskId === props.taskId) : false,
+);
+const focusMinutes = computed(() => (props.taskId ? store.taskFocusMinutes(props.taskId) : 0));
+const lastFocus = computed(() => (props.taskId ? store.lastFocusAt(props.taskId) : null));
+
 watch(
   () => props.open,
   (open) => {
-    if (!open) newSubtask.value = '';
+    if (!open) return;
+    newSubtask.value = '';
+    depError.value = '';
+    selectedDepId.value = '';
   },
 );
 
@@ -45,6 +92,20 @@ function addSubtask() {
   if (props.taskId && newSubtask.value.trim()) {
     store.addSubtask(props.taskId, newSubtask.value);
     newSubtask.value = '';
+  }
+}
+
+function addDependency() {
+  if (!props.taskId || !selectedDepId.value) return;
+  const r = store.addDependency(props.taskId, selectedDepId.value);
+  depError.value = r.ok ? '' : (r.reason ?? '');
+  if (r.ok) selectedDepId.value = '';
+}
+
+function addToFocus() {
+  if (props.taskId) {
+    const ok = store.addToFocus(props.taskId, 25);
+    depError.value = ok ? '' : '今日聚焦已满（上限 5 个）';
   }
 }
 </script>
@@ -153,7 +214,167 @@ function addSubtask() {
                   {{ task.dueDate }}
                 </span>
                 <span v-if="!task.dueDate" class="text-surface-800/40 text-xs">无截止日期</span>
+                <span
+                  v-if="isFocus"
+                  class="text-brand-600 bg-brand-500/10 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs"
+                >
+                  <Timer class="size-3" />
+                  今日聚焦
+                </span>
+                <span
+                  v-if="focusMinutes > 0"
+                  class="text-surface-800/50 flex items-center gap-1 text-xs"
+                >
+                  <Timer class="size-3" />
+                  累计专注 {{ focusMinutes }} 分钟
+                </span>
               </div>
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  v-if="!isFocus"
+                  type="button"
+                  class="border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium transition-colors"
+                  @click="addToFocus"
+                >
+                  <Plus class="size-3" />
+                  加入今日聚焦
+                </button>
+                <span v-if="lastFocus" class="text-surface-800/40 text-xs">
+                  最近专注：{{ relativeTime(lastFocus) }}
+                </span>
+              </div>
+            </section>
+
+            <!-- 前置依赖 -->
+            <section>
+              <div class="mb-1.5 flex items-center justify-between">
+                <h3 class="text-surface-800/50 flex items-center gap-1 text-xs font-medium">
+                  <Link2 class="size-3.5" />
+                  前置依赖
+                </h3>
+                <span
+                  v-if="blocking.length"
+                  class="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium text-amber-600"
+                >
+                  <Link2Off class="size-3" />
+                  受阻（{{ blocking.length }}）
+                </span>
+              </div>
+
+              <!-- 阻塞原因 -->
+              <div v-if="blocking.length" class="mb-2 space-y-1">
+                <p class="text-xs text-amber-700">以下前置任务未完成，但你仍可继续执行本任务：</p>
+                <div
+                  v-for="b in blocking"
+                  :key="b.id"
+                  class="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5"
+                >
+                  <span class="min-w-0 flex-1 truncate text-xs text-amber-700">{{ b.title }}</span>
+                  <button
+                    type="button"
+                    class="flex items-center gap-0.5 rounded p-0.5 text-xs text-amber-700/70 transition-colors hover:text-amber-900"
+                    :aria-label="`跳转到任务：${b.title}`"
+                    title="跳转"
+                    @click="emit('jump', b.id)"
+                  >
+                    查看
+                    <ArrowRight class="size-3" />
+                  </button>
+                </div>
+              </div>
+
+              <!-- 依赖列表 -->
+              <div v-if="task.dependsOn.length" class="space-y-1">
+                <div
+                  v-for="depId in task.dependsOn"
+                  :key="depId"
+                  class="border-surface-100 hover:border-brand-500/40 flex items-center gap-2 rounded-lg border px-2.5 py-1.5"
+                >
+                  <Check
+                    v-if="store.taskById(depId)?.status === 'done'"
+                    class="size-3.5 text-green-600"
+                  />
+                  <Circle v-else class="text-surface-800/30 size-3.5" />
+                  <span
+                    class="min-w-0 flex-1 truncate text-xs"
+                    :class="
+                      store.taskById(depId)?.status === 'done'
+                        ? 'text-surface-800/40 line-through'
+                        : 'text-surface-800/80'
+                    "
+                  >
+                    {{ store.taskById(depId)?.title ?? '任务不存在' }}
+                  </span>
+                  <button
+                    type="button"
+                    class="text-surface-800/50 hover:bg-surface-100 hover:text-surface-900 flex size-6 items-center justify-center rounded-md transition-colors"
+                    :aria-label="`跳转到任务：${store.taskById(depId)?.title ?? ''}`"
+                    title="跳转"
+                    @click="emit('jump', depId)"
+                  >
+                    <ArrowRight class="size-3" />
+                  </button>
+                  <button
+                    type="button"
+                    class="text-surface-800/40 rounded p-0.5 transition-colors hover:text-red-600"
+                    :aria-label="`移除依赖：${store.taskById(depId)?.title ?? ''}`"
+                    title="移除依赖"
+                    @click="store.removeDependency(task.id, depId)"
+                  >
+                    <X class="size-3" />
+                  </button>
+                </div>
+              </div>
+              <p v-else-if="!blocking.length" class="text-surface-800/40 text-xs">暂无前置依赖</p>
+
+              <!-- 反向依赖 -->
+              <div v-if="dependents.length" class="mt-2">
+                <p class="text-surface-800/40 mb-1 text-xs">
+                  被 {{ dependents.length }} 个任务依赖
+                </p>
+                <div
+                  v-for="d in dependents.slice(0, 5)"
+                  :key="d.id"
+                  class="flex items-center gap-2 rounded px-1 py-0.5 text-xs"
+                >
+                  <Link2 class="text-surface-800/30 size-3" />
+                  <span class="text-surface-800/70 min-w-0 flex-1 truncate">{{ d.title }}</span>
+                  <button
+                    type="button"
+                    class="text-surface-800/50 hover:text-brand-600 rounded p-0.5 transition-colors"
+                    aria-label="跳转到依赖此任务的任务"
+                    title="跳转"
+                    @click="emit('jump', d.id)"
+                  >
+                    <ArrowRight class="size-3" />
+                  </button>
+                </div>
+              </div>
+
+              <!-- 添加依赖 -->
+              <div v-if="depCandidates.length" class="mt-2 flex items-center gap-2">
+                <select
+                  v-model="selectedDepId"
+                  class="border-surface-100 bg-surface-0 focus:border-brand-500 min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-xs transition outline-none"
+                  aria-label="选择前置任务"
+                >
+                  <option value="" disabled>选择前置任务…</option>
+                  <option v-for="c in depCandidates" :key="c.id" :value="c.id">
+                    {{ c.title }}
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors"
+                  aria-label="添加前置依赖"
+                  title="添加依赖"
+                  @click="addDependency"
+                >
+                  <Plus class="size-3" />
+                  添加
+                </button>
+              </div>
+              <p v-if="depError" class="mt-1 text-xs text-red-600">{{ depError }}</p>
             </section>
 
             <!-- 子任务 checklist -->

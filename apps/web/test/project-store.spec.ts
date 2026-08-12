@@ -157,7 +157,8 @@ describe('project store', () => {
     expect(raw).not.toBeNull();
     const envelope = JSON.parse(raw!);
     expect(envelope.version).toBe(PROJECTS_VERSION);
-    expect(envelope.data.length).toBe(SEED_PROJECTS.length + 1);
+    expect(envelope.data.projects.length).toBe(SEED_PROJECTS.length + 1);
+    expect(Array.isArray(envelope.data.milestones)).toBe(true);
 
     // 模拟重新加载
     setActivePinia(createPinia());
