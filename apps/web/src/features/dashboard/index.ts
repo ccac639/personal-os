@@ -4,3 +4,7 @@ export { default as DashboardRecentProjects } from './recent-projects.vue';
 export { default as DashboardActivityFeed } from './activity-feed.vue';
 export { default as DashboardTechOverview } from './tech-overview.vue';
 export { default as DashboardSystemStatus } from './system-status.vue';
+export { default as DashboardHeroCarousel } from './hero-carousel.vue';
+export { default as DashboardPagePet } from './page-pet.vue';
+export { BACKGROUND_PRESETS, DEFAULT_THEME, FONT_PRESETS, loadTheme, saveTheme } from './theme';
+export type { ThemeSettings } from './theme';

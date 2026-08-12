@@ -1,8 +1,18 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { Boxes, Code2, Layers, Server } from '@lucide/vue';
 import type { StatCard } from './types';
 
-const stats: StatCard[] = [
+interface Props {
+  /** all: 全部 4 张 | left: 左侧 3 张（项目/技术栈/模块） | right: 右侧 1 张（服务） */
+  variant?: 'all' | 'left' | 'right';
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  variant: 'all',
+});
+
+const allStats: StatCard[] = [
   {
     id: 'projects',
     label: '开发中项目',
@@ -29,10 +39,22 @@ const stats: StatCard[] = [
     icon: Server,
   },
 ];
+
+const stats = computed(() => {
+  if (props.variant === 'left') return allStats.slice(0, 3);
+  if (props.variant === 'right') return allStats.slice(3);
+  return allStats;
+});
+
+const gridCols = computed(() => {
+  if (props.variant === 'left') return 'grid-cols-1 md:grid-cols-3';
+  if (props.variant === 'right') return 'grid-cols-1';
+  return 'grid-cols-2 md:grid-cols-4';
+});
 </script>
 
 <template>
-  <section class="grid grid-cols-2 gap-4 md:grid-cols-4">
+  <section :class="['grid gap-4', gridCols]">
     <article
       v-for="stat in stats"
       :key="stat.id"
