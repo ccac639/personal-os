@@ -151,7 +151,7 @@ const brandLetters = 'Personal OS'.split('');
                     v-if="isActive(item.to)"
                     :key="'underline-' + item.to"
                     layout-id="nav-underline"
-                    class="absolute inset-x-0 bottom-2 z-10 h-0.5 bg-black"
+                    class="bg-surface-900 absolute inset-x-0 bottom-2 z-10 h-0.5"
                     :transition="{ type: 'spring', stiffness: 380, damping: 30 }"
                   />
                 </AnimatePresence>

@@ -15,7 +15,7 @@ import {
     <!-- 氛围光斑装饰（跟随主题 brand 色，pointer-events 穿透） -->
     <div class="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
       <div class="bg-brand-500/10 absolute -top-24 -left-24 size-96 rounded-full blur-3xl" />
-      <div class="absolute top-1/3 -right-32 size-80 rounded-full bg-purple-500/10 blur-3xl" />
+      <div class="bg-brand-600/10 absolute top-1/3 -right-32 size-80 rounded-full blur-3xl" />
     </div>
 
     <!-- 主内容区：左 2/3 + 右 1/3 -->

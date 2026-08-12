@@ -19,5 +19,5 @@ defineProps<{
   >
     <path :d="item.si.path" />
   </svg>
-  <component :is="item.fallback" v-else :size="size ?? 20" class="text-neutral-400" />
+  <component :is="item.fallback" v-else :size="size ?? 20" class="text-surface-800/50" />
 </template>
