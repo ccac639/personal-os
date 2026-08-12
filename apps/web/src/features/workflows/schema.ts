@@ -395,3 +395,76 @@ export function notifyLevelLabel(level?: NotifyLevel): string {
       return '普通';
   }
 }
+
+/* ---------- 数据形状校验（导入 / 模板 / 快照严格校验用） ---------- */
+
+const STRING_KEYS: Array<keyof WorkflowNodeData> = [
+  'label',
+  'cron',
+  'template',
+  'model',
+  'prompt',
+  'lang',
+  'code',
+  'expr',
+  'trueLabel',
+  'falseLabel',
+  'title',
+  'message',
+  'format',
+  'outputName',
+];
+
+/**
+ * 校验节点 data 的「形状」：字段类型与枚举值合法性。
+ * 不要求必填（与字段级 validate 不同），只拦截结构错误的数据。
+ * 返回错误消息数组（空 = 合法）。未知额外字段不拒绝（向前兼容）。
+ */
+export function validateDataShape(data: WorkflowNodeData): string[] {
+  const errors: string[] = [];
+  if (!data || typeof data !== 'object') return ['data 必须是对象'];
+
+  for (const key of STRING_KEYS) {
+    const v = data[key];
+    if (v !== undefined && v !== null && typeof v !== 'string') {
+      errors.push(`字段 ${key} 必须是字符串`);
+    }
+  }
+
+  if (data.kind === 'delay') {
+    if (data.delayUnit !== undefined && !['ms', 's', 'min'].includes(data.delayUnit)) {
+      errors.push(`delayUnit 无效：${String(data.delayUnit)}（可选 ms/s/min）`);
+    }
+    if (data.seconds !== undefined && typeof data.seconds !== 'number') {
+      errors.push('seconds 必须是数字');
+    }
+    if (data.delayValue !== undefined && typeof data.delayValue !== 'number') {
+      errors.push('delayValue 必须是数字');
+    }
+  }
+  if (data.kind === 'notify') {
+    if (data.level !== undefined && !['info', 'warn', 'error'].includes(data.level)) {
+      errors.push(`level 无效：${String(data.level)}（可选 info/warn/error）`);
+    }
+  }
+  if (data.kind === 'output') {
+    if (data.format !== undefined && !['text', 'markdown', 'json'].includes(data.format)) {
+      errors.push(`format 无效：${String(data.format)}（可选 text/markdown/json）`);
+    }
+  }
+  if (data.kind === 'ai') {
+    if (data.temperature !== undefined && typeof data.temperature !== 'number') {
+      errors.push('temperature 必须是数字');
+    }
+    if (data.maxTokens !== undefined && typeof data.maxTokens !== 'number') {
+      errors.push('maxTokens 必须是数字');
+    }
+    if (
+      data.outputFormat !== undefined &&
+      !['text', 'markdown', 'json'].includes(data.outputFormat)
+    ) {
+      errors.push(`outputFormat 无效：${String(data.outputFormat)}（可选 text/markdown/json）`);
+    }
+  }
+  return errors;
+}

@@ -113,6 +113,8 @@ export interface RunLogEntry {
   level: RunLogLevel;
   text: string;
   nodeId?: string;
+  /** 产生时间戳（ms，供时间过滤与导出） */
+  ts?: number;
 }
 
 /** 运行参数（用户输入，模拟执行上下文） */

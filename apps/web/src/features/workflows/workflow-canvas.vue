@@ -97,6 +97,7 @@ function onSelectionChange(e: { nodes: GraphNode[] }) {
 
 function onPaneClick() {
   store.selectNode(null);
+  closeContextMenu();
 }
 
 function onConnect(conn: Connection) {
@@ -143,7 +144,49 @@ function onKeydown(e: KeyboardEvent) {
   } else if (key === 'v') {
     e.preventDefault();
     store.pasteNodes();
+  } else if (key === 'a') {
+    // 全选（框选操作的便捷入口）
+    e.preventDefault();
+    if (store.nodes.length > 0) store.selectMany(store.nodes.map((n) => n.id));
   }
+}
+
+/* ---------- 节点右键菜单：断点 / 复制 / 删除 ---------- */
+
+const contextMenu = ref<{ x: number; y: number; nodeId: string } | null>(null);
+
+function onNodeContextMenu(e: NodeMouseEvent) {
+  // 阻止浏览器默认菜单
+  e.event.preventDefault();
+  const ev = e.event as MouseEvent;
+  contextMenu.value = {
+    x: ev.clientX,
+    y: ev.clientY,
+    nodeId: e.node.id,
+  };
+}
+
+function closeContextMenu() {
+  contextMenu.value = null;
+}
+
+function menuToggleBreakpoint() {
+  if (contextMenu.value) store.toggleBreakpoint(contextMenu.value.nodeId);
+  closeContextMenu();
+}
+function menuCopy() {
+  if (contextMenu.value) {
+    store.selectNode(contextMenu.value.nodeId);
+    store.copySelection();
+  }
+  closeContextMenu();
+}
+function menuDelete() {
+  if (contextMenu.value) {
+    store.selectNode(contextMenu.value.nodeId);
+    store.deleteSelection();
+  }
+  closeContextMenu();
 }
 
 /* ---------- 视口：加载/导入/清空后 fitView，聚焦选中 ---------- */
@@ -215,6 +258,7 @@ function onContainerKeydown(e: KeyboardEvent) {
       @nodes-change="onNodesChange"
       @edges-change="onEdgesChange"
       @node-click="onNodeClick"
+      @node-context-menu="onNodeContextMenu"
       @node-drag-start="onNodeDragStart"
       @node-drag-stop="onNodeDragStop"
       @selection-change="onSelectionChange"
@@ -250,6 +294,44 @@ function onContainerKeydown(e: KeyboardEvent) {
     >
       模拟运行中，画布编辑已锁定
     </div>
+
+    <!-- 节点右键菜单 -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenu"
+        class="fixed z-50"
+        :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+        @click.stop="closeContextMenu"
+        @contextmenu.prevent="closeContextMenu"
+      >
+        <div
+          class="border-surface-100 bg-surface-0 shadow-float w-36 overflow-hidden rounded-lg border py-1 text-xs backdrop-blur-xl"
+        >
+          <button
+            type="button"
+            class="text-surface-800/80 hover:bg-surface-100 flex w-full items-center gap-2 px-3 py-1.5 text-left transition"
+            @click.stop="menuToggleBreakpoint"
+          >
+            <span class="inline-block size-2 rounded-full bg-red-500" />
+            {{ store.hasBreakpoint(contextMenu.nodeId) ? '移除断点' : '设置断点' }}
+          </button>
+          <button
+            type="button"
+            class="text-surface-800/80 hover:bg-surface-100 flex w-full items-center gap-2 px-3 py-1.5 text-left transition"
+            @click.stop="menuCopy"
+          >
+            复制
+          </button>
+          <button
+            type="button"
+            class="text-surface-800/80 hover:bg-surface-100 flex w-full items-center gap-2 px-3 py-1.5 text-left transition hover:text-red-600"
+            @click.stop="menuDelete"
+          >
+            删除
+          </button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 

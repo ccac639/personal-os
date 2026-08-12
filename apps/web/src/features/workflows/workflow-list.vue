@@ -80,6 +80,36 @@ function fromTemplate(id: string) {
   if (copyId) emit('openCanvas', copyId);
 }
 
+/* ---------- 详情编辑（描述 / 标签） ---------- */
+const detailTarget = ref<{ id: string; name: string; description: string; tags: string[] } | null>(
+  null,
+);
+const detailDescription = ref('');
+const detailTags = ref('');
+
+function openDetail(id: string) {
+  const wf = store.workflows.find((w) => w.id === id);
+  if (!wf) return;
+  detailTarget.value = { id, name: wf.name, description: wf.description, tags: wf.tags };
+  detailDescription.value = wf.description;
+  detailTags.value = wf.tags.join('，');
+}
+function saveDetail() {
+  if (!detailTarget.value) return;
+  const tags = detailTags.value
+    .split(/[，,]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  store.updateMeta(detailTarget.value.id, {
+    description: detailDescription.value,
+    tags,
+  });
+  detailTarget.value = null;
+}
+function closeDetail() {
+  detailTarget.value = null;
+}
+
 /* ---------- 筛选 / 排序 ---------- */
 
 type StatusFilter = 'all' | 'success' | 'failed' | 'never' | 'template' | 'favorite';
@@ -406,7 +436,10 @@ const warningsOpen = ref(true);
             <p class="text-surface-800/50 mt-0.5 text-xs">
               {{ item.nodeCount }} 节点 · {{ item.edgeCount }} 连线 · {{ item.versionCount }} 版本 ·
               更新于 {{ fmtTime(item.updatedAt) }}
-              <span v-if="item.lastRun"> · 最近运行 {{ fmtTime(item.lastRun.at) }}</span>
+              <span v-if="item.lastRun">
+                · 最近运行 {{ fmtTime(item.lastRun.at) }} · 耗时
+                {{ (item.lastRun.durationMs / 1000).toFixed(1) }}s
+              </span>
             </p>
 
             <!-- 标签 -->
@@ -433,6 +466,15 @@ const warningsOpen = ref(true);
               @click="openWorkflow(item.id)"
             >
               <ArrowRight class="size-3.5" />
+            </button>
+            <button
+              type="button"
+              title="编辑详情（描述 / 标签）"
+              aria-label="编辑详情"
+              class="hover:bg-brand-500/10 hover:text-brand-600 text-surface-800/50 rounded-md p-1.5 transition"
+              @click="openDetail(item.id)"
+            >
+              <ScrollText class="size-3.5" />
             </button>
             <button
               type="button"
@@ -549,6 +591,82 @@ const warningsOpen = ref(true);
               <p v-for="(line, i) in logTarget.lastRun.logs" :key="i" :class="lineCls(line)">
                 {{ line }}
               </p>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- 详情编辑（描述 / 标签） -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0"
+        leave-active-class="transition duration-150 ease-in"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="detailTarget"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
+          @click.self="closeDetail"
+        >
+          <div
+            class="border-surface-100/70 bg-surface-0/90 shadow-float w-full max-w-sm rounded-xl border p-5 backdrop-blur-xl"
+          >
+            <div class="mb-3 flex items-center justify-between">
+              <h3 class="text-surface-900 min-w-0 truncate text-sm font-semibold">
+                {{ detailTarget.name }}
+              </h3>
+              <button
+                type="button"
+                class="hover:bg-surface-50 text-surface-800/50 hover:text-surface-900 rounded-md p-1 transition"
+                title="关闭"
+                aria-label="关闭"
+                @click="closeDetail"
+              >
+                <X class="size-4" />
+              </button>
+            </div>
+
+            <div class="space-y-3">
+              <label class="block">
+                <span class="text-surface-800/70 mb-1 block text-xs font-medium">描述</span>
+                <textarea
+                  v-model="detailDescription"
+                  rows="3"
+                  placeholder="这个工作流做什么？"
+                  class="border-surface-100 bg-surface-50 text-surface-900 focus:border-brand-500 w-full resize-none rounded-lg border px-2.5 py-1.5 text-xs outline-none"
+                />
+              </label>
+              <label class="block">
+                <span class="text-surface-800/70 mb-1 block text-xs font-medium">
+                  标签（逗号分隔）
+                </span>
+                <input
+                  v-model="detailTags"
+                  type="text"
+                  placeholder="例如：每日，自动，通知"
+                  class="border-surface-100 bg-surface-50 text-surface-900 focus:border-brand-500 w-full rounded-lg border px-2.5 py-1.5 text-xs outline-none"
+                  @keyup.enter="saveDetail"
+                />
+              </label>
+            </div>
+
+            <div class="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                class="text-surface-800/60 hover:bg-surface-100 rounded-lg px-3 py-1.5 text-xs transition"
+                @click="closeDetail"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                class="bg-brand-600 hover:bg-brand-700 text-surface-0 rounded-lg px-3 py-1.5 text-xs font-medium transition"
+                @click="saveDetail"
+              >
+                保存
+              </button>
             </div>
           </div>
         </div>

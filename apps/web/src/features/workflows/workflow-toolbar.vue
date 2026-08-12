@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   Download,
   Focus,
   History,
+  LayoutTemplate,
   RotateCcw,
   Save,
   Sparkles,
@@ -16,11 +17,57 @@ import {
 } from '@lucide/vue';
 import { useWorkflowStore } from './store';
 import type { ImportPreview } from './store';
+import type { AlignAxis, DistributeAxis } from './layout';
 import VersionPanel from './version-panel.vue';
+import TemplatePanel from './template-panel.vue';
 
 const store = useWorkflowStore();
 const fileInput = ref<HTMLInputElement>();
 const versionOpen = ref(false);
+const templateOpen = ref(false);
+
+/* ---------- 名称（输入框草稿，提交时单次撤销） ---------- */
+
+const nameDraft = ref(store.name);
+function commitName() {
+  store.renameActive(nameDraft.value);
+  nameDraft.value = store.name; // 规范化回写（trim 后）
+}
+// 外部改名（列表页 / 撤销 / 导入）时同步输入框草稿
+watch(
+  () => store.name,
+  (v) => {
+    if (v !== nameDraft.value) nameDraft.value = v;
+  },
+);
+
+/* ---------- 对齐 / 分布 / 自动布局 ---------- */
+
+const ALIGN_OPTIONS: Array<{ value: AlignAxis; label: string }> = [
+  { value: 'left', label: '左对齐' },
+  { value: 'centerH', label: '水平居中' },
+  { value: 'right', label: '右对齐' },
+  { value: 'top', label: '顶对齐' },
+  { value: 'centerV', label: '垂直居中' },
+  { value: 'bottom', label: '底对齐' },
+];
+const DISTRIBUTE_OPTIONS: Array<{ value: DistributeAxis; label: string }> = [
+  { value: 'horizontal', label: '水平分布' },
+  { value: 'vertical', label: '垂直分布' },
+];
+
+const alignValue = ref<AlignAxis>('left');
+const distributeValue = ref<DistributeAxis>('horizontal');
+
+function doAlign() {
+  store.alignSelected(alignValue.value);
+}
+function doDistribute() {
+  store.distributeSelected(distributeValue.value);
+}
+function doAutoLayout() {
+  store.autoLayoutCanvas();
+}
 
 /* ---------- 导入预览确认 ---------- */
 
@@ -92,11 +139,12 @@ const savedLabel = computed(() => (store.dirty ? '未保存' : '已保存'));
       <!-- 工作流名称 + 保存状态 -->
       <div class="flex min-w-0 items-center gap-2">
         <input
-          :value="store.name"
+          v-model="nameDraft"
           class="text-surface-900 hover:border-surface-800/30 focus:border-brand-500 w-36 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-semibold transition outline-none sm:w-44"
-          title="工作流名称"
+          title="工作流名称（回车或失焦提交，可撤销）"
           aria-label="工作流名称"
-          @input="store.name = ($event.target as HTMLInputElement).value"
+          @keyup.enter="($event.target as HTMLInputElement).blur()"
+          @change="commitName"
         />
         <span
           class="text-surface-800/50 shrink-0 rounded-full px-2 py-0.5 text-[10px]"
@@ -157,6 +205,15 @@ const savedLabel = computed(() => (store.dirty ? '未保存' : '已保存'));
         <button
           type="button"
           class="text-surface-800/70 hover:bg-surface-100 hover:text-surface-900 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition"
+          title="节点模板：保存选中子图 / 插入 / 导入导出"
+          @click="templateOpen = true"
+        >
+          <LayoutTemplate class="size-3.5" />
+          模板
+        </button>
+        <button
+          type="button"
+          class="text-surface-800/70 hover:bg-surface-100 hover:text-surface-900 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition"
           title="载入示例工作流（覆盖当前画布，可撤销）"
           @click="store.loadDemo()"
         >
@@ -190,6 +247,43 @@ const savedLabel = computed(() => (store.dirty ? '未保存' : '已保存'));
         >
           <Trash2 class="size-3.5" />
           清空
+        </button>
+
+        <!-- 对齐 / 分布 / 自动布局 -->
+        <div class="bg-surface-100 mx-1 hidden h-5 w-px shrink-0 sm:block" />
+        <select
+          v-model="alignValue"
+          class="text-surface-800/70 hover:bg-surface-100 rounded-lg border border-transparent px-2 py-1.5 text-xs transition outline-none disabled:opacity-30"
+          title="对齐选中节点（需 ≥2 个）"
+          aria-label="对齐方式"
+          :disabled="store.selectedIds.length < 2 || store.running"
+          @change="doAlign"
+        >
+          <option v-for="opt in ALIGN_OPTIONS" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
+        <select
+          v-model="distributeValue"
+          class="text-surface-800/70 hover:bg-surface-100 rounded-lg border border-transparent px-2 py-1.5 text-xs transition outline-none disabled:opacity-30"
+          title="分布选中节点（需 ≥3 个）"
+          aria-label="分布方式"
+          :disabled="store.selectedIds.length < 3 || store.running"
+          @change="doDistribute"
+        >
+          <option v-for="opt in DISTRIBUTE_OPTIONS" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
+        <button
+          type="button"
+          class="text-surface-800/70 hover:bg-surface-100 hover:text-surface-900 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition disabled:opacity-30"
+          title="自动布局（按拓扑分层排列全部节点）"
+          :disabled="store.nodes.length < 2 || store.running"
+          @click="doAutoLayout"
+        >
+          <Sparkles class="size-3.5" />
+          自动布局
         </button>
         <button
           type="button"
@@ -315,5 +409,6 @@ const savedLabel = computed(() => (store.dirty ? '未保存' : '已保存'));
 
     <!-- 版本与模板 -->
     <VersionPanel v-if="versionOpen" @close="versionOpen = false" />
+    <TemplatePanel v-if="templateOpen" @close="templateOpen = false" />
   </div>
 </template>

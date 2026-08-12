@@ -2,14 +2,18 @@
 import { computed } from 'vue';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { getNodeDef, nodeSummary, type WorkflowNodeData } from './types';
+import { useWorkflowStore } from './store';
 
 const props = defineProps<NodeProps<WorkflowNodeData>>();
+const store = useWorkflowStore();
 
 const def = computed(() => getNodeDef(props.data.kind));
 const isTrigger = computed(() => props.data.kind === 'trigger');
 const isCondition = computed(() => props.data.kind === 'condition');
 /** 末端节点：无出边锚点（输出/通知/延迟），条件节点特殊处理 */
 const isEnd = computed(() => ['notify', 'delay', 'output'].includes(props.data.kind));
+/** 断点状态（模拟运行时执行前暂停） */
+const hasBreakpoint = computed(() => store.hasBreakpoint(props.id));
 
 const statusDot = computed(() => {
   switch (props.data.status) {
@@ -59,6 +63,14 @@ const statusText = computed(() => {
       </span>
       <span class="text-surface-900 min-w-0 flex-1 truncate text-sm font-semibold">
         {{ data.label }}
+      </span>
+      <!-- 断点角标：右键节点可切换 -->
+      <span
+        v-if="hasBreakpoint"
+        class="text-surface-0 absolute -top-1.5 -left-1.5 flex size-4 items-center justify-center rounded-full bg-red-500 shadow-sm"
+        title="断点（执行前暂停）"
+      >
+        <span class="bg-surface-0 block size-1.5 rounded-full" />
       </span>
       <span class="size-2 shrink-0 rounded-full" :class="statusDot.cls" :title="statusDot.title" />
       <span v-if="statusText" class="sr-only" aria-live="polite">{{ statusText }}</span>

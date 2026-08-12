@@ -49,6 +49,10 @@ export interface RunnerHooks {
   onLog?: (entry: RunLogEntry) => void;
   onProgress?: (progress: RunProgress) => void;
   onEdgeActive?: (sourceId: string, active: boolean) => void;
+  /** 命中断点（执行前暂停），UI 可据此切换「已暂停」状态 */
+  onBreakpoint?: (nodeId: string) => void;
+  /** 单步执行完一个节点后自动暂停，UI 可据此切换「已暂停」状态 */
+  onPause?: () => void;
   /** 演示用的等待（默认 60ms，测试可注入 0） */
   sleep?: (ms: number) => Promise<void>;
 }
@@ -56,6 +60,10 @@ export interface RunnerHooks {
 export interface RunControl {
   paused: boolean;
   cancelled: boolean;
+  /** 断点节点 id 集合（执行前暂停） */
+  breakpoints: Set<string>;
+  /** 单步请求：执行完下一个节点后自动暂停 */
+  stepOnce: boolean;
   resume(): void;
   cancel(): void;
   waitIfPaused(): Promise<void>;
@@ -67,6 +75,8 @@ export function createRunControl(): RunControl {
   const ctrl: RunControl = {
     paused: false,
     cancelled: false,
+    breakpoints: new Set<string>(),
+    stepOnce: false,
     resume() {
       ctrl.paused = false;
       const resolvers = resumeResolvers;
@@ -563,12 +573,14 @@ export async function runWorkflow(req: RunRequest): Promise<RunResult> {
   const onLog = hooks?.onLog ?? (() => {});
   const onProgress = hooks?.onProgress ?? (() => {});
   const onEdgeActive = hooks?.onEdgeActive ?? (() => {});
+  const onBreakpoint = hooks?.onBreakpoint ?? (() => {});
+  const onPause = hooks?.onPause ?? (() => {});
 
   const started = Date.now();
   const logs: RunLogEntry[] = [];
   let logSeq = 0;
   const pushLog = (level: RunLogLevel, text: string, nodeId?: string) => {
-    const entry: RunLogEntry = { id: logSeq++, level, text, nodeId };
+    const entry: RunLogEntry = { id: logSeq++, level, text, nodeId, ts: Date.now() };
     logs.push(entry);
     onLog(entry);
   };
@@ -612,7 +624,20 @@ export async function runWorkflow(req: RunRequest): Promise<RunResult> {
 
   for (const nodeId of order) {
     if (control.cancelled) break;
+    // 断点：执行前暂停并通知 UI（继续 / 单步可解除）
+    if (control.breakpoints.has(nodeId)) {
+      control.paused = true;
+      const bpNode = snapshot.nodes.find((n) => n.id === nodeId);
+      const label = bpNode ? nodeData(bpNode).label || nodeId : nodeId;
+      pushLog('warn', `命中断点：${label}`, nodeId);
+      onBreakpoint(nodeId);
+    }
     await control.waitIfPaused();
+    if (control.cancelled) break;
+
+    // 单步请求：等待暂停解除后才消费，本次执行一个节点后自动暂停
+    const stepOnce = control.stepOnce;
+    control.stepOnce = false;
 
     const node = snapshot.nodes.find((n) => n.id === nodeId);
     if (!node) continue;
@@ -658,6 +683,10 @@ export async function runWorkflow(req: RunRequest): Promise<RunResult> {
     ctx.previous = exec.output;
 
     await sleep(60);
+    if (stepOnce) {
+      control.paused = true;
+      onPause();
+    }
   }
 
   if (control.cancelled) {

@@ -80,3 +80,20 @@ export function findMissingVars(template: string, vars: Record<string, unknown>)
 export function hasVar(vars: Record<string, unknown>, name: string): boolean {
   return lookupPath(vars, name) !== undefined;
 }
+
+/**
+ * 在文本的 caret 位置插入变量引用 `{{name}}`。
+ * 返回插入后的文本与新的光标位置（便于连续插入）。
+ */
+export function insertVarRef(
+  text: string,
+  name: string,
+  caret: number = text.length,
+): { text: string; caret: number } {
+  const ref = `{{${name}}}`;
+  const safe = Math.max(0, Math.min(caret, text.length));
+  return {
+    text: text.slice(0, safe) + ref + text.slice(safe),
+    caret: safe + ref.length,
+  };
+}

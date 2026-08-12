@@ -10,7 +10,7 @@ import {
   type NodeField,
   type NodeSchema,
 } from './schema';
-import { extractVars } from './vars';
+import { extractVars, insertVarRef } from './vars';
 
 const store = useWorkflowStore();
 
@@ -108,6 +108,44 @@ function fieldValue(f: NodeField): string {
   const v = node.value.data[f.key as keyof WorkflowNodeData];
   return v === undefined || v === null ? '' : String(v);
 }
+
+/* ---------- 变量与数据映射 ---------- */
+
+/** 选中节点的输入字段引用（供插入 / 诊断） */
+const nodeVarFields = computed(() => (node.value ? store.nodeInputVars(node.value.id) : []));
+/** 缺失变量（当前运行参数 + 上次运行输出中不可用的引用） */
+const missingVars = computed(() => (node.value ? store.missingVarsFor(node.value.id) : []));
+/** 上次运行输出预览 */
+const outputPreview = computed(() => (node.value ? store.nodeOutputPreview(node.value.id) : ''));
+/** 变量浏览器（可用变量分组展示） */
+const varGroups = computed(() => {
+  const groups = new Map<string, Array<{ name: string; value: string }>>();
+  for (const v of store.availableVars) {
+    const list = groups.get(v.source) ?? [];
+    list.push({
+      name: v.name,
+      value: typeof v.value === 'object' ? JSON.stringify(v.value) : String(v.value),
+    });
+    groups.set(v.source, list);
+  }
+  return [...groups.entries()];
+});
+
+/** 点击变量引用 → 追加到指定字段末尾 */
+function insertVar(field: string, name: string) {
+  if (!node.value) return;
+  const current = String(node.value.data[field as keyof WorkflowNodeData] ?? '');
+  const next = insertVarRef(current, name);
+  store.updateNodeData(node.value.id, { [field]: next.text } as Partial<WorkflowNodeData>);
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  template: '模板内容',
+  prompt: '提示词',
+  title: '标题',
+  message: '正文',
+  expr: '判断表达式',
+};
 </script>
 
 <template>
@@ -316,6 +354,86 @@ function fieldValue(f: NodeField): string {
             <span class="text-brand-600 font-mono">{{ templateVars.join('、') }}</span>
             <br />运行前请在「运行参数」中提供，缺失时会在日志中提示。
           </p>
+        </div>
+
+        <!-- 变量与数据映射 -->
+        <div class="border-surface-100 bg-surface-50/60 space-y-2.5 rounded-lg border px-3 py-2.5">
+          <p class="text-surface-900 text-[11px] font-semibold">变量与数据映射</p>
+
+          <!-- 输入引用 + 缺失诊断 -->
+          <div v-if="nodeVarFields.length > 0" class="space-y-1.5">
+            <div v-for="f in nodeVarFields" :key="f.field" class="text-[11px]">
+              <p class="text-surface-800/60">
+                {{ FIELD_LABELS[f.field] ?? f.field }} 引用：
+                <span v-if="f.vars.length === 0" class="text-surface-800/40">无变量</span>
+              </p>
+              <div class="mt-0.5 flex flex-wrap gap-1">
+                <button
+                  v-for="v in f.vars"
+                  :key="v"
+                  type="button"
+                  class="rounded px-1.5 py-0.5 font-mono text-[10px] transition"
+                  :class="
+                    store.availableVarNames.has(v)
+                      ? 'bg-green-500/10 text-green-700 hover:bg-green-500/20'
+                      : 'bg-amber-500/10 text-amber-700 hover:bg-amber-500/20'
+                  "
+                  :title="`点击追加 {{${v}}} 到 ${FIELD_LABELS[f.field] ?? f.field} 末尾`"
+                  @click="insertVar(f.field, v)"
+                >
+                  {{ v }}
+                </button>
+              </div>
+            </div>
+          </div>
+          <p v-else class="text-surface-800/40 text-[11px]">该节点没有引用变量</p>
+
+          <!-- 缺失变量诊断 -->
+          <div
+            v-if="missingVars.length > 0"
+            class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700"
+          >
+            缺失变量：<span class="font-mono">{{ missingVars.join('、') }}</span> <br /><span
+              class="opacity-80"
+              >请在「运行参数」中提供，或连接上游节点作为输入。</span
+            >
+          </div>
+          <p v-else-if="nodeVarFields.length > 0" class="text-[11px] text-green-700">
+            ✓ 引用的变量均可用
+          </p>
+
+          <!-- 输出预览（上次运行） -->
+          <div v-if="outputPreview">
+            <p class="text-surface-800/60 text-[11px]">上次运行输出：</p>
+            <pre
+              class="bg-surface-0 text-surface-800/80 border-surface-100 mt-0.5 max-h-24 overflow-y-auto rounded-md border p-1.5 font-mono text-[10px] leading-relaxed"
+              >{{ outputPreview }}</pre>
+          </div>
+
+          <!-- 变量浏览器 -->
+          <div>
+            <p class="text-surface-800/60 text-[11px]">
+              可用变量（{{ store.availableVars.length }}）：
+            </p>
+            <div v-if="varGroups.length > 0" class="mt-1 space-y-1">
+              <div v-for="[source, list] in varGroups" :key="source" class="text-[11px]">
+                <p class="text-surface-800/40">{{ source }}</p>
+                <div class="mt-0.5 flex max-h-20 flex-wrap gap-1 overflow-y-auto">
+                  <span
+                    v-for="v in list"
+                    :key="v.name"
+                    class="border-surface-100 bg-surface-0 text-surface-800/70 rounded border px-1.5 py-0.5 font-mono text-[10px]"
+                    :title="v.value"
+                  >
+                    {{ v.name }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <p v-else class="text-surface-800/40 mt-1 text-[11px]">
+              暂无可用变量：设置运行参数或运行一次后即可浏览节点输出。
+            </p>
+          </div>
         </div>
 
         <p class="text-surface-800/40 pt-1 text-[11px] leading-relaxed">

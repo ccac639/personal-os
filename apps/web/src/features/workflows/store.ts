@@ -22,6 +22,7 @@ import {
   getNodeDef,
   nextEdgeId,
   nextNodeId,
+  NODE_KINDS,
   nodeData,
   type RunLogEntry,
   type RunMode,
@@ -35,8 +36,23 @@ import {
 } from './types';
 import { graphStats, topoSort, validateGraph, type TopoResult } from './topo';
 import { createRunControl, runWorkflow, type RunnerHooks, type RunSnapshot } from './runner';
-import { normalizeDelay, resetToDefaults } from './schema';
+import { normalizeDelay, resetToDefaults, validateDataShape } from './schema';
 import { autoConnect, type AutoConnectResult } from './ai-workflow-schema';
+import {
+  alignPositions,
+  autoLayoutPositions,
+  distributePositions,
+  type AlignAxis,
+  type DistributeAxis,
+} from './layout';
+import {
+  buildTemplate,
+  loadTemplates,
+  parseTemplateJson,
+  saveTemplates,
+  type NodeTemplate,
+} from './templates';
+import { extractVars } from './vars';
 import {
   mockAiGenerateService,
   parseAiResponse,
@@ -75,6 +91,8 @@ export interface UndoState {
   records: StoredWorkflow[];
   activeId: string | null;
   selectedId: string | null;
+  /** 多选状态（还原时与 selectedId 同步恢复） */
+  selectedIds: string[];
 }
 
 /** AI 生成预览阶段（动画展示用，只作用于 preview，不修改正式画布） */
@@ -118,6 +136,14 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const running = ref(false);
   /** 当前正在执行的节点 id（运行进度展示） */
   const runningNodeId = ref<string | null>(null);
+  /** 运行暂停状态（断点 / 单步 / 手动暂停统一在此维护） */
+  const paused = ref(false);
+  /** 断点节点 id 集合（运行前暂停，画布红色角标） */
+  const breakpoints = ref<Set<string>>(new Set());
+  /** 最近一次运行的节点输出（id → 模拟输出，供变量浏览器 / 输出预览） */
+  const runOutputs = ref<Record<string, unknown>>({});
+  /** 节点模板库（localStorage 独立持久化） */
+  const nodeTemplates = ref<NodeTemplate[]>([]);
   const dirty = ref(false);
   /** 每次加载/示例/导入/清空/切换自增，画布据此重新 fitView */
   const layoutBump = ref(0);
@@ -214,6 +240,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
       records: records.value,
       activeId: activeId.value,
       selectedId: selectedId.value,
+      selectedIds: [...selectedIds.value],
     } satisfies UndoState);
   }
 
@@ -233,7 +260,13 @@ export const useWorkflowStore = defineStore('workflow', () => {
       const s = JSON.parse(state) as UndoState;
       records.value = s.records;
       activeId.value = s.activeId;
-      selectNode(s.selectedId);
+      // 多选状态一并还原（避免撤销后丢失框选/多选）
+      if (Array.isArray(s.selectedIds) && s.selectedIds.length > 0) {
+        selectMany(s.selectedIds);
+        if (s.selectedId && s.selectedIds.includes(s.selectedId)) selectedId.value = s.selectedId;
+      } else {
+        selectNode(s.selectedId);
+      }
       layoutBump.value++;
     } catch {
       /* 快照损坏则忽略 */
@@ -306,6 +339,17 @@ export const useWorkflowStore = defineStore('workflow', () => {
     const trimmed = workflowName.trim();
     if (!trimmed) return;
     if (rec.name === trimmed) return;
+    pushUndo();
+    rec.name = trimmed;
+    rec.updatedAt = Date.now();
+  }
+
+  /** 重命名当前工作流（工具栏输入框提交，单次撤销） */
+  function renameActive(workflowName: string) {
+    const rec = active.value;
+    if (!rec) return;
+    const trimmed = workflowName.trim();
+    if (!trimmed || rec.name === trimmed) return;
     pushUndo();
     rec.name = trimmed;
     rec.updatedAt = Date.now();
@@ -457,12 +501,18 @@ export const useWorkflowStore = defineStore('workflow', () => {
     const version = rec?.versions?.find((v) => v.id === id);
     if (!rec || !version) return false;
     pushUndo();
-    rec.nodes = version.nodes.map((n) => ({
+    // 防御性校验：恢复时丢弃未知节点 / 错误 schema / 孤立边
+    const validNodes = version.nodes.filter(
+      (n) => n && n.data && NODE_KINDS.has(n.data.kind) && validateDataShape(n.data).length === 0,
+    );
+    const vIds = new Set(validNodes.map((n) => n.id));
+    const validEdges = version.edges.filter((e) => vIds.has(e.source) && vIds.has(e.target));
+    rec.nodes = validNodes.map((n) => ({
       ...n,
       data: { ...nodeData(n), status: 'idle' as const },
       selected: false,
     }));
-    rec.edges = version.edges.map((e) => ({ ...e, selected: false }));
+    rec.edges = validEdges.map((e) => ({ ...e, selected: false }));
     rec.seq = version.seq > 0 ? version.seq : rec.seq;
     rec.updatedAt = Date.now();
     selectNode(null);
@@ -584,6 +634,223 @@ export const useWorkflowStore = defineStore('workflow', () => {
     active.value.nodes = active.value.nodes.map((n) =>
       map.has(n.id) ? { ...n, position: map.get(n.id)! } : n,
     );
+  }
+
+  /* ---------- 对齐 / 分布 / 自动布局 ---------- */
+
+  /** 对齐选中节点（≥2 个），单次撤销 */
+  function alignSelected(axis: AlignAxis): boolean {
+    const selNodes = nodes.value.filter((n) => selectedIds.value.includes(n.id));
+    if (selNodes.length < 2) return false;
+    pushUndo();
+    moveNodes(alignPositions(selNodes, axis));
+    return true;
+  }
+
+  /** 分布选中节点（≥3 个），单次撤销 */
+  function distributeSelected(axis: DistributeAxis): boolean {
+    const selNodes = nodes.value.filter((n) => selectedIds.value.includes(n.id));
+    if (selNodes.length < 3) return false;
+    pushUndo();
+    moveNodes(distributePositions(selNodes, axis));
+    return true;
+  }
+
+  /** 自动布局整个画布（分层），单次撤销 */
+  function autoLayoutCanvas(): boolean {
+    if (nodes.value.length < 2) return false;
+    pushUndo();
+    moveNodes(autoLayoutPositions(nodes.value, edges.value));
+    return true;
+  }
+
+  /* ---------- 节点模板 ---------- */
+
+  let templatesLoaded = false;
+  function ensureTemplates(): NodeTemplate[] {
+    if (!templatesLoaded) {
+      nodeTemplates.value = loadTemplates();
+      templatesLoaded = true;
+    }
+    return nodeTemplates.value;
+  }
+
+  function persistTemplates(): boolean {
+    return saveTemplates(nodeTemplates.value);
+  }
+
+  /** 保存选中子图为模板（剥离运行时状态与敏感字段） */
+  function saveSelectionAsTemplate(name: string, description = ''): NodeTemplate | null {
+    const sel = new Set(selectedIds.value);
+    if (sel.size === 0) return null;
+    const selNodes = nodes.value.filter((n) => sel.has(n.id));
+    const tpl = buildTemplate(name, selNodes, edges.value, description);
+    nodeTemplates.value = [tpl, ...nodeTemplates.value];
+    persistTemplates();
+    return tpl;
+  }
+
+  /** 插入模板到画布：全新 ID、内部边重映射、防重叠（与粘贴同策略） */
+  function insertTemplate(id: string, position?: XYPosition): boolean {
+    ensureTemplates();
+    const tpl = nodeTemplates.value.find((t) => t.id === id);
+    const rec = active.value;
+    if (!tpl || !rec || tpl.nodes.length === 0) return false;
+    pushUndo();
+
+    const idMap = new Map<string, string>();
+    const newNodes: WorkflowNodeModel[] = [];
+    const base = position ?? { x: 80, y: 80 };
+    let offsetX = 0;
+    let offsetY = 0;
+    const occupied = new Set(
+      nodes.value.map((n) => `${Math.round(n.position.x / 40)},${Math.round(n.position.y / 40)}`),
+    );
+    const first = tpl.nodes[0]!;
+    let guard = 0;
+    while (guard < 20) {
+      const key = `${Math.round((base.x + offsetX + first.position.x) / 40)},${Math.round((base.y + offsetY + first.position.y) / 40)}`;
+      if (!occupied.has(key)) break;
+      offsetX += 40;
+      offsetY += 40;
+      guard++;
+    }
+
+    for (const n of tpl.nodes) {
+      const newId = nextNodeId(rec.seq++);
+      idMap.set(n.id, newId);
+      newNodes.push({
+        ...n,
+        id: newId,
+        position: { x: n.position.x + base.x + offsetX, y: n.position.y + base.y + offsetY },
+        data: { ...n.data, status: 'idle' as const },
+        selected: false,
+      });
+    }
+    const newEdges = tpl.edges
+      .filter((e) => idMap.has(e.source) && idMap.has(e.target))
+      .map((e) => ({
+        ...e,
+        id: nextEdgeId(idMap.get(e.source)!, e.sourceHandle, idMap.get(e.target)!),
+        source: idMap.get(e.source)!,
+        target: idMap.get(e.target)!,
+        selected: false,
+      }));
+
+    rec.nodes.push(...newNodes);
+    rec.edges.push(...newEdges);
+    selectMany(newNodes.map((n) => n.id));
+    return true;
+  }
+
+  function deleteTemplate(id: string): boolean {
+    ensureTemplates();
+    const before = nodeTemplates.value.length;
+    nodeTemplates.value = nodeTemplates.value.filter((t) => t.id !== id);
+    if (nodeTemplates.value.length === before) return false;
+    persistTemplates();
+    return true;
+  }
+
+  /** 导出全部模板 JSON */
+  function exportTemplatesJson(): string {
+    ensureTemplates();
+    return JSON.stringify({ version: 1, templates: nodeTemplates.value }, null, 2);
+  }
+
+  /** 导入模板 JSON（严格校验，失败不写入） */
+  function importTemplatesJson(text: string): { ok: boolean; errors: string[]; added: number } {
+    ensureTemplates();
+    const result = parseTemplateJson(text);
+    if (!result.ok) return { ok: false, errors: result.errors, added: 0 };
+    // 导入的模板已由 parse 生成全新 ID（buildTemplate），不覆盖现有模板
+    nodeTemplates.value = [...result.templates, ...nodeTemplates.value];
+    persistTemplates();
+    return { ok: true, errors: [], added: result.templates.length };
+  }
+
+  /* ---------- 变量浏览器 / 数据映射 ---------- */
+
+  /** 当前可用的变量清单（运行参数 + 最近运行节点输出），供浏览器 / 诊断 */
+  const availableVars = computed<Array<{ name: string; source: string; value: unknown }>>(() => {
+    const vars: Array<{ name: string; source: string; value: unknown }> = [];
+    const p = runParams.value;
+    if (p.initialText !== undefined && p.initialText !== '') {
+      vars.push({ name: 'input', source: '运行参数', value: p.initialText });
+    }
+    for (const [k, v] of Object.entries(p.variables ?? {})) {
+      vars.push({ name: k, source: '变量', value: v });
+    }
+    for (const [k, v] of Object.entries(p.context ?? {})) {
+      vars.push({ name: k, source: '上下文', value: v });
+    }
+    for (const n of nodes.value) {
+      const out = runOutputs.value[n.id];
+      if (out !== undefined) {
+        vars.push({ name: n.id, source: `${n.data.label || n.id} 输出`, value: out });
+      }
+    }
+    if (runOutputs.value.previous !== undefined) {
+      vars.push({ name: 'previous', source: '上游输出', value: runOutputs.value.previous });
+    }
+    return vars;
+  });
+
+  const availableVarNames = computed(() => new Set(availableVars.value.map((v) => v.name)));
+
+  /** 节点各文本字段引用的变量（输入预览 / 插入用） */
+  function nodeInputVars(id: string): Array<{ field: string; vars: string[] }> {
+    const n = nodes.value.find((x) => x.id === id);
+    if (!n) return [];
+    const d = n.data;
+    const fields: Array<[string, string | undefined]> = [
+      ['template', d.template],
+      ['prompt', d.prompt],
+      ['title', d.title],
+      ['message', d.message],
+      ['expr', d.expr],
+    ];
+    return fields
+      .filter(([, v]) => v !== undefined && v !== null && v !== '')
+      .map(([field, v]) => ({ field, vars: extractVars(v!) }));
+  }
+
+  /** 缺失变量诊断：节点引用了但当前不可用的变量名 */
+  function missingVarsFor(id: string): string[] {
+    const missing = new Set<string>();
+    for (const { vars } of nodeInputVars(id)) {
+      for (const v of vars) if (!availableVarNames.value.has(v)) missing.add(v);
+    }
+    return [...missing];
+  }
+
+  /** 节点最近一次运行输出预览（JSON 摘要） */
+  function nodeOutputPreview(id: string): string {
+    const out = runOutputs.value[id];
+    if (out === undefined) return '';
+    const text = typeof out === 'object' ? JSON.stringify(out) : String(out);
+    return text.length > 200 ? `${text.slice(0, 200)}…` : text;
+  }
+
+  /* ---------- 断点 / 单步 ---------- */
+
+  function toggleBreakpoint(id: string) {
+    const next = new Set(breakpoints.value);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    breakpoints.value = next;
+  }
+
+  function hasBreakpoint(id: string): boolean {
+    return breakpoints.value.has(id);
+  }
+
+  /** 单步：执行完下一个节点后自动暂停（仅运行中有效） */
+  function stepRun() {
+    if (!running.value) return;
+    control.stepOnce = true;
+    control.paused = false;
+    paused.value = false;
   }
 
   /* ---------- 复制 / 粘贴 ---------- */
@@ -808,6 +1075,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     const result = loadAllWorkflows();
     records.value = result.records;
     migrationWarnings.value = result.warnings;
+    ensureTemplates();
     if (records.value.length > 0) {
       activeId.value = records.value[0]!.id;
       selectNode(null);
@@ -986,6 +1254,13 @@ export const useWorkflowStore = defineStore('workflow', () => {
         }
       }
     },
+    onBreakpoint: (nodeId) => {
+      paused.value = true;
+      runningNodeId.value = nodeId;
+    },
+    onPause: () => {
+      paused.value = true;
+    },
   };
 
   async function runWorkflowFn(mode: RunMode = runMode.value, targetId?: string) {
@@ -1023,12 +1298,15 @@ export const useWorkflowStore = defineStore('workflow', () => {
     }
 
     running.value = true;
+    paused.value = false;
     dirty.value = false;
     runningNodeId.value = null;
     resetStatus();
     // 重置控制句柄（保留同一实例，避免 UI 引用失效）
     control.cancelled = false;
     control.paused = false;
+    control.stepOnce = false;
+    control.breakpoints = new Set(breakpoints.value);
 
     const snapshot: RunSnapshot = {
       nodes: nodes.value.map((n) => ({ ...n, data: { ...nodeData(n) } })),
@@ -1046,6 +1324,13 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
     running.value = false;
     runningNodeId.value = null;
+    paused.value = false;
+    // 保留本次输出供变量浏览器 / 节点输出预览（previous 取最后执行节点）
+    runOutputs.value = { ...result.outputs };
+    const outKeys = Object.keys(result.outputs);
+    if (outKeys.length > 0) {
+      runOutputs.value.previous = result.outputs[outKeys[outKeys.length - 1]!];
+    }
     finishRun(result.status === 'success' ? 'success' : 'failed', Date.now() - started);
   }
 
@@ -1064,14 +1349,17 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
   function pauseRun() {
     control.paused = true;
+    paused.value = true;
   }
 
   function resumeRun() {
     control.resume();
+    paused.value = false;
   }
 
   function cancelRun() {
     control.cancel();
+    paused.value = false;
   }
 
   /** 从最近失败节点重新运行（失败节点重试） */
@@ -1104,6 +1392,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
           level: e.level,
           text: e.text,
           nodeId: e.nodeId,
+          ts: e.ts ?? null,
         })),
       },
       null,
@@ -1424,6 +1713,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     selectedNode,
     activeLastRun,
     running,
+    paused,
     runningNodeId,
     dirty,
     layoutBump,
@@ -1443,6 +1733,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     // 工作流 CRUD
     createWorkflow,
     renameWorkflow,
+    renameActive,
     duplicateWorkflow,
     deleteWorkflow,
     openWorkflow,
@@ -1476,6 +1767,30 @@ export const useWorkflowStore = defineStore('workflow', () => {
     copySelection,
     pasteNodes,
     deleteSelection,
+    // 对齐 / 分布 / 自动布局
+    alignSelected,
+    distributeSelected,
+    autoLayoutCanvas,
+    // 节点模板
+    nodeTemplates,
+    ensureTemplates,
+    saveSelectionAsTemplate,
+    insertTemplate,
+    deleteTemplate,
+    exportTemplatesJson,
+    importTemplatesJson,
+    // 变量浏览器 / 数据映射
+    availableVars,
+    availableVarNames,
+    nodeInputVars,
+    missingVarsFor,
+    nodeOutputPreview,
+    runOutputs,
+    // 断点 / 单步
+    breakpoints,
+    toggleBreakpoint,
+    hasBreakpoint,
+    stepRun,
     // AI 生成预览
     aiPhase,
     aiBusy,

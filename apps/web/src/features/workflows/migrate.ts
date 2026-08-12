@@ -17,6 +17,7 @@ import {
   type WorkflowNodeModel,
   type WorkflowVersion,
 } from './types';
+import { validateDataShape } from './schema';
 
 export const STORAGE_KEY_V3 = 'personal-os-workflows-v3';
 export const STORAGE_KEY_V2 = 'personal-os-workflows-v1';
@@ -110,6 +111,11 @@ function sanitizeWorkflowRecord(raw: unknown): {
     if (!NODE_KINDS.has(data.kind)) {
       warnings.push(`节点 ${node.id}：未知类型「${String(data.kind)}」，已丢弃`);
       return false;
+    }
+    // 数据形状问题（错误 schema）：保留节点但给出警告，便于定位修复
+    const shapeErrors = validateDataShape(data as unknown as WorkflowNodeData);
+    if (shapeErrors.length > 0) {
+      warnings.push(`节点 ${node.id}：${shapeErrors.join('；')}（已保留，运行前请检查）`);
     }
     return true;
   });
@@ -366,6 +372,12 @@ export function parseWorkflowJson(text: string): {
       !Number.isFinite(pos.y)
     ) {
       errors.push(`节点 ${n.id}：position 缺失或无效`);
+      continue;
+    }
+    // 数据形状校验（枚举 / 字段类型），拦截错误 schema
+    const shapeErrors = validateDataShape(data as unknown as WorkflowNodeData);
+    if (shapeErrors.length > 0) {
+      errors.push(`节点 ${n.id}：${shapeErrors.join('；')}`);
       continue;
     }
     nodes.push(n as unknown as WorkflowNodeModel);

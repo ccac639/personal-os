@@ -13,9 +13,11 @@ import {
   RotateCcw,
   ScrollText,
   Square,
+  X,
 } from '@lucide/vue';
 import { useWorkflowStore } from './store';
 import { getNodeDef, type RunLogEntry, type RunMode } from './types';
+import { filterLogs, type LevelFilter, type TimeFilter } from './logs';
 
 const store = useWorkflowStore();
 
@@ -82,19 +84,19 @@ function run() {
 }
 
 const isRunning = computed(() => store.running);
-const isPaused = ref(false);
 
 function onPause() {
   store.pauseRun();
-  isPaused.value = true;
 }
 function onResume() {
   store.resumeRun();
-  isPaused.value = false;
 }
 function onCancel() {
   store.cancelRun();
-  isPaused.value = false;
+}
+/** 单步：执行完下一个节点后自动暂停 */
+function onStep() {
+  store.stepRun();
 }
 
 /* ---------- 进度展示 ---------- */
@@ -142,10 +144,24 @@ const failureInfo = computed(() => {
   };
 });
 
-/* ---------- 日志（级别筛选 + 点击定位） ---------- */
+/* ---------- 日志（节点 / 级别 / 时间筛选 + 点击定位） ---------- */
 
-type LevelFilter = 'all' | 'info' | 'warn' | 'error';
 const levelFilter = ref<LevelFilter>('all');
+/** 按节点筛选：'' = 全部；'none' = 无节点关联 */
+const nodeFilter = ref('');
+/** 时间窗口（相对运行开始，秒）；all = 全部 */
+const timeFilter = ref<TimeFilter>('all');
+
+const nodeOptions = computed(() =>
+  store.nodes.map((n) => ({ id: n.id, label: n.data.label || n.id })),
+);
+
+const TIME_OPTIONS: Array<{ value: TimeFilter; label: string }> = [
+  { value: 'all', label: '全部时间' },
+  { value: '10', label: '近 10 秒' },
+  { value: '30', label: '近 30 秒' },
+  { value: '60', label: '近 60 秒' },
+];
 
 const LEVEL_META: Record<RunLogEntry['level'], { label: string; cls: string }> = {
   run: { label: '运行', cls: 'text-brand-600 bg-brand-500/10' },
@@ -155,14 +171,13 @@ const LEVEL_META: Record<RunLogEntry['level'], { label: string; cls: string }> =
   error: { label: '错误', cls: 'text-red-600 bg-red-500/10' },
 };
 
-function matchesLevel(e: RunLogEntry): boolean {
-  if (levelFilter.value === 'all') return true;
-  if (levelFilter.value === 'error') return e.level === 'error';
-  if (levelFilter.value === 'warn') return e.level === 'warn' || e.level === 'error';
-  return ['info', 'success', 'run'].includes(e.level);
-}
-
-const filteredLogs = computed(() => store.runEntries.filter(matchesLevel));
+const filteredLogs = computed(() =>
+  filterLogs(store.runEntries, {
+    level: levelFilter.value,
+    node: nodeFilter.value,
+    time: timeFilter.value,
+  }),
+);
 
 const counts = computed(() => ({
   all: store.runEntries.length,
@@ -176,6 +191,21 @@ function locate(entry: RunLogEntry) {
   if (!entry.nodeId) return;
   store.selectNode(entry.nodeId);
   store.focusSelected();
+}
+
+/* ---------- 断点快捷操作 ---------- */
+
+const breakpointNodes = computed(() =>
+  [...store.breakpoints]
+    .map((id) => {
+      const n = store.nodes.find((x) => x.id === id);
+      return n ? { id, label: n.data.label || n.id } : null;
+    })
+    .filter((x): x is { id: string; label: string } => x !== null),
+);
+
+function toggleSelectedBreakpoint() {
+  if (store.selectedId) store.toggleBreakpoint(store.selectedId);
 }
 
 /* ---------- 结果操作 ---------- */
@@ -243,7 +273,7 @@ const collapsed = ref(false);
         </button>
         <template v-else>
           <button
-            v-if="!isPaused"
+            v-if="!store.paused"
             type="button"
             class="text-surface-800/70 hover:bg-surface-100 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs transition"
             title="暂停"
@@ -257,12 +287,22 @@ const collapsed = ref(false);
             v-else
             type="button"
             class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition"
-            title="继续"
+            title="继续运行"
             aria-label="继续运行"
             @click="onResume"
           >
             <Play class="size-3.5" />
             继续
+          </button>
+          <button
+            v-if="store.paused"
+            type="button"
+            class="text-surface-800/70 hover:bg-surface-100 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs transition"
+            title="单步：执行下一个节点后自动暂停"
+            aria-label="单步执行"
+            @click="onStep"
+          >
+            单步
           </button>
           <button
             type="button"
@@ -282,11 +322,23 @@ const collapsed = ref(false);
         <template v-if="isRunning">
           <Loader2 class="text-brand-600 size-3.5 animate-spin" />
           <span class="text-surface-900 truncate font-medium">
-            {{ isPaused ? '已暂停' : `正在执行：${currentLabel || '…'}` }}
+            {{ store.paused ? '已暂停' : `正在执行：${currentLabel || '…'}` }}
           </span>
           <span class="text-surface-800/50 tabular-nums">
             {{ doneCount }}/{{ totalCount }} 节点 · {{ durationLabel }}
           </span>
+          <button
+            v-if="!store.paused"
+            type="button"
+            class="text-surface-800/50 hover:bg-surface-100 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition"
+            :class="store.selectedId && store.hasBreakpoint(store.selectedId) ? 'text-red-500' : ''"
+            :disabled="!store.selectedId"
+            :title="store.selectedId ? '在选中节点切换断点（执行前暂停）' : '请先选中节点'"
+            @click="toggleSelectedBreakpoint"
+          >
+            <span class="inline-block size-1.5 rounded-full bg-red-500" />
+            断点{{ breakpointNodes.length > 0 ? ` ${breakpointNodes.length}` : '' }}
+          </button>
         </template>
         <template v-else-if="lastRun">
           <Check v-if="lastRun.status === 'success'" class="size-3.5 text-green-600" />
@@ -378,6 +430,51 @@ const collapsed = ref(false);
         </div>
       </div>
 
+      <!-- 断点列表 -->
+      <div
+        class="border-surface-100 bg-surface-50/50 flex w-full shrink-0 flex-col rounded-lg border p-3 lg:w-72"
+      >
+        <div class="flex items-center justify-between">
+          <p class="text-surface-900 text-xs font-semibold">断点</p>
+          <span class="text-surface-800/50 text-[11px] tabular-nums">
+            {{ breakpointNodes.length }} 个
+          </span>
+        </div>
+        <p class="text-surface-800/50 mt-1 text-[11px]">
+          右键节点或运行中点击「断点」按钮切换；命中断点时执行前暂停，可「继续」或「单步」。
+        </p>
+        <ul v-if="breakpointNodes.length > 0" class="mt-2 space-y-1">
+          <li
+            v-for="b in breakpointNodes"
+            :key="b.id"
+            class="hover:bg-surface-100/60 flex items-center gap-1.5 rounded px-1.5 py-1 text-[11px]"
+          >
+            <span class="inline-block size-1.5 shrink-0 rounded-full bg-red-500" />
+            <button
+              type="button"
+              class="text-surface-800/80 min-w-0 flex-1 truncate text-left hover:underline"
+              :title="'定位到节点 ' + b.id"
+              @click="
+                store.selectNode(b.id);
+                store.focusSelected();
+              "
+            >
+              {{ b.label }}
+            </button>
+            <button
+              type="button"
+              class="text-surface-800/40 shrink-0 hover:text-red-600"
+              title="移除断点"
+              :aria-label="'移除断点 ' + b.label"
+              @click="store.toggleBreakpoint(b.id)"
+            >
+              <X class="size-3" />
+            </button>
+          </li>
+        </ul>
+        <p v-else class="text-surface-800/40 mt-2 text-[11px]">暂无断点</p>
+      </div>
+
       <!-- 失败信息 -->
       <div
         v-if="runFailed && failureInfo.error"
@@ -437,6 +534,29 @@ const collapsed = ref(false);
               {{ counts[f] }}
             </button>
           </div>
+
+          <!-- 按节点筛选 -->
+          <select
+            v-model="nodeFilter"
+            class="border-surface-100 bg-surface-50 text-surface-800/70 rounded-md border px-1.5 py-0.5 text-[10px] outline-none"
+            title="按节点筛选日志"
+            aria-label="按节点筛选"
+          >
+            <option value="">全部节点</option>
+            <option value="none">无节点关联</option>
+            <option v-for="n in nodeOptions" :key="n.id" :value="n.id">{{ n.label }}</option>
+          </select>
+
+          <!-- 按时间筛选 -->
+          <select
+            v-model="timeFilter"
+            class="border-surface-100 bg-surface-50 text-surface-800/70 rounded-md border px-1.5 py-0.5 text-[10px] outline-none"
+            title="按运行时间窗口筛选"
+            aria-label="按时间筛选"
+          >
+            <option v-for="t in TIME_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</option>
+          </select>
+
           <div class="ml-auto flex items-center gap-1">
             <button
               type="button"
