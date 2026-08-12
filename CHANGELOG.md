@@ -4,6 +4,9 @@
 
 ### Added
 
+- 路由页面过渡 v2「系统切换」：中心光束 + 定位环 + 细线六边形 + 状态文本
+  （切换至 X）+ 视觉进度条，新页面以中央竖缝 clip-path 视口展开（不支持时
+  自动淡入降级）；遮罩 z-index 定为 45（低于弹窗层），整体切换 ≤ 900ms
 - 统一路由页面过渡系统：旧页淡出缩小 → 中心扫描线/光带 → 新页从中心展开 →
   内容分层进入（首页/Chat/工作流/项目主要区块），仅 transform/opacity/filter、
   遮罩 pointer-events 穿透、快速连续切换只保留最后一次导航、支持
@@ -14,6 +17,8 @@
 
 ### Changed
 
+- 过渡遮罩 z-index 9000 → 45（低于 modal/dialog/toast/popover 的 z-50+，
+  高于页面内容 z-40），彻底消除与弹窗层的层级争议
 - 路由视图下沉到 default-layout（RouterView + Transition + KeepAlive），
   顶部导航等持久 UI 不参与页面动画；motion-v 仅保留导航下划线/涟漪等微动效
 - 导航项补齐键盘 focus-visible 高亮（ring 样式，与 hover 状态一致）

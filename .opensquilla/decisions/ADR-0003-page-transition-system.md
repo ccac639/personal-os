@@ -43,33 +43,52 @@ motion.div）使页面根节点与过渡系统耦合。需求：一套「炫技�
   导航时旧动画被取消，只保留最后一次导航的遮罩生命周期；
 - `SAFETY_MS=1500` 兜底：路由失败、动画取消且未恢复等异常路径下遮罩
   强制销毁，绝不长期遮挡；
-- 遮罩 `position: fixed + pointer-events: none + z-index: 9000`（CSS 变量
-  可覆盖）。9s 设计说明：遮罩仅在路由切换期间存在（约 0.9s）、底色 8% 透明度、
-  不拦截任何事件，因此不会对弹窗/toast 造成可感知遮挡或交互阻断；若未来
-  需要严格压到全局弹窗之下，覆盖 `--page-transition-z` 即可。
+- 遮罩 `position: fixed + pointer-events: none + z-index: 45`（CSS 变量
+  可覆盖）。v2 起 z-index 定为 45：高于页面内容与 header（z-40），低于项目
+  全部 modal/dialog/toast/popover（z-50 ~ z-[70]），配合 pointer-events: none，
+  动画期间既不阻塞操作也不产生任何视觉遮挡；若未来需要调整，覆盖
+  `--page-transition-z` 即可。
 
-### 3. 动画实现：纯 CSS transform/opacity/filter
+### 3. 动画实现：纯 CSS transform/opacity/有限 filter/有限 clip-path
 
-- 时长：旧页退场 360ms → 扫描线 520ms（与新页入场并行）→ 新页入场 360ms →
-  遮罩在入场完成 200ms 后销毁（扫描线完整收尾）；
+- v2 时长：旧页退场 420ms → 扫描线 520ms（与新页入场并行）→ 新页入场 480ms
+  （含 clip-path 视口展开）→ 遮罩在入场完成 200ms 后销毁（整体切换 ≤ 900ms）；
+- v1 时长：旧页退场 360ms → 新页入场 360ms → 遮罩 200ms 后销毁；
 - 旧页退场期间 `position: absolute`，避免不同高度页面引起滚动条/布局跳动；
-- 扫描线/网格/噪点全部走 transform/opacity，不触发布局计算；噪点为静态
-  SVG feTurbulence 贴图（opacity 0.035），不做逐帧动画；
+- 全部元素走 transform/opacity，新页入场追加有限 clip-path（`inset()` 中央
+  竖缝展开）；不支持的浏览器自动忽略 clip-path 属性，仅执行 opacity/transform
+  淡入（降级路径）；噪点为静态 SVG feTurbulence 贴图（opacity 0.035），
+  禁止闪烁；
 - `prefers-reduced-motion: reduce` 下全部动画关闭、遮罩隐藏。
 
 ### 4. 内容分层进入：语义类 `page-content-section`
 
-仅对首页 / Chat / 工作流 / 项目四页的主要区块显式添加该类，60/110/160ms
-依次上移淡入；长列表（项目卡片网格）整体进入，不给列表项逐个加动画。
-其余页面不加类 = 跟随统一页面过渡，不做额外分层，保持克制。
+仅对首页 / Chat / 工作流 / 项目四页的主要区块显式添加该类。v2 起延迟节奏
+对齐三层语义：第 1 层（标题/筛选/顶部摘要）60ms、第 2 层（主要内容面板）
+120ms、第 3 层（辅助列表/统计/次级卡片）180ms；长列表（项目卡片网格）整体
+进入，不给列表项逐个加动画。其余页面不加类 = 跟随统一页面过渡，不做额外
+分层，保持克制。
 
-### 5. 单根节点约束
+### 5. v2 增强（2026-08-13）：系统切换视觉层
+
+在既有遮罩内新增（全部 pointer-events: none、一次播放后随 v-if 销毁）：
+
+- 中心光束 `.page-transition-beam`：垂直光带，新页展开瞬间从视口中心向两侧
+  扩散（560ms，渐变 + 弱光晕，不刺眼）；
+- 中心定位环 `.page-transition-rings`：两个同心细环从中心向外扩散淡出；
+- 细线六边形 `.page-transition-hex`（左/右）：clip-path 六边形 + inset
+  box-shadow 细边框，低透明度，坐标定位感；
+- 状态文本 `.page-transition-status`：显示「切换至 {目标页标题}」，标题来自
+  `showTransitionOverlay({ fromTitle, toTitle })`（布局内 watch 路由标题提供）；
+- 视觉进度条 `.page-transition-progress`：纯动画装饰（不伪造真实加载百分比）。
+
+### 6. 单根节点约束
 
 Vue `<Transition>` 要求被包裹组件为单根节点：排查全部路由页面后，仅
 `workflows/index.vue` 是双根（v-if/v-else 双视图），已加单根包裹容器
 （不改变布局与业务逻辑）。
 
-### 6. KeepAlive 白名单机制
+### 7. KeepAlive 白名单机制
 
 保留需求模板中的 `<KeepAlive :include="keepAlivePages">`，但默认
 `keepAlivePages = []`（不缓存任何页面，行为与无 KeepAlive 完全一致，
@@ -82,7 +101,11 @@ Vue `<Transition>` 要求被包裹组件为单根节点：排查全部路由页�
   fullPath 变化），动画一致；
 - 路由失败（懒加载 chunk 异常）由 `router.onError` 兜底清理遮罩并记录日志，
   不中断当前页面；项目暂无独立错误页，未新增路由（不修改路由路径）；
-- 单测：`use-page-transition` 状态机 6 个用例（含快速连续导航/兜底销毁）；
+- 遮罩生命周期：显示约 0.9s、pointer-events 穿透、z-index 45（低于弹窗层），
+  动画失败/取消/快速连点均不会滞留或叠加；
+- 单测：`use-page-transition` 状态机 11 个用例（含快速连续导航/兜底销毁/
+  meta 清理/timer 零残留）+ CSS 契约 6 个用例（pointer-events、z-index 边界、
+  reduced-motion 禁用清单、clip-path 降级、关键帧无布局属性、分层延迟上限）；
   `default-layout.spec.ts` 改为轻量测试路由 + 真实 RouterView/Transition，
   避免全量并行时懒加载 chunk 拖垮 5s 超时。
 
@@ -91,8 +114,9 @@ Vue `<Transition>` 要求被包裹组件为单根节点：排查全部路由页�
 - **保留 motion-v AnimatePresence 增强**：中断处理可靠，但无法复用需求方
   给定的 CSS 类体系（.page-enter-*），且与「使用 Vue Router + Transition」
   的明确要求不符 → 拒绝。
-- **遮罩 z-index 压到弹窗之下（如 45/65）**：会低于部分既有浮层
-  （drawer z-40/50、toast z-70）导致扫描线不可见或层级混乱；当前方案以
-  pointer-events:none + 瞬时存在规避遮挡问题，z-index 留 CSS 变量可调。
+- **遮罩 z-index 维持 9000（v1 方案）**：扫描线覆盖全屏更醒目，但严格高于
+  项目全部弹窗层（toast z-[70]、dialog z-[60]）；v2 改为 45 直接满足「低于
+  modal/dialog/toast/popover」的明确验收，配合 pointer-events:none 不牺牲
+  视觉完整度 → v2 采纳 45，9000 方案作废。
 - **自动为页面直接子元素批量加分层动画**：首页直接子元素含装饰性光斑，
   全自动分层会误伤装饰元素且难控节奏 → 采用显式语义类。

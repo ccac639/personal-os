@@ -1,56 +1,66 @@
 /* ==========================================================================
-   Personal OS — 路由页面过渡系统（炫技层）
+   Personal OS — 路由页面过渡系统（系统切换炫技层）
    --------------------------------------------------------------------------
-   视觉节奏：
-     旧页面淡出 + 缩小（360ms）
-         ↓
-     中心扫描线 / 光带经过（520ms，同时新页面开始入场）
-         ↓
-     新页面从中心展开（360ms）
-         ↓
-     内容分层进入（60 / 110 / 160ms 延迟）
+   视觉节奏（整体 ≤ 900ms）：
+     ① 导航下划线 FLIP 滑动到目标项（motion-v layoutId，与路由同步）
+     ② 旧页面退场：轻微缩小 + 压暗 + 上移淡出（420ms，离场期间绝对定位防跳动）
+     ③ 中心系统层出现：网格 + 定位环 + 六边形 + 状态文本 + 视觉进度条（非真实加载）
+     ④ 能量扫描线从左到右扫过（520ms）
+     ⑤ 新页面「视口展开」：中央竖缝 clip-path 展开 + 淡入上移回正（480ms）
+     ⑥ 页面主要区块按层级 60/120/180ms 依次显现
+     ⑦ 遮罩延迟 200ms 后彻底销毁（v-if），无任何残留层
    --------------------------------------------------------------------------
    性能原则：
-   - 动画只用 transform / opacity / filter，不触发布局计算；
-   - 遮罩 position: fixed + pointer-events: none，动画期间不阻塞任何交互；
-   - 遮罩由 v-if 控制，仅在路由切换期间存在于 DOM，结束后彻底销毁。
-   颜色适配：扫描线使用低饱和蓝紫（浅色 / 深空主题下均清晰），不做大面积渐变。
+   - 动画只用 transform / opacity / 有限 filter / 有限 clip-path，不触发布局；
+   - 遮罩 position: fixed + pointer-events: none + z-index 45（低于项目
+     modal/dialog/toast/popover 的 z-50+，高于页面内容 z-40），动画期间不阻塞、
+     不遮挡任何可操作弹窗；
+   - 无逐帧 JS、无持续 requestAnimationFrame、不修改 top/left/width/height；
+   - 噪点为静态贴图，禁止闪烁；光束/环/六边形均一次播放后随遮罩销毁。
+   颜色适配：低饱和蓝紫（#6366f1 / #8ea7ff）+ 极少量白，克制不刺眼。
    ========================================================================== */
 
 /* ---------- 1. 页面整体过渡（Vue Transition name="page"） ---------- */
 
-.page-enter-active,
-.page-leave-active {
-  transition:
-    opacity 360ms ease,
-    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 360ms ease;
-}
-
-/* 旧页面退场期间脱离文档流：页面高度各异也不会引起滚动条 / 布局跳动 */
+/* 旧页面：淡出 + 缩小上移 + 模糊压暗（brightness 降低亮度，营造「后退」感） */
 .page-leave-active {
   position: absolute;
   inset: 0;
+  transition:
+    opacity 420ms ease,
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 420ms ease;
 }
 
-/* 旧页面：淡出 + 轻微缩小上移 + 轻模糊 */
 .page-leave-to {
   opacity: 0;
-  transform: scale(0.985) translateY(-8px);
-  filter: blur(3px);
+  transform: scale(0.975) translateY(-10px);
+  filter: blur(3px) brightness(0.82);
 }
 
-/* 新页面：从中心位置淡入 + 上移 + 轻微放大回正 */
+/* 新页面：中央竖缝「视口展开」+ 淡入上移回正。
+   clip-path 不支持的浏览器自动忽略该属性，仅执行 opacity/transform 淡入（降级路径） */
+.page-enter-active {
+  transition:
+    opacity 480ms ease,
+    transform 480ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 480ms ease,
+    clip-path 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: clip-path;
+}
+
 .page-enter-from {
   opacity: 0;
-  transform: scale(1.015) translateY(18px);
+  transform: scale(1.02) translateY(20px);
   filter: blur(4px);
+  clip-path: inset(0 46% 0 46%);
 }
 
 .page-enter-to {
   opacity: 1;
   transform: scale(1) translateY(0);
   filter: blur(0);
+  clip-path: inset(0 0 0 0);
 }
 
 /* ---------- 2. 全局过渡遮罩（仅路由切换期间显示，v-if 控制） ---------- */
@@ -58,15 +68,26 @@
 .page-transition-overlay {
   position: fixed;
   inset: 0;
-  /* 高于页面内容（含 header z-40）；pointer-events: none 保证不阻塞任何操作。
-     遮罩仅存活约 0.9s 且底色极淡，不会对弹窗 / toast 造成可感知的遮挡。
-     如需严格压到全局弹窗之下，覆盖 --page-transition-z 即可。 */
-  z-index: var(--page-transition-z, 9000);
+  /* 低于项目全部 modal/dialog/toast/popover（z-50 ~ z-[70]），
+     高于页面内容与 header（z-40）；配合 pointer-events: none 完全不遮挡操作 */
+  z-index: var(--page-transition-z, 45);
   overflow: hidden;
   pointer-events: none;
   background: rgba(8, 10, 16, 0.08);
   /* 独立合成层：遮罩出现 / 销毁不触发页面重排 */
   contain: paint;
+}
+
+/* 淡网格：系统定位坐标背景（极低透明度，不干扰阅读） */
+.page-transition-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.12;
+  background-size: 32px 32px;
+  background-image:
+    linear-gradient(rgba(142, 167, 255, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(142, 167, 255, 0.18) 1px, transparent 1px);
+  animation: page-grid-in 420ms ease-out;
 }
 
 /* 能量扫描线：从左侧高速扫过视口，两端渐隐 */
@@ -89,16 +110,126 @@
   will-change: transform;
 }
 
-/* 淡网格：扫描线经过时的背景纹理（极低透明度，不干扰阅读） */
-.page-transition-grid {
+/* 中心光束：新页面展开瞬间从视口中心向两侧扩散的垂直光带（一次播放，随遮罩销毁） */
+.page-transition-beam {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 48px;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(142, 167, 255, 0.24) 45%,
+    rgba(255, 255, 255, 0.42) 50%,
+    rgba(142, 167, 255, 0.24) 55%,
+    transparent
+  );
+  filter: blur(1px);
+  animation: page-beam-in 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+/* 中心定位环：两个同心细环，从中心向外扩散淡出（定位感） */
+.page-transition-rings {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 280px;
+  height: 280px;
+  transform: translate(-50%, -50%);
+}
+
+.page-transition-rings span {
   position: absolute;
   inset: 0;
-  opacity: 0.12;
-  background-size: 32px 32px;
-  background-image:
-    linear-gradient(rgba(142, 167, 255, 0.18) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(142, 167, 255, 0.18) 1px, transparent 1px);
-  animation: page-grid-in 420ms ease-out;
+  border: 1px solid rgba(142, 167, 255, 0.35);
+  border-radius: 50%;
+  animation: page-ring-pulse 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.page-transition-rings span:nth-child(2) {
+  animation-delay: 90ms;
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* 细线六边形（坐标框）：中心两侧各一个，低透明度细边框，轻微入位 */
+.page-transition-hex {
+  position: absolute;
+  top: 50%;
+  width: 88px;
+  height: 102px;
+  background: rgba(142, 167, 255, 0.1);
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  animation: page-hex-in 640ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform: translateY(-50%) rotate(var(--hex-rotate, 0deg));
+}
+
+/* 内缩一层模拟细边框（clip-path 会裁掉 border，用 inset box-shadow 绘制） */
+.page-transition-hex::after {
+  content: '';
+  position: absolute;
+  inset: 1.5px;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  box-shadow: inset 0 0 0 1px rgba(142, 167, 255, 0.5);
+}
+
+.page-transition-hex--left {
+  --hex-rotate: -8deg;
+  left: 18%;
+}
+
+.page-transition-hex--right {
+  --hex-rotate: 8deg;
+  right: 18%;
+  animation-delay: 60ms;
+}
+
+/* 状态文本：短暂显示「切换至 X」，仅视觉装饰，aria-hidden 由遮罩整体承担 */
+.page-transition-status {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 170px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: rgba(142, 167, 255, 0.9);
+  white-space: nowrap;
+  animation: page-status-in 420ms ease-out both;
+}
+
+.page-transition-status::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #8ea7ff;
+  box-shadow: 0 0 8px rgba(142, 167, 255, 0.9);
+  animation: page-status-dot 800ms ease-in-out infinite;
+}
+
+/* 视觉进度条：纯动画装饰，不代表真实网络加载百分比 */
+.page-transition-progress {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 196px);
+  width: 180px;
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(142, 167, 255, 0.18);
+  overflow: hidden;
+}
+
+.page-transition-progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6366f1, #8ea7ff);
+  animation: page-progress-run 680ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* 细颗粒噪点：静态贴图，进一步压暗纯色块、增加质感（不参与动画，避免闪烁） */
@@ -137,10 +268,102 @@
   }
 }
 
+@keyframes page-beam-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scaleY(0.4);
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 0.9;
+    transform: translateX(-50%) scaleY(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) scaleY(1.15);
+  }
+}
+
+@keyframes page-ring-pulse {
+  from {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+
+@keyframes page-hex-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) rotate(var(--hex-rotate, 0deg)) scale(0.8);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(-50%) rotate(var(--hex-rotate, 0deg)) scale(1);
+  }
+}
+
+@keyframes page-status-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes page-status-dot {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes page-progress-run {
+  from {
+    transform: translateX(-100%);
+    opacity: 0.4;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(100%);
+    opacity: 0.9;
+  }
+}
+
 /* ---------- 3. 页面内容分层进入 ----------
-   仅用于页面主要区块（页面模板中显式添加 page-content-section 的元素）；
-   每个区块 420ms 轻微上移淡入，按出现顺序 60/110/160ms 错开。
-   长列表容器请整体加类，不要给列表项逐个加动画。 */
+   仅用于页面主要区块（页面模板中显式添加 page-content-section 的元素）。
+   三层语义（按文档顺序依次延迟）：
+     第 1 层（60ms）：页面标题、筛选、顶部摘要
+     第 2 层（120ms）：主要内容面板
+     第 3 层（180ms）：辅助列表、统计和次级卡片
+   长列表容器请整体加类，不要给列表项逐个加动画；
+   页面未标记区块时不做任何强制，保持正常过渡。 */
 
 .page-content-section {
   animation: section-reveal 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -151,11 +374,11 @@
 }
 
 .page-content-section:nth-child(2) {
-  animation-delay: 110ms;
+  animation-delay: 120ms;
 }
 
 .page-content-section:nth-child(3) {
-  animation-delay: 160ms;
+  animation-delay: 180ms;
 }
 
 @keyframes section-reveal {
@@ -170,7 +393,7 @@
   }
 }
 
-/* ---------- 4. 无障碍：弱化动效 ---------- */
+/* ---------- 4. 无障碍：完全禁用复杂动效 ---------- */
 
 @media (prefers-reduced-motion: reduce) {
   .page-enter-active,
@@ -178,6 +401,11 @@
   .page-content-section,
   .page-transition-scanline,
   .page-transition-grid,
+  .page-transition-beam,
+  .page-transition-rings,
+  .page-transition-hex,
+  .page-transition-status,
+  .page-transition-progress,
   .page-transition-noise {
     animation: none !important;
     transition: none !important;

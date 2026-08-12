@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { motion, AnimatePresence, LayoutGroup } from 'motion-v';
 import { useRoute } from 'vue-router';
-import { onBeforeUnmount, ref } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
 import PagePet from '@/components/PagePet.vue';
 import {
   PAGE_TRANSITION,
@@ -64,7 +64,7 @@ function isActive(to: string): boolean {
 const brandLetters = 'Personal OS'.split('');
 
 /** 页面过渡层状态（模块级单例，路由失败时也能被 router.onError 清理） */
-const { isTransitioning } = usePageTransition();
+const { isTransitioning, transitionMeta } = usePageTransition();
 
 /**
  * KeepAlive 白名单：需要跨路由保留状态 / 滚动位置的页面组件名。
@@ -72,6 +72,23 @@ const { isTransitioning } = usePageTransition();
  * 默认空数组 = 不缓存任何页面，行为与不加 KeepAlive 完全一致（不改变页面业务逻辑）。
  */
 const keepAlivePages: string[] = [];
+
+/** 记录来源页标题：路由确认时把「上一路由」的标题暂存，供过渡遮罩状态文本使用 */
+const prevRouteTitle = ref<string | undefined>(undefined);
+watch(
+  () => route.meta.title,
+  (to, from) => {
+    prevRouteTitle.value = typeof from === 'string' ? from : undefined;
+  },
+);
+
+/** 旧页面离场完成：显示系统切换遮罩（携带来源/目标页标题） */
+function onTransitionAfterLeave() {
+  showTransitionOverlay({
+    fromTitle: prevRouteTitle.value,
+    toTitle: typeof route.meta.title === 'string' ? route.meta.title : undefined,
+  });
+}
 
 /** 新页面入场完成：延迟隐藏遮罩，让扫描线动画完整收尾 */
 function onTransitionAfterEnter() {
@@ -232,7 +249,7 @@ onBeforeUnmount(() => {
           :name="getRouteTransition(viewRoute)"
           mode="out-in"
           appear
-          @after-leave="showTransitionOverlay"
+          @after-leave="onTransitionAfterLeave"
           @after-enter="onTransitionAfterEnter"
         >
           <KeepAlive :include="keepAlivePages">
@@ -243,10 +260,20 @@ onBeforeUnmount(() => {
     </main>
 
     <!-- 全局页面过渡层：仅路由切换期间出现；fixed 全视口 + pointer-events 穿透，
-         不影响滚动与交互，新页面入场后由 v-if 彻底销毁 -->
+         z-index 低于项目弹窗层，不遮挡任何可操作 UI；新页面入场后由 v-if 彻底销毁 -->
     <div v-if="isTransitioning" class="page-transition-overlay" aria-hidden="true">
-      <div class="page-transition-scanline"></div>
       <div class="page-transition-grid"></div>
+      <div class="page-transition-scanline"></div>
+      <div class="page-transition-beam"></div>
+      <div class="page-transition-rings"><span></span><span></span></div>
+      <div class="page-transition-hex page-transition-hex--left"></div>
+      <div class="page-transition-hex page-transition-hex--right"></div>
+      <div v-if="transitionMeta.toTitle" class="page-transition-status">
+        切换至 {{ transitionMeta.toTitle }}
+      </div>
+      <div class="page-transition-progress">
+        <div class="page-transition-progress-bar"></div>
+      </div>
       <div class="page-transition-noise"></div>
     </div>
 
