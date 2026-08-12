@@ -105,42 +105,82 @@ const pages = computed(() => {
 
 const PAGE_COUNT = computed(() => pages.value.length);
 const AUTOPLAY_MS = 5000;
+/** 进度更新 tick（单一时钟，消除 CSS 动画与定时器双时钟偏差） */
+const TICK_MS = 50;
 
 const current = ref(0);
 const paused = ref(false);
-let timer: ReturnType<typeof setInterval> | null = null;
+/** 当前页进度 0-100（显式状态，由 JS 驱动） */
+const progress = ref(0);
+/** 当前页开始时刻（performance.now） */
+let pageStartAt = 0;
+/** hover 暂停时冻结的已过毫秒数 */
+let elapsedAtPause = 0;
+let ticker: ReturnType<typeof setInterval> | null = null;
 
 const animName = computed(() => ANIMS[current.value % ANIMS.length] ?? 'fade');
 const currentPage = computed(() => pages.value[current.value] ?? []);
 
+/** 重置进度：换页/手动切换后从 0 开始（暂停中则同步冻结基点） */
+function resetProgress() {
+  pageStartAt = performance.now();
+  progress.value = 0;
+  if (paused.value) elapsedAtPause = 0;
+}
+
 function next() {
   current.value = (current.value + 1) % PAGE_COUNT.value;
+  resetProgress();
 }
 
 function prev() {
   current.value = (current.value - 1 + PAGE_COUNT.value) % PAGE_COUNT.value;
+  resetProgress();
 }
 
 function goTo(index: number) {
   current.value = index;
+  resetProgress();
+}
+
+/** 悬停暂停：冻结当前进度位置 */
+function onPause() {
+  if (paused.value) return;
+  paused.value = true;
+  elapsedAtPause = Math.min(performance.now() - pageStartAt, AUTOPLAY_MS);
+}
+
+/** 离开恢复：从冻结位置继续（调整起点使剩余时长 = AUTOPLAY_MS - 已过时长） */
+function onResume() {
+  if (!paused.value) return;
+  paused.value = false;
+  pageStartAt = performance.now() - elapsedAtPause;
 }
 
 onMounted(() => {
-  timer = setInterval(() => {
-    if (!paused.value) next();
-  }, AUTOPLAY_MS);
+  resetProgress();
+  ticker = setInterval(() => {
+    if (paused.value) return;
+    const elapsed = performance.now() - pageStartAt;
+    if (elapsed >= AUTOPLAY_MS) {
+      // 到点立即换页并归零，进度条不会停在 100%
+      next();
+      return;
+    }
+    progress.value = (elapsed / AUTOPLAY_MS) * 100;
+  }, TICK_MS);
 });
 
 onBeforeUnmount(() => {
-  if (timer) clearInterval(timer);
+  if (ticker) clearInterval(ticker);
 });
 </script>
 
 <template>
   <section
     class="border-surface-100 bg-surface-0 group flex flex-col rounded-lg border p-5"
-    @mouseenter="paused = true"
-    @mouseleave="paused = false"
+    @mouseenter="onPause"
+    @mouseleave="onResume"
   >
     <!-- 头部：标题 + 实时状态 -->
     <div class="mb-3 flex items-center justify-between">
@@ -161,12 +201,11 @@ onBeforeUnmount(() => {
       </span>
     </div>
 
-    <!-- 自动播放进度条 -->
+    <!-- 自动播放进度条（JS 驱动，暂停时冻结在真实位置） -->
     <div class="bg-surface-100 mb-3 h-0.5 overflow-hidden rounded-full">
       <div
-        :key="`progress-${current}`"
-        class="bg-brand-600 h-full rounded-full"
-        :class="paused ? 'progress-paused' : 'progress-running'"
+        class="bg-brand-600 h-full rounded-full transition-[width] duration-75 ease-linear"
+        :style="{ width: `${progress}%` }"
       />
     </div>
 
@@ -253,22 +292,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* 自动播放进度条 */
-.progress-running {
-  animation: progress-fill 5s linear forwards;
-}
-.progress-paused {
-  animation-play-state: paused;
-}
-@keyframes progress-fill {
-  from {
-    width: 0%;
-  }
-  to {
-    width: 100%;
-  }
-}
-
 /* 动画 1：fade 淡入淡出 */
 .fade-enter-active,
 .fade-leave-active {
