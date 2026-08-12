@@ -3,9 +3,9 @@ import {
   DashboardActivityFeed,
   DashboardHeroCarousel,
   DashboardQuickActions,
-  DashboardRepoStatus,
   DashboardStatsCards,
   DashboardSystemStatus,
+  DashboardTrendingAI,
   DashboardWorkflowStatus,
 } from '@/features/dashboard';
 </script>
@@ -25,10 +25,10 @@ import {
         <!-- 顶部轮播：统计卡片 + 开发中项目 + 技术栈 -->
         <DashboardHeroCarousel />
 
-        <!-- 底部三列：最近活动 + Git 仓库 + 工作流状态 -->
+        <!-- 底部三列：最近活动 + GitHub 趋势 + 工作流状态 -->
         <div class="grid gap-6 md:grid-cols-3">
           <DashboardActivityFeed />
-          <DashboardRepoStatus />
+          <DashboardTrendingAI />
           <DashboardWorkflowStatus />
         </div>
       </div>
