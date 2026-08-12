@@ -9,6 +9,8 @@ export interface StatCard {
     value: number;
     isPositive: boolean;
   };
+  /** 迷你趋势图数据点 */
+  spark?: number[];
   icon: Component;
   color?: string;
 }

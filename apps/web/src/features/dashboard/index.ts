@@ -5,3 +5,5 @@ export { default as DashboardActivityFeed } from './activity-feed.vue';
 export { default as DashboardTechOverview } from './tech-overview.vue';
 export { default as DashboardSystemStatus } from './system-status.vue';
 export { default as DashboardHeroCarousel } from './hero-carousel.vue';
+export { default as DashboardTodoCard } from './todo-card.vue';
+export { default as DashboardWorkflowStatus } from './workflow-status.vue';
