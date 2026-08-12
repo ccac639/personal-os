@@ -136,78 +136,82 @@ function toggle() {
     <Transition name="pop">
       <div
         v-if="open"
-        class="border-surface-100 bg-surface-0 pet-scrollbar absolute right-0 w-60 rounded-xl border shadow-xl"
+        class="border-surface-100 bg-surface-0 absolute right-0 w-[26rem] rounded-xl border shadow-xl"
         :class="panelBelow ? 'top-24' : 'bottom-20'"
       >
-        <div class="flex max-h-[62vh] flex-col">
-          <!-- 头部（固定） -->
-          <div class="border-surface-100 flex items-center justify-between border-b px-4 py-2.5">
-            <h3 class="text-surface-900 text-sm font-semibold">✨ 页面外观</h3>
-            <button
-              type="button"
-              class="text-surface-800/50 hover:bg-surface-100 hover:text-surface-900 rounded-md p-1 transition"
-              aria-label="关闭外观设置"
-              @click="open = false"
-            >
-              <X class="size-4" />
-            </button>
+        <!-- 头部 -->
+        <div class="border-surface-100 flex items-center justify-between border-b px-4 py-2.5">
+          <h3 class="text-surface-900 text-sm font-semibold">✨ 页面外观</h3>
+          <button
+            type="button"
+            class="text-surface-800/50 hover:bg-surface-100 hover:text-surface-900 rounded-md p-1 transition"
+            aria-label="关闭外观设置"
+            @click="open = false"
+          >
+            <X class="size-4" />
+          </button>
+        </div>
+
+        <!-- 左右两栏：背景色 | 字体 -->
+        <div class="grid grid-cols-2 gap-4 px-4 py-3">
+          <!-- 左栏：背景色 -->
+          <div>
+            <p class="text-surface-900 mb-2 text-xs font-medium">背景色</p>
+            <div class="grid grid-cols-4 gap-1.5">
+              <button
+                v-for="preset in BACKGROUND_PRESETS"
+                :key="preset.id"
+                type="button"
+                :title="preset.label"
+                class="h-7 rounded-md border transition hover:scale-110"
+                :style="{ backgroundColor: preset.value }"
+                :class="
+                  theme.background === preset.value
+                    ? 'border-surface-900 ring-surface-900/20 ring-2'
+                    : 'border-surface-100 hover:border-surface-800/40'
+                "
+                @click="theme.setBackground(preset.value)"
+              />
+            </div>
+            <!-- 色块说明 -->
+            <div class="text-surface-800/50 mt-2 text-[10px] leading-relaxed">
+              选择背景，卡片与文字自动配色调
+            </div>
           </div>
 
-          <!-- 内容区（可滚动） -->
-          <div class="flex-1 space-y-4 overflow-y-auto px-4 py-3">
-            <!-- 背景色选择 -->
-            <div>
-              <p class="text-surface-900 mb-2 text-xs font-medium">背景色</p>
-              <div class="grid grid-cols-4 gap-1.5">
-                <button
-                  v-for="preset in BACKGROUND_PRESETS"
-                  :key="preset.id"
-                  type="button"
-                  :title="preset.label"
-                  class="h-7 rounded-md border transition hover:scale-110"
-                  :style="{ backgroundColor: preset.value }"
-                  :class="
-                    theme.background === preset.value
-                      ? 'border-surface-900 ring-surface-900/20 ring-2'
-                      : 'border-surface-100 hover:border-surface-800/40'
-                  "
-                  @click="theme.setBackground(preset.value)"
-                />
-              </div>
+          <!-- 右栏：字体 -->
+          <div>
+            <p class="text-surface-900 mb-2 text-xs font-medium">字体</p>
+            <div class="flex flex-col gap-1">
+              <button
+                v-for="preset in FONT_PRESETS"
+                :key="preset.id"
+                type="button"
+                class="flex items-center justify-between rounded-md border px-2.5 py-1 text-left text-xs transition"
+                :style="{ fontFamily: preset.value }"
+                :class="
+                  theme.font === preset.value
+                    ? 'border-surface-900 bg-surface-50'
+                    : 'border-surface-100 hover:border-surface-800/40'
+                "
+                @click="theme.setFont(preset.value)"
+              >
+                <span>{{ preset.label }}</span>
+                <span class="text-surface-800/50">123</span>
+              </button>
             </div>
-
-            <!-- 字体选择 -->
-            <div>
-              <p class="text-surface-900 mb-2 text-xs font-medium">字体</p>
-              <div class="flex flex-col gap-1">
-                <button
-                  v-for="preset in FONT_PRESETS"
-                  :key="preset.id"
-                  type="button"
-                  class="flex items-center justify-between rounded-md border px-2.5 py-1.5 text-left text-xs transition"
-                  :style="{ fontFamily: preset.value }"
-                  :class="
-                    theme.font === preset.value
-                      ? 'border-surface-900 bg-surface-50'
-                      : 'border-surface-100 hover:border-surface-800/40'
-                  "
-                  @click="theme.setFont(preset.value)"
-                >
-                  <span>{{ preset.label }}</span>
-                  <span class="text-surface-800/50">123</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- 恢复默认 -->
-            <button
-              type="button"
-              class="border-surface-100 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 w-full rounded-md border py-1.5 text-xs transition"
-              @click="theme.reset()"
-            >
-              恢复默认
-            </button>
           </div>
+        </div>
+
+        <!-- 恢复默认（通栏） -->
+        <div class="border-surface-100 border-t px-4 py-2">
+          <button
+            type="button"
+            class="border-surface-100 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 w-full rounded-md border py-1.5 text-xs transition"
+            @click="theme.reset()"
+          >
+            恢复默认
+          </button>
         </div>
       </div>
     </Transition>
@@ -332,26 +336,6 @@ function toggle() {
 </template>
 
 <style scoped>
-/* 面板滚动条：全局滚动条被隐藏，面板内单独恢复可见 */
-.pet-scrollbar {
-  scrollbar-width: thin; /* Firefox */
-  scrollbar-color: color-mix(in srgb, var(--color-surface-800) 30%, transparent) transparent;
-}
-.pet-scrollbar::-webkit-scrollbar {
-  display: block;
-  width: 6px;
-}
-.pet-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.pet-scrollbar::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-surface-800) 30%, transparent);
-  border-radius: 9999px;
-}
-.pet-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--color-surface-800) 50%, transparent);
-}
-
 /* 面板弹出动画 */
 .pop-enter-active,
 .pop-leave-active {
