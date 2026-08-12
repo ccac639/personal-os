@@ -120,7 +120,7 @@ function clearFilters() {
 <template>
   <div class="p-6">
     <!-- 头部 -->
-    <header class="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <header class="page-content-section mb-5 flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 class="text-surface-900 text-xl font-semibold">开发中</h1>
         <p class="text-surface-800/60 mt-1 text-sm">
@@ -160,7 +160,7 @@ function clearFilters() {
     </div>
 
     <!-- 统计条 -->
-    <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div class="page-content-section mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
       <div class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-4">
         <p class="text-surface-800/50 text-xs">总项目</p>
         <p class="text-surface-900 mt-1 text-2xl font-semibold">{{ summary.total }}</p>
@@ -247,8 +247,11 @@ function clearFilters() {
       </button>
     </div>
 
-    <!-- 项目卡片 -->
-    <div v-if="visibleProjects.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <!-- 项目卡片（长列表整体进入，不给每张卡片单独加动画） -->
+    <div
+      v-if="visibleProjects.length"
+      class="page-content-section grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+    >
       <ProjectCard
         v-for="project in visibleProjects"
         :key="project.id"

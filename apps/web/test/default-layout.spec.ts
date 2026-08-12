@@ -1,20 +1,32 @@
-import { mount } from '@vue/test-utils';
-import { createMemoryHistory, createRouter } from 'vue-router';
+import { mount, flushPromises } from '@vue/test-utils';
+import { createMemoryHistory, createRouter, type RouteRecordRaw } from 'vue-router';
 import { createPinia } from 'pinia';
-import { nextTick } from 'vue';
 import { describe, expect, it } from 'vitest';
 
 import DefaultLayout from '@/layouts/default-layout.vue';
-import { routes } from '@/router/routes';
+
+/**
+ * 轻量测试路由：不引用真实页面（真实路由为懒加载 chunk，全量并行跑单测时
+ * 导入开销会把 5s 超时打满）。导航项断言只依赖 path 匹配，
+ * 同时 RouterView + Transition + KeepAlive 的过渡结构会被真实执行。
+ */
+const TestPage = { name: 'TestPage', template: '<div class="test-page" />' };
+
+const testRoutes: RouteRecordRaw[] = [
+  { path: '/', component: TestPage },
+  { path: '/chat', component: TestPage },
+  { path: '/projects/:id', component: TestPage },
+  { path: '/:pathMatch(.*)*', component: TestPage },
+];
 
 const router = createRouter({
   history: createMemoryHistory(),
-  routes: [...routes, { path: '/:pathMatch(.*)*', component: { template: '<div />' } }],
+  routes: testRoutes,
 });
 
 async function mountLayout(path: string) {
   await router.push(path);
-  await nextTick();
+  await flushPromises();
   return mount(DefaultLayout, { global: { plugins: [router, createPinia()] } });
 }
 

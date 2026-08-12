@@ -8,6 +8,7 @@ import router from './router';
 import { useThemeStore } from './stores/theme';
 
 import './assets/main.css';
+import './assets/transitions.css';
 
 const app = createApp(App);
 

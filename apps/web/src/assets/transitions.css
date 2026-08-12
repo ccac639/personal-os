@@ -1,0 +1,189 @@
+/* ==========================================================================
+   Personal OS — 路由页面过渡系统（炫技层）
+   --------------------------------------------------------------------------
+   视觉节奏：
+     旧页面淡出 + 缩小（360ms）
+         ↓
+     中心扫描线 / 光带经过（520ms，同时新页面开始入场）
+         ↓
+     新页面从中心展开（360ms）
+         ↓
+     内容分层进入（60 / 110 / 160ms 延迟）
+   --------------------------------------------------------------------------
+   性能原则：
+   - 动画只用 transform / opacity / filter，不触发布局计算；
+   - 遮罩 position: fixed + pointer-events: none，动画期间不阻塞任何交互；
+   - 遮罩由 v-if 控制，仅在路由切换期间存在于 DOM，结束后彻底销毁。
+   颜色适配：扫描线使用低饱和蓝紫（浅色 / 深空主题下均清晰），不做大面积渐变。
+   ========================================================================== */
+
+/* ---------- 1. 页面整体过渡（Vue Transition name="page"） ---------- */
+
+.page-enter-active,
+.page-leave-active {
+  transition:
+    opacity 360ms ease,
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 360ms ease;
+}
+
+/* 旧页面退场期间脱离文档流：页面高度各异也不会引起滚动条 / 布局跳动 */
+.page-leave-active {
+  position: absolute;
+  inset: 0;
+}
+
+/* 旧页面：淡出 + 轻微缩小上移 + 轻模糊 */
+.page-leave-to {
+  opacity: 0;
+  transform: scale(0.985) translateY(-8px);
+  filter: blur(3px);
+}
+
+/* 新页面：从中心位置淡入 + 上移 + 轻微放大回正 */
+.page-enter-from {
+  opacity: 0;
+  transform: scale(1.015) translateY(18px);
+  filter: blur(4px);
+}
+
+.page-enter-to {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  filter: blur(0);
+}
+
+/* ---------- 2. 全局过渡遮罩（仅路由切换期间显示，v-if 控制） ---------- */
+
+.page-transition-overlay {
+  position: fixed;
+  inset: 0;
+  /* 高于页面内容（含 header z-40）；pointer-events: none 保证不阻塞任何操作。
+     遮罩仅存活约 0.9s 且底色极淡，不会对弹窗 / toast 造成可感知的遮挡。
+     如需严格压到全局弹窗之下，覆盖 --page-transition-z 即可。 */
+  z-index: var(--page-transition-z, 9000);
+  overflow: hidden;
+  pointer-events: none;
+  background: rgba(8, 10, 16, 0.08);
+  /* 独立合成层：遮罩出现 / 销毁不触发页面重排 */
+  contain: paint;
+}
+
+/* 能量扫描线：从左侧高速扫过视口，两端渐隐 */
+.page-transition-scanline {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    #8ea7ff 20%,
+    #ffffff 50%,
+    #8ea7ff 80%,
+    transparent
+  );
+  box-shadow:
+    0 0 12px #8ea7ff,
+    0 0 36px rgba(142, 167, 255, 0.8);
+  animation: page-scanline 520ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+/* 淡网格：扫描线经过时的背景纹理（极低透明度，不干扰阅读） */
+.page-transition-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.12;
+  background-size: 32px 32px;
+  background-image:
+    linear-gradient(rgba(142, 167, 255, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(142, 167, 255, 0.18) 1px, transparent 1px);
+  animation: page-grid-in 420ms ease-out;
+}
+
+/* 细颗粒噪点：静态贴图，进一步压暗纯色块、增加质感（不参与动画，避免闪烁） */
+.page-transition-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes page-scanline {
+  from {
+    transform: translateX(-10vw);
+    opacity: 0;
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(110vw);
+    opacity: 0;
+  }
+}
+
+@keyframes page-grid-in {
+  from {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+
+  to {
+    opacity: 0.12;
+    transform: scale(1);
+  }
+}
+
+/* ---------- 3. 页面内容分层进入 ----------
+   仅用于页面主要区块（页面模板中显式添加 page-content-section 的元素）；
+   每个区块 420ms 轻微上移淡入，按出现顺序 60/110/160ms 错开。
+   长列表容器请整体加类，不要给列表项逐个加动画。 */
+
+.page-content-section {
+  animation: section-reveal 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.page-content-section:nth-child(1) {
+  animation-delay: 60ms;
+}
+
+.page-content-section:nth-child(2) {
+  animation-delay: 110ms;
+}
+
+.page-content-section:nth-child(3) {
+  animation-delay: 160ms;
+}
+
+@keyframes section-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------- 4. 无障碍：弱化动效 ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter-active,
+  .page-leave-active,
+  .page-content-section,
+  .page-transition-scanline,
+  .page-transition-grid,
+  .page-transition-noise {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .page-transition-overlay {
+    display: none !important;
+  }
+}
