@@ -36,6 +36,14 @@ import {
 import { graphStats, topoSort, validateGraph, type TopoResult } from './topo';
 import { createRunControl, runWorkflow, type RunnerHooks, type RunSnapshot } from './runner';
 import { normalizeDelay, resetToDefaults } from './schema';
+import { autoConnect, type AutoConnectResult } from './ai-workflow-schema';
+import {
+  mockAiGenerateService,
+  parseAiResponse,
+  type AiGenerateService,
+  type AiGenMode,
+  type WorkflowAiResponse,
+} from './ai-workflow';
 import {
   loadAllWorkflows,
   saveAllWorkflows,
@@ -67,6 +75,37 @@ export interface UndoState {
   records: StoredWorkflow[];
   activeId: string | null;
   selectedId: string | null;
+}
+
+/** AI 生成预览阶段（动画展示用，只作用于 preview，不修改正式画布） */
+export type AiPhase =
+  'idle' | 'analyzing' | 'scanning' | 'nodes' | 'edges' | 'validating' | 'ready' | 'error';
+
+/** AI 草稿节点的稳定映射计划 */
+export interface AiNodePlan {
+  draftId: string;
+  stableId: string;
+  kind: WorkflowNodeKind;
+  label: string;
+  data: WorkflowNodeData;
+  position: XYPosition;
+  /** 相对当前画布：新增 or 已存在（extend 模式下为修改） */
+  isNew: boolean;
+}
+
+/** AI 预览状态（不持久化；确认前不触碰正式数据） */
+export interface AiPreviewState {
+  response: WorkflowAiResponse;
+  scope: AiGenMode;
+  nodes: AiNodePlan[];
+  /** 草稿边（映射到 stableId） */
+  draftEdges: WorkflowEdgeModel[];
+  /** 自动连线结果（引用 stableId） */
+  auto: AutoConnectResult;
+  /** 待确认端口：index -> 是否勾选 */
+  pendingChoices: Record<number, boolean>;
+  warnings: string[];
+  createdAt: number;
 }
 
 export const useWorkflowStore = defineStore('workflow', () => {
@@ -1035,6 +1074,15 @@ export const useWorkflowStore = defineStore('workflow', () => {
     control.cancel();
   }
 
+  /** 从最近失败节点重新运行（失败节点重试） */
+  function retryFailed(): boolean {
+    const failed = nodes.value.find((n) => n.data.status === 'error');
+    if (!failed || !active.value) return false;
+    selectNode(failed.id);
+    void runWorkflowFn('from', failed.id);
+    return true;
+  }
+
   /* ---------- 运行结果导出 ---------- */
 
   /** 运行结果 JSON（仅输出摘要与日志，不含敏感数据） */
@@ -1069,6 +1117,280 @@ export const useWorkflowStore = defineStore('workflow', () => {
       await navigator.clipboard.writeText(exportRunResult());
       return true;
     } catch {
+      return false;
+    }
+  }
+
+  /* ---------- AI 生成预览（草稿不直接写正式 store，应用需用户确认） ---------- */
+
+  const aiPhase = ref<AiPhase>('idle');
+  const aiBusy = ref(false);
+  const aiError = ref<string | null>(null);
+  const aiPreview = ref<AiPreviewState | null>(null);
+  /** service 注入边界：默认 mock，未来替换为真实 LLM 实现 */
+  const aiService = ref<AiGenerateService>(mockAiGenerateService);
+  /** 上次生成的需求文本（重新生成 / 预览层复用） */
+  const lastAiPrompt = ref('');
+  /** 竞态令牌：最后一次生成优先，取消/重新生成使旧任务失效 */
+  let generationToken = 0;
+
+  function setAiService(service: AiGenerateService) {
+    aiService.value = service;
+  }
+
+  function clearAiPreview() {
+    generationToken++;
+    aiPreview.value = null;
+    aiPhase.value = 'idle';
+    aiBusy.value = false;
+    aiError.value = null;
+  }
+
+  function aiStep(ms: number, token: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      setTimeout(() => resolve(token === generationToken), ms);
+    });
+  }
+
+  /** 构建预览：稳定 id 映射 + 自动连线 + 待确认端口 */
+  function buildAiPreview(response: WorkflowAiResponse, scope: AiGenMode): AiPreviewState {
+    const existingIds = new Set(nodes.value.map((n) => n.id));
+    const existingPos = new Map(nodes.value.map((n) => [n.id, n.position]));
+    const baseX =
+      nodes.value.length === 0 ? START.x : Math.max(...nodes.value.map((n) => n.position.x)) + 280;
+
+    // 稳定 id：draftId 与现有节点不冲突则沿用，否则分配 n-<seq> 递增
+    let seqCursor = seq.value;
+    const nodeMap: AiNodePlan[] = [];
+    let row = 0;
+    for (const d of response.nodes) {
+      const draftId = d.id!;
+      const isNew = !existingIds.has(draftId);
+      const stableId = isNew ? nextNodeId(seqCursor++) : draftId;
+      const position = existingPos.get(stableId) ?? {
+        x: baseX,
+        y: 60 + (row++ % 5) * 130,
+      };
+      nodeMap.push({
+        draftId,
+        stableId,
+        kind: d.kind,
+        label: d.label ?? d.kind,
+        data: (d.data ?? {
+          kind: d.kind,
+          label: d.label ?? d.kind,
+          status: 'idle',
+        }) as WorkflowNodeData,
+        position,
+        isNew,
+      });
+    }
+
+    // 草稿边映射到 stableId
+    const draftEdges: WorkflowEdgeModel[] = [];
+    response.edges.forEach((e, i) => {
+      const s = nodeMap.find((n) => n.draftId === e.source);
+      const t = nodeMap.find((n) => n.draftId === e.target);
+      if (!s || !t) return;
+      draftEdges.push({
+        id: `ae-${i}`,
+        source: s.stableId,
+        sourceHandle: e.sourceHandle ?? undefined,
+        target: t.stableId,
+        targetHandle: e.targetHandle ?? undefined,
+        type: 'smoothstep',
+      });
+    });
+
+    // 自动连线：仅对新增节点做链式连接（已有节点保留用户原有边）
+    const autoInput = nodeMap.map((n) => ({
+      id: n.stableId,
+      position: n.position,
+      data: { ...n.data, kind: n.kind, label: n.label, status: 'idle' as const },
+    }));
+    const existingEdgeModels: WorkflowEdgeModel[] = edges.value.map((e) => ({ ...e }));
+    const auto = autoConnect(autoInput, [...existingEdgeModels, ...draftEdges]);
+
+    const pendingChoices: Record<number, boolean> = {};
+    auto.pending.forEach((_, i) => {
+      pendingChoices[i] = false;
+    });
+
+    // 合并警告：AI 自身警告 + 自动连线警告 + 待确认/未连接端口提示
+    const warnings = [...response.warnings, ...auto.warnings];
+    if (auto.pending.length > 0) {
+      warnings.push(`有 ${auto.pending.length} 处端口需要确认（多候选目标）`);
+    }
+    const noPorts = nodeMap
+      .filter((n) => n.isNew && n.kind === 'ai')
+      .filter(
+        (n) =>
+          !auto.explanations.some((ex) => ex.startsWith(n.stableId)) &&
+          !draftEdges.some((e) => e.target === n.stableId || e.source === n.stableId),
+      );
+    if (noPorts.length > 0) {
+      warnings.push(`节点 ${noPorts.map((n) => n.stableId).join('、')} 需要补充输入参数或连线`);
+    }
+
+    return {
+      response,
+      scope,
+      nodes: nodeMap,
+      draftEdges,
+      auto,
+      pendingChoices,
+      warnings,
+      createdAt: Date.now(),
+    };
+  }
+
+  /** 生成 AI 草稿：解析 -> 校验 -> 预览（不写正式数据）。竞态：最后一次生成优先 */
+  async function generateAiWorkflow(prompt: string, scope: AiGenMode = 'new') {
+    if (running.value) {
+      aiError.value = '模拟运行期间不能生成工作流';
+      return;
+    }
+    if (!prompt.trim()) {
+      aiError.value = '请输入工作流需求描述';
+      return;
+    }
+    const token = ++generationToken;
+    aiBusy.value = true;
+    aiError.value = null;
+    aiPhase.value = 'analyzing';
+    lastAiPrompt.value = prompt;
+
+    const phases: AiPhase[] = ['scanning', 'nodes', 'edges', 'validating'];
+    for (const p of phases) {
+      const ok = await aiStep(360, token);
+      if (!ok) return;
+      aiPhase.value = p;
+    }
+
+    try {
+      const raw = await aiService.value.generate(prompt, scope);
+      if (token !== generationToken) return;
+      // 统一走 parse 校验路径（即使 mock 也过白名单/参数/变量/敏感字段检查）
+      const parsed = parseAiResponse(JSON.stringify(raw));
+      if (!parsed.ok || !parsed.response) {
+        aiError.value = `AI 结果校验失败：${parsed.errors.slice(0, 3).join('；')}`;
+        aiPhase.value = 'error';
+        return;
+      }
+      aiPreview.value = buildAiPreview(parsed.response, scope);
+      aiPhase.value = 'ready';
+    } catch (e) {
+      if (token !== generationToken) return;
+      aiError.value = `AI 生成失败：${e instanceof Error ? e.message : '未知错误'}`;
+      aiPhase.value = 'error';
+    } finally {
+      if (token === generationToken) aiBusy.value = false;
+    }
+  }
+
+  /** 待确认端口勾选切换 */
+  function togglePendingChoice(index: number) {
+    if (!aiPreview.value) return;
+    const next = { ...aiPreview.value.pendingChoices };
+    next[index] = !next[index];
+    aiPreview.value = { ...aiPreview.value, pendingChoices: next };
+  }
+
+  /** 预览中所有边（草稿边 + 自动边 + 勾选的待确认边） */
+  function previewEdges(): WorkflowEdgeModel[] {
+    const p = aiPreview.value;
+    if (!p) return [];
+    const chosen: WorkflowEdgeModel[] = [];
+    p.auto.pending.forEach((pc, i) => {
+      if (!p.pendingChoices[i]) return;
+      for (const t of pc.targets) {
+        chosen.push({
+          id: `pe-${pc.sourceId}-${pc.sourceHandle}-${t.nodeId}`,
+          source: pc.sourceId,
+          sourceHandle: pc.sourceHandle,
+          target: t.nodeId,
+          targetHandle: t.handle,
+          type: 'smoothstep',
+        });
+      }
+    });
+    return [...p.draftEdges, ...p.auto.edges, ...chosen];
+  }
+
+  /**
+   * 一次性应用 AI 草稿（事务）：
+   * - 单次撤销记录（pushUndo 一次）
+   * - 应用前创建「AI 生成」版本快照
+   * - 失败整体回滚；成功只触发一次持久化
+   */
+  function applyAiDraft(applyScope: 'all' | 'nodes' | 'edges'): boolean {
+    const p = aiPreview.value;
+    const rec = active.value;
+    if (!p || !rec || running.value || aiBusy.value) return false;
+
+    // 事务备份（含 versions 等全部字段）
+    const backup = JSON.parse(JSON.stringify(records.value)) as StoredWorkflow[];
+
+    try {
+      // 先记录撤销点（应用前状态），再创建版本快照（记录 AI 生成产物）
+      pushUndo();
+      const addedCount = p.nodes.filter((n) => n.isNew).length;
+      const edgeCount = previewEdges().length;
+      createVersion(
+        `AI 生成「${p.response.title ?? '未命名'}」：新增 ${addedCount} 节点 / ${edgeCount} 连线 / ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`,
+      );
+
+      // 节点：nodes/all 模式添加（added 追加；extend 同 id 覆盖）
+      if (applyScope !== 'edges') {
+        for (const plan of p.nodes) {
+          const existing = rec.nodes.find((n) => n.id === plan.stableId);
+          if (existing) {
+            existing.data = { ...plan.data, status: 'idle' as const };
+          } else {
+            rec.nodes.push({
+              id: plan.stableId,
+              type: 'custom',
+              position: plan.position,
+              data: { ...plan.data, status: 'idle' as const },
+            });
+          }
+        }
+        rec.seq =
+          Math.max(rec.seq, ...p.nodes.map((n) => Number(n.stableId.replace(/\D/g, '')) || 0)) + 1;
+      }
+
+      // 边：edges/all 模式添加（端点必须已存在，防孤立边）
+      if (applyScope !== 'nodes') {
+        const existingEdgeKeys = new Set(
+          rec.edges.map((e) => `${e.source}:${e.sourceHandle ?? ''}:${e.target}`),
+        );
+        const nodeIds = new Set(rec.nodes.map((n) => n.id));
+        let addedEdges = 0;
+        for (const e of previewEdges()) {
+          if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) continue;
+          const key = `${e.source}:${e.sourceHandle ?? ''}:${e.target}`;
+          if (existingEdgeKeys.has(key)) continue;
+          existingEdgeKeys.add(key);
+          rec.edges.push(e);
+          addedEdges++;
+        }
+        if (addedEdges === 0 && previewEdges().length > 0) {
+          throw new Error('没有可添加的连线（端点节点可能尚未应用，请选择「应用全部」）');
+        }
+      }
+
+      rec.updatedAt = Date.now();
+      layoutBump.value++;
+      selectNode(null);
+      persist(); // 事务成功只持久化一次（save 会再建版本，这里直接 persist）
+      clearAiPreview();
+      return true;
+    } catch (e) {
+      // 失败整体回滚
+      records.value = backup;
+      selectNode(null);
+      layoutBump.value++;
+      aiError.value = `应用失败已回滚：${e instanceof Error ? e.message : '未知错误'}`;
       return false;
     }
   }
@@ -1154,6 +1476,18 @@ export const useWorkflowStore = defineStore('workflow', () => {
     copySelection,
     pasteNodes,
     deleteSelection,
+    // AI 生成预览
+    aiPhase,
+    aiBusy,
+    aiError,
+    aiPreview,
+    lastAiPrompt,
+    setAiService,
+    generateAiWorkflow,
+    clearAiPreview,
+    togglePendingChoice,
+    previewEdges,
+    applyAiDraft,
     // 校验 / 排序 / 运行
     validate,
     topoSort: topoSortFn,
@@ -1165,6 +1499,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     pauseRun,
     resumeRun,
     cancelRun,
+    retryFailed,
     exportRunResult,
     copyRunResult,
     // 持久化 / 导入导出 / 示例

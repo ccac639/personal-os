@@ -322,7 +322,7 @@ export const NODE_SCHEMAS: Record<WorkflowNodeKind, NodeSchema> = {
         label: '正文',
         type: 'textarea',
         placeholder: '支持 {{ 变量 }} 插值',
-        validate: (v) => requiredText(v, '正文'),
+        help: '可留空，仅发送标题',
       },
     ],
   },

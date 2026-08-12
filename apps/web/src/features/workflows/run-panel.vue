@@ -10,6 +10,7 @@ import {
   Loader2,
   Pause,
   Play,
+  RotateCcw,
   ScrollText,
   Square,
 } from '@lucide/vue';
@@ -400,6 +401,15 @@ const collapsed = ref(false);
           "
         >
           定位失败节点 →
+        </button>
+        <button
+          type="button"
+          class="text-brand-600 mt-1 flex items-center gap-1 self-start text-[11px] font-medium hover:underline"
+          :disabled="store.running"
+          @click="store.retryFailed()"
+        >
+          <RotateCcw class="size-3" />
+          从失败节点重试
         </button>
       </div>
 

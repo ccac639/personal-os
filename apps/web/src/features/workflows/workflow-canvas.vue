@@ -27,6 +27,7 @@ import {
   type XYPosition,
 } from './types';
 import WorkflowNode from './workflow-node.vue';
+import WorkflowAiPreview from './workflow-ai-preview.vue';
 
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
@@ -36,6 +37,7 @@ import '@vue-flow/minimap/dist/style.css';
 const store = useWorkflowStore();
 const theme = useThemeStore();
 const flowRef = ref<InstanceType<typeof VueFlow>>();
+const aiPreviewRef = ref<InstanceType<typeof WorkflowAiPreview>>();
 
 const nodeTypes = { custom: WorkflowNode };
 
@@ -99,6 +101,11 @@ function onPaneClick() {
 
 function onConnect(conn: Connection) {
   store.addEdge(conn);
+}
+
+/** AI 预览层跟随画布视口（缩放/平移） */
+function onViewportChange(v: { x: number; y: number; zoom: number }) {
+  aiPreviewRef.value?.syncViewport(v);
 }
 
 /** 拖放：把节点库拖入的节点放到鼠标所在画布坐标 */
@@ -192,10 +199,12 @@ function onContainerKeydown(e: KeyboardEvent) {
       :edges="flowEdges"
       :node-types="nodeTypes"
       :default-edge-options="{ type: 'smoothstep' }"
-      :delete-key-code="['Backspace', 'Delete']"
+      :delete-key-code="store.running ? [] : ['Backspace', 'Delete']"
       :multi-selection-key-code="['Meta', 'Control', 'Shift']"
       :selection-on-drag="true"
       :selection-mode="'partial' as SelectionMode"
+      :nodes-draggable="!store.running"
+      :nodes-connectable="!store.running"
       :min-zoom="0.2"
       :max-zoom="2.5"
       :zoom-on-scroll="true"
@@ -211,6 +220,7 @@ function onContainerKeydown(e: KeyboardEvent) {
       @selection-change="onSelectionChange"
       @pane-click="onPaneClick"
       @connect="onConnect"
+      @viewport-change="onViewportChange"
     >
       <Background variant="dots" :gap="22" :size="1.5" :pattern-color="patternColor" />
       <Controls position="bottom-right" />
@@ -228,6 +238,17 @@ function onContainerKeydown(e: KeyboardEvent) {
         <p class="text-xs">连线：从节点右侧锚点拖到下一个节点左侧 · 框选或 Shift 点击可多选</p>
         <p class="text-xs">快捷键：Ctrl/⌘ Z 撤销 · Y 重做 · C 复制 · V 粘贴</p>
       </div>
+    </div>
+
+    <!-- AI 生成预览层（叠加，不修改正式数据） -->
+    <WorkflowAiPreview ref="aiPreviewRef" />
+
+    <!-- 运行中编辑锁定提示 -->
+    <div
+      v-if="store.running"
+      class="absolute top-3 left-1/2 z-20 -translate-x-1/2 rounded-full border border-amber-400/40 bg-amber-50/95 px-3 py-1 text-[11px] font-medium text-amber-700 shadow-sm backdrop-blur dark:bg-amber-950/80 dark:text-amber-300"
+    >
+      模拟运行中，画布编辑已锁定
     </div>
   </div>
 </template>
