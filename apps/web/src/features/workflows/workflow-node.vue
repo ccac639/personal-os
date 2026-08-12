@@ -8,7 +8,8 @@ const props = defineProps<NodeProps<WorkflowNodeData>>();
 const def = computed(() => getNodeDef(props.data.kind));
 const isTrigger = computed(() => props.data.kind === 'trigger');
 const isCondition = computed(() => props.data.kind === 'condition');
-const isEnd = computed(() => ['notify', 'delay'].includes(props.data.kind));
+/** 末端节点：无出边锚点（输出/通知/延迟），条件节点特殊处理 */
+const isEnd = computed(() => ['notify', 'delay', 'output'].includes(props.data.kind));
 
 const statusDot = computed(() => {
   switch (props.data.status) {
@@ -22,6 +23,20 @@ const statusDot = computed(() => {
       return { cls: 'bg-surface-800/25', title: '就绪' };
   }
 });
+
+/** 失败时的文本状态提示（可访问性：不只依赖颜色） */
+const statusText = computed(() => {
+  switch (props.data.status) {
+    case 'running':
+      return '运行中';
+    case 'success':
+      return '成功';
+    case 'error':
+      return '失败';
+    default:
+      return '';
+  }
+});
 </script>
 
 <template>
@@ -31,6 +46,7 @@ const statusDot = computed(() => {
       'ring-brand-500/60 border-brand-500 shadow-float ring-2': props.selected,
       'wf-node-running': data.status === 'running',
       'wf-node-success': data.status === 'success',
+      'wf-node-error': data.status === 'error',
     }"
   >
     <!-- 入边锚点：trigger 不可作为目标 -->
@@ -45,6 +61,7 @@ const statusDot = computed(() => {
         {{ data.label }}
       </span>
       <span class="size-2 shrink-0 rounded-full" :class="statusDot.cls" :title="statusDot.title" />
+      <span v-if="statusText" class="sr-only" aria-live="polite">{{ statusText }}</span>
     </header>
 
     <!-- 摘要 -->
@@ -110,5 +127,11 @@ const statusDot = computed(() => {
   50% {
     box-shadow: 0 0 0 6px rgb(99 102 241 / 0);
   }
+}
+
+/* 运行失败：红色描边提示 */
+.wf-node-error {
+  border-color: rgb(239 68 68 / 0.6);
+  box-shadow: 0 0 0 2px rgb(239 68 68 / 0.18);
 }
 </style>
