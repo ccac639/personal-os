@@ -7,3 +7,4 @@ export { default as DashboardSystemStatus } from './system-status.vue';
 export { default as DashboardHeroCarousel } from './hero-carousel.vue';
 export { default as DashboardTrendingAI } from './trending-ai.vue';
 export { default as DashboardWorkflowStatus } from './workflow-status.vue';
+export { default as DashboardSystemOverview } from './system-overview.vue';

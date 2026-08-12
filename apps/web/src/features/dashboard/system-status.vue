@@ -1,81 +1,81 @@
 <script setup lang="ts">
-import { CheckCircle, XCircle } from '@lucide/vue';
 import type { ServiceStatus } from './types';
 
 const services: ServiceStatus[] = [
-  {
-    name: 'Web (Vue 3 + Vite)',
-    status: 'online',
-    latency: 12,
-    lastCheck: '刚刚',
-  },
-  {
-    name: 'Blog (Nuxt 4)',
-    status: 'online',
-    latency: 18,
-    lastCheck: '刚刚',
-  },
-  {
-    name: 'API (NestJS)',
-    status: 'online',
-    latency: 8,
-    lastCheck: '刚刚',
-  },
-  {
-    name: 'Worker',
-    status: 'online',
-    latency: 5,
-    lastCheck: '刚刚',
-  },
+  { name: 'Web', stack: 'Vue 3 · Vite', status: 'online', latency: 12, lastCheck: '刚刚' },
+  { name: 'Blog', stack: 'Nuxt 4', status: 'online', latency: 18, lastCheck: '刚刚' },
+  { name: 'API', stack: 'NestJS · Fastify', status: 'online', latency: 8, lastCheck: '刚刚' },
+  { name: 'Worker', stack: 'Node.js', status: 'online', latency: 5, lastCheck: '刚刚' },
 ];
 
-function getStatusIcon(status: string) {
-  return status === 'online' ? CheckCircle : XCircle;
-}
-
-function getStatusColor(status: string) {
-  const colors = {
-    online: 'text-green-600 bg-green-500/10',
-    offline: 'text-red-600 bg-red-500/10',
-    warning: 'text-yellow-600 bg-yellow-500/10',
+function dotColor(status: string) {
+  const map: Record<string, string> = {
+    online: 'bg-green-500',
+    offline: 'bg-red-500',
+    warning: 'bg-yellow-500',
   };
-  return colors[status as keyof typeof colors] || 'text-surface-800/60 bg-surface-100';
+  return map[status] || 'bg-surface-800/40';
 }
 
-function getStatusText(status: string) {
-  const texts = {
+function pingColor(status: string) {
+  const map: Record<string, string> = {
+    online: 'bg-green-400',
+    offline: 'bg-red-400',
+    warning: 'bg-yellow-400',
+  };
+  return map[status] || 'bg-surface-800/30';
+}
+
+function statusText(status: string) {
+  const map: Record<string, string> = {
     online: '运行中',
     offline: '离线',
     warning: '警告',
   };
-  return texts[status as keyof typeof texts] || '未知';
+  return map[status] || '未知';
 }
 </script>
 
 <template>
-  <section class="border-surface-100 bg-surface-0 rounded-lg border p-6">
-    <h2 class="text-surface-900 mb-4 text-lg font-semibold">系统状态</h2>
-    <div class="space-y-3">
+  <section class="border-surface-100 bg-surface-0 rounded-lg border p-5">
+    <div class="mb-4 flex items-center justify-between">
+      <h2 class="text-surface-900 text-lg font-semibold">系统状态</h2>
+      <span class="text-surface-800/50 text-xs">{{ services.length }} 项服务</span>
+    </div>
+    <!-- 4 行服务状态项 -->
+    <div class="space-y-2.5">
       <div
         v-for="service in services"
         :key="service.name"
-        class="border-surface-100 flex items-center justify-between rounded-lg border p-3"
+        class="border-surface-100 flex items-center gap-3 rounded-lg border px-3 py-2.5"
       >
-        <div class="flex items-center gap-3">
-          <div
-            class="flex size-8 items-center justify-center rounded-lg"
-            :class="getStatusColor(service.status)"
-          >
-            <component :is="getStatusIcon(service.status)" class="size-4" />
-          </div>
-          <div>
-            <p class="text-surface-900 text-sm font-medium">{{ service.name }}</p>
-            <p class="text-surface-800/60 text-xs">{{ getStatusText(service.status) }}</p>
-          </div>
+        <!-- 左侧脉冲状态指示灯 -->
+        <span class="relative flex size-2.5 shrink-0">
+          <span
+            class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"
+            :class="pingColor(service.status)"
+          />
+          <span
+            class="relative inline-flex size-2.5 rounded-full"
+            :class="dotColor(service.status)"
+          />
+        </span>
+
+        <!-- 中间：服务名称 + 技术栈 -->
+        <div class="min-w-0 flex-1">
+          <p class="text-surface-900 truncate text-sm font-medium">
+            {{ service.name }}
+            <span class="text-surface-800/40 text-xs font-normal">
+              · {{ statusText(service.status) }}
+            </span>
+          </p>
+          <p class="text-surface-800/50 truncate text-xs">{{ service.stack }}</p>
         </div>
-        <div class="text-right">
-          <p class="text-surface-800/80 text-sm">{{ service.latency }}ms</p>
-          <p class="text-surface-800/60 text-xs">{{ service.lastCheck }}</p>
+
+        <!-- 右侧：延迟数字（加粗）+ 时间小字，右对齐 -->
+        <div class="shrink-0 text-right">
+          <p class="text-surface-900 text-sm font-bold tabular-nums">{{ service.latency }}ms</p>
+          <p class="text-surface-800/50 text-xs">{{ service.lastCheck }}</p>
         </div>
       </div>
     </div>

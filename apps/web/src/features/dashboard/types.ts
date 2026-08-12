@@ -21,7 +21,10 @@ export interface QuickAction {
   label: string;
   icon: Component;
   href: string;
+  /** 样式：图标色 + hover 渐变起点色 + 渐变终点色（空格分隔） */
   color: string;
+  /** 快捷键提示（右下角显示） */
+  shortcut?: string;
 }
 
 /** 项目条目 */
@@ -47,6 +50,8 @@ export interface ActivityItem {
 /** 系统状态 */
 export interface ServiceStatus {
   name: string;
+  /** 技术栈（名称下方小字） */
+  stack?: string;
   status: 'online' | 'offline' | 'warning';
   latency?: number;
   lastCheck: string;

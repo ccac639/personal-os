@@ -3,7 +3,7 @@ import {
   DashboardActivityFeed,
   DashboardHeroCarousel,
   DashboardQuickActions,
-  DashboardStatsCards,
+  DashboardSystemOverview,
   DashboardSystemStatus,
   DashboardTrendingAI,
   DashboardWorkflowStatus,
@@ -35,13 +35,13 @@ import {
 
       <!-- 右侧区域 -->
       <div class="space-y-6">
-        <!-- 统计卡片：活跃服务 1 张 -->
-        <DashboardStatsCards variant="right" />
+        <!-- 系统监控总览：健康状态 + 延迟趋势 -->
+        <DashboardSystemOverview />
 
         <!-- 快速操作 -->
         <DashboardQuickActions />
 
-        <!-- 系统状态 -->
+        <!-- 系统状态列表 -->
         <DashboardSystemStatus />
       </div>
     </div>
