@@ -1,16 +1,10 @@
 <script setup lang="ts">
 import { motion, AnimatePresence, LayoutGroup } from 'motion-v';
 import { useRoute } from 'vue-router';
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { onBeforeUnmount, ref } from 'vue';
 import PagePet from '@/components/PagePet.vue';
-import {
-  PAGE_TRANSITION,
-  forceHideTransitionOverlay,
-  getRouteTransition,
-  hideTransitionOverlay,
-  showTransitionOverlay,
-  usePageTransition,
-} from '@/composables/use-page-transition';
+import PageTransitionOverlay from '@/components/PageTransitionOverlay.vue';
+import { forceHideTransitionOverlay } from '@/composables/use-page-transition';
 
 const route = useRoute();
 
@@ -63,37 +57,11 @@ function isActive(to: string): boolean {
 
 const brandLetters = 'Personal OS'.split('');
 
-/** 页面过渡层状态（模块级单例，路由失败时也能被 router.onError 清理） */
-const { isTransitioning, transitionMeta } = usePageTransition();
-
 /**
- * KeepAlive 白名单：需要跨路由保留状态 / 滚动位置的页面组件名。
- * 启用方式：页面内 defineOptions({ name: 'xxx' }) + 把 'xxx' 加入此数组。
- * 默认空数组 = 不缓存任何页面，行为与不加 KeepAlive 完全一致（不改变页面业务逻辑）。
+ * 注：本项目刻意不使用 KeepAlive 缓存路由页面（见模板注释）。
+ * 页面组件如需保持 name 以便未来接入缓存，可在此预留扩展点。
+ * 页面切换由 router 的导航守卫驱动（遮罩 + 同步切换，见 router/index.ts）。
  */
-const keepAlivePages: string[] = [];
-
-/** 记录来源页标题：路由确认时把「上一路由」的标题暂存，供过渡遮罩状态文本使用 */
-const prevRouteTitle = ref<string | undefined>(undefined);
-watch(
-  () => route.meta.title,
-  (to, from) => {
-    prevRouteTitle.value = typeof from === 'string' ? from : undefined;
-  },
-);
-
-/** 旧页面离场完成：显示系统切换遮罩（携带来源/目标页标题） */
-function onTransitionAfterLeave() {
-  showTransitionOverlay({
-    fromTitle: prevRouteTitle.value,
-    toTitle: typeof route.meta.title === 'string' ? route.meta.title : undefined,
-  });
-}
-
-/** 新页面入场完成：延迟隐藏遮罩，让扫描线动画完整收尾 */
-function onTransitionAfterEnter() {
-  hideTransitionOverlay(PAGE_TRANSITION.HIDE_DELAY_MS);
-}
 
 /** 布局卸载（应用退出）时兜底清理过渡层定时器 */
 onBeforeUnmount(() => {
@@ -242,40 +210,18 @@ onBeforeUnmount(() => {
       </div>
     </motion.header>
 
-    <!-- 页面切换：统一路由过渡系统（旧页淡出缩小 → 扫描线 → 新页从中心展开） -->
+    <!-- 页面切换：RouterView 直接渲染（key=fullPath 同步切换），无 Vue
+         Transition 状态机（out-in + 懒加载在连续切换时 enter 丢失、页面空白）。
+         视觉过渡由全局遮罩承担：router 导航守卫显示遮罩 → 内容同步切换 →
+         延迟淡出（见 router/index.ts）。 -->
     <main class="relative flex-1 overflow-x-hidden overflow-y-auto">
       <RouterView v-slot="{ Component, route: viewRoute }">
-        <Transition
-          :name="getRouteTransition(viewRoute)"
-          mode="out-in"
-          appear
-          @after-leave="onTransitionAfterLeave"
-          @after-enter="onTransitionAfterEnter"
-        >
-          <KeepAlive :include="keepAlivePages">
-            <component :is="Component" :key="viewRoute.fullPath" />
-          </KeepAlive>
-        </Transition>
+        <component :is="Component" :key="viewRoute.fullPath" />
       </RouterView>
     </main>
 
-    <!-- 全局页面过渡层：仅路由切换期间出现；fixed 全视口 + pointer-events 穿透，
-         z-index 低于项目弹窗层，不遮挡任何可操作 UI；新页面入场后由 v-if 彻底销毁 -->
-    <div v-if="isTransitioning" class="page-transition-overlay" aria-hidden="true">
-      <div class="page-transition-grid"></div>
-      <div class="page-transition-scanline"></div>
-      <div class="page-transition-beam"></div>
-      <div class="page-transition-rings"><span></span><span></span></div>
-      <div class="page-transition-hex page-transition-hex--left"></div>
-      <div class="page-transition-hex page-transition-hex--right"></div>
-      <div v-if="transitionMeta.toTitle" class="page-transition-status">
-        切换至 {{ transitionMeta.toTitle }}
-      </div>
-      <div class="page-transition-progress">
-        <div class="page-transition-progress-bar"></div>
-      </div>
-      <div class="page-transition-noise"></div>
-    </div>
+    <!-- 全局页面过渡遮罩：独立组件（状态更新只重渲染它自身，不干扰过渡子树） -->
+    <PageTransitionOverlay />
 
     <!-- 全局页面宠物：所有页面可见，点击换肤 -->
     <PagePet />
