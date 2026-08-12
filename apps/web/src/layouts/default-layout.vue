@@ -243,7 +243,7 @@ onBeforeUnmount(() => {
     </motion.header>
 
     <!-- 页面切换：统一路由过渡系统（旧页淡出缩小 → 扫描线 → 新页从中心展开） -->
-    <main class="relative flex-1 overflow-x-hidden overflow-y-clip">
+    <main class="relative flex-1 overflow-x-hidden overflow-y-auto">
       <RouterView v-slot="{ Component, route: viewRoute }">
         <Transition
           :name="getRouteTransition(viewRoute)"
