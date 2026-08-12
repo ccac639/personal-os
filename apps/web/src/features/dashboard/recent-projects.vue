@@ -24,10 +24,10 @@ function getStatusColor(status: string) {
 </script>
 
 <template>
-  <section class="rounded-lg border border-neutral-200 bg-white p-6">
+  <section class="border-surface-100 bg-surface-0 rounded-lg border p-6">
     <div class="mb-4 flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-neutral-900">开发中项目</h2>
-      <router-link to="/projects" class="text-sm text-blue-600 hover:text-blue-700">
+      <h2 class="text-surface-900 text-lg font-semibold">开发中项目</h2>
+      <router-link to="/projects" class="text-brand-600 hover:text-brand-700 text-sm">
         查看全部
       </router-link>
     </div>
@@ -35,7 +35,7 @@ function getStatusColor(status: string) {
       <div
         v-for="project in projects"
         :key="project.id"
-        class="rounded-lg border border-neutral-100 p-4 transition hover:border-neutral-200 hover:bg-neutral-50"
+        class="border-surface-100 hover:border-surface-800/30 hover:bg-surface-50 rounded-lg border p-4 transition"
       >
         <div class="mb-2 flex items-start justify-between">
           <div class="flex-1">
@@ -44,14 +44,14 @@ function getStatusColor(status: string) {
                 :class="getStatusColor(project.status)"
                 class="inline-block size-2 rounded-full"
               />
-              <h3 class="font-medium text-neutral-900">{{ project.name }}</h3>
+              <h3 class="text-surface-900 font-medium">{{ project.name }}</h3>
             </div>
-            <p v-if="project.description" class="mt-1 text-sm text-neutral-600">
+            <p v-if="project.description" class="text-surface-800/70 mt-1 text-sm">
               {{ project.description }}
             </p>
           </div>
         </div>
-        <div class="flex items-center gap-4 text-xs text-neutral-500">
+        <div class="text-surface-800/60 flex items-center gap-4 text-xs">
           <span class="flex items-center gap-1">
             <Clock class="size-3" />
             {{ project.lastUpdated }}

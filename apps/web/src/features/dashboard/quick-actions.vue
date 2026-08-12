@@ -8,35 +8,35 @@ const actions: QuickAction[] = [
     label: '新建项目',
     icon: FolderPlus,
     href: '/projects/new',
-    color: 'bg-blue-50 text-blue-600 hover:bg-blue-100',
+    color: 'bg-brand-500/10 text-brand-600 hover:bg-brand-500/20',
   },
   {
     id: 'new-workflow',
     label: '创建工作流',
     icon: Workflow,
     href: '/workflows/new',
-    color: 'bg-purple-50 text-purple-600 hover:bg-purple-100',
+    color: 'bg-purple-500/10 text-purple-600 hover:bg-purple-500/20',
   },
   {
     id: 'new-blog',
     label: '写博客',
     icon: BookOpen,
     href: '/blog/new',
-    color: 'bg-green-50 text-green-600 hover:bg-green-100',
+    color: 'bg-green-500/10 text-green-600 hover:bg-green-500/20',
   },
   {
     id: 'git-ops',
     label: 'Git 操作',
     icon: GitBranch,
     href: '/git',
-    color: 'bg-orange-50 text-orange-600 hover:bg-orange-100',
+    color: 'bg-orange-500/10 text-orange-600 hover:bg-orange-500/20',
   },
 ];
 </script>
 
 <template>
-  <section class="rounded-lg border border-neutral-200 bg-white p-6">
-    <h2 class="mb-4 text-lg font-semibold text-neutral-900">快速操作</h2>
+  <section class="border-surface-100 bg-surface-0 rounded-lg border p-6">
+    <h2 class="text-surface-900 mb-4 text-lg font-semibold">快速操作</h2>
     <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
       <router-link
         v-for="action in actions"

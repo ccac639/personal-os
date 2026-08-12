@@ -61,7 +61,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section
-    class="relative overflow-hidden rounded-lg border border-neutral-200 bg-white"
+    class="border-surface-100 bg-surface-0 relative overflow-hidden rounded-lg border"
     @mouseenter="paused = true"
     @mouseleave="paused = false"
   >
@@ -88,7 +88,7 @@ onBeforeUnmount(() => {
     <button
       type="button"
       aria-label="上一张"
-      class="absolute top-1/2 left-3 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-neutral-600 shadow-sm ring-1 ring-neutral-200 transition hover:bg-white hover:text-neutral-900"
+      class="bg-surface-0/80 text-surface-800/70 ring-surface-100 hover:bg-surface-0 hover:text-surface-900 absolute top-1/2 left-3 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full shadow-sm ring-1 transition"
       @click="prev"
     >
       <ChevronLeft class="size-5" />
@@ -96,7 +96,7 @@ onBeforeUnmount(() => {
     <button
       type="button"
       aria-label="下一张"
-      class="absolute top-1/2 right-3 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-neutral-600 shadow-sm ring-1 ring-neutral-200 transition hover:bg-white hover:text-neutral-900"
+      class="bg-surface-0/80 text-surface-800/70 ring-surface-100 hover:bg-surface-0 hover:text-surface-900 absolute top-1/2 right-3 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full shadow-sm ring-1 transition"
       @click="next"
     >
       <ChevronRight class="size-5" />
@@ -111,7 +111,9 @@ onBeforeUnmount(() => {
         :aria-label="`切换到第 ${index} 张`"
         class="h-2 rounded-full transition-all"
         :class="
-          current === index - 1 ? 'w-6 bg-blue-600' : 'w-2 bg-neutral-300 hover:bg-neutral-400'
+          current === index - 1
+            ? 'bg-brand-600 w-6'
+            : 'bg-surface-800/25 hover:bg-surface-800/40 w-2'
         "
         @click="goTo(index - 1)"
       />

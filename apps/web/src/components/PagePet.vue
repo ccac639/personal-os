@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { X } from '@lucide/vue';
-import { BACKGROUND_PRESETS, FONT_PRESETS, type ThemeSettings } from './theme';
+import { BACKGROUND_PRESETS, FONT_PRESETS, useThemeStore } from '@/stores/theme';
 
-const props = defineProps<{ theme: ThemeSettings }>();
-const emit = defineEmits<{ 'update:theme': [value: ThemeSettings] }>();
+const theme = useThemeStore();
 
 /** 宠物按钮尺寸与视口边距（px） */
 const PET_SIZE = 64;
@@ -128,31 +127,23 @@ function toggle() {
   open.value = true;
   window.setTimeout(() => (bouncing.value = false), 500);
 }
-
-function pickBackground(value: string) {
-  emit('update:theme', { ...props.theme, background: value });
-}
-
-function pickFont(value: string) {
-  emit('update:theme', { ...props.theme, font: value });
-}
 </script>
 
 <template>
-  <!-- 可拖拽页面宠物（位置持久化） -->
+  <!-- 可拖拽页面宠物（位置持久化，全局换肤入口） -->
   <div class="fixed z-50 flex flex-col items-end select-none" :style="petStyle">
     <!-- 设置面板 -->
     <Transition name="pop">
       <div
         v-if="open"
-        class="absolute right-0 w-72 rounded-xl border border-neutral-200 bg-white p-5 shadow-xl"
+        class="border-surface-100 bg-surface-0 absolute right-0 w-72 rounded-xl border p-5 shadow-xl"
         :class="panelBelow ? 'top-24' : 'bottom-20'"
       >
         <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-semibold text-neutral-900">✨ 页面外观</h3>
+          <h3 class="text-surface-900 font-semibold">✨ 页面外观</h3>
           <button
             type="button"
-            class="rounded-md p-1 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-600"
+            class="text-surface-800/50 hover:bg-surface-100 hover:text-surface-900 rounded-md p-1 transition"
             aria-label="关闭外观设置"
             @click="open = false"
           >
@@ -161,7 +152,7 @@ function pickFont(value: string) {
         </div>
 
         <!-- 背景色选择 -->
-        <p class="mb-2 text-sm font-medium text-neutral-700">背景色</p>
+        <p class="text-surface-900 mb-2 text-sm font-medium">背景色</p>
         <div class="mb-5 grid grid-cols-4 gap-2">
           <button
             v-for="preset in BACKGROUND_PRESETS"
@@ -172,15 +163,15 @@ function pickFont(value: string) {
             :style="{ backgroundColor: preset.value }"
             :class="
               theme.background === preset.value
-                ? 'border-neutral-900 ring-2 ring-neutral-900/20'
-                : 'border-neutral-200 hover:border-neutral-400'
+                ? 'border-surface-900 ring-surface-900/20 ring-2'
+                : 'border-surface-100 hover:border-surface-800/40'
             "
-            @click="pickBackground(preset.value)"
+            @click="theme.setBackground(preset.value)"
           />
         </div>
 
         <!-- 字体选择 -->
-        <p class="mb-2 text-sm font-medium text-neutral-700">字体</p>
+        <p class="text-surface-900 mb-2 text-sm font-medium">字体</p>
         <div class="flex flex-col gap-1.5">
           <button
             v-for="preset in FONT_PRESETS"
@@ -190,15 +181,24 @@ function pickFont(value: string) {
             :style="{ fontFamily: preset.value }"
             :class="
               theme.font === preset.value
-                ? 'border-neutral-900 bg-neutral-50'
-                : 'border-neutral-200 hover:border-neutral-400'
+                ? 'border-surface-900 bg-surface-50'
+                : 'border-surface-100 hover:border-surface-800/40'
             "
-            @click="pickFont(preset.value)"
+            @click="theme.setFont(preset.value)"
           >
             <span>{{ preset.label }}</span>
-            <span class="text-xs text-neutral-400">预览 123</span>
+            <span class="text-surface-800/50 text-xs">预览 123</span>
           </button>
         </div>
+
+        <!-- 恢复默认 -->
+        <button
+          type="button"
+          class="border-surface-100 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 mt-4 w-full rounded-lg border py-2 text-sm transition"
+          @click="theme.reset()"
+        >
+          恢复默认
+        </button>
       </div>
     </Transition>
 
@@ -214,7 +214,7 @@ function pickFont(value: string) {
       <!-- 气泡提示 -->
       <span
         v-if="!open"
-        class="pointer-events-none absolute top-1/2 right-full mr-3 -translate-y-1/2 rounded-full bg-neutral-900 px-3 py-1.5 text-xs whitespace-nowrap text-white opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100"
+        class="bg-surface-900 text-surface-0 pointer-events-none absolute top-1/2 right-full mr-3 -translate-y-1/2 rounded-full px-3 py-1.5 text-xs whitespace-nowrap opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100"
       >
         拖动我，点我换皮肤 🎨
       </span>

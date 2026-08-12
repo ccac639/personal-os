@@ -58,14 +58,14 @@ const gridCols = computed(() => {
     <article
       v-for="stat in stats"
       :key="stat.id"
-      class="rounded-lg border border-neutral-200 bg-white p-6 transition hover:border-neutral-300 hover:shadow-sm"
+      class="border-surface-100 bg-surface-0 hover:border-surface-800/30 rounded-lg border p-6 transition hover:shadow-sm"
     >
       <div class="flex items-start justify-between">
         <div>
-          <p class="text-sm text-neutral-500">{{ stat.label }}</p>
-          <p class="mt-1 text-3xl font-semibold text-neutral-900">{{ stat.value }}</p>
+          <p class="text-surface-800/60 text-sm">{{ stat.label }}</p>
+          <p class="text-surface-900 mt-1 text-3xl font-semibold">{{ stat.value }}</p>
         </div>
-        <component :is="stat.icon" class="size-6 text-neutral-400" />
+        <component :is="stat.icon" class="text-surface-800/50 size-6" />
       </div>
     </article>
   </section>

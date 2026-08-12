@@ -20,10 +20,10 @@ const coreTech = [
 </script>
 
 <template>
-  <section class="rounded-lg border border-neutral-200 bg-white p-6">
+  <section class="border-surface-100 bg-surface-0 rounded-lg border p-6">
     <div class="mb-4 flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-neutral-900">核心技术栈</h2>
-      <router-link to="/projects" class="text-sm text-blue-600 hover:text-blue-700">
+      <h2 class="text-surface-900 text-lg font-semibold">核心技术栈</h2>
+      <router-link to="/projects" class="text-brand-600 hover:text-brand-700 text-sm">
         查看完整技术树
       </router-link>
     </div>
@@ -31,10 +31,10 @@ const coreTech = [
       <div
         v-for="tech in coreTech"
         :key="tech.name"
-        class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 transition hover:border-neutral-300 hover:bg-white"
+        class="border-surface-100 bg-surface-50 hover:border-surface-800/30 hover:bg-surface-0 flex items-center gap-2 rounded-lg border px-3 py-2 transition"
       >
         <TechIcon :item="tech" :size="16" />
-        <span class="text-sm text-neutral-700">{{ tech.name }}</span>
+        <span class="text-surface-800/80 text-sm">{{ tech.name }}</span>
       </div>
     </div>
   </section>

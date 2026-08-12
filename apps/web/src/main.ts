@@ -5,13 +5,18 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import { queryClient } from './app/query-client';
 import router from './router';
+import { useThemeStore } from './stores/theme';
 
 import './assets/main.css';
 
 const app = createApp(App);
 
-app.use(createPinia());
+const pinia = createPinia();
+app.use(pinia);
 app.use(router);
 app.use(VueQueryPlugin, { queryClient });
+
+// 挂载前应用全局主题（localStorage 持久化，全站生效）
+useThemeStore(pinia).apply();
 
 app.mount('#app');

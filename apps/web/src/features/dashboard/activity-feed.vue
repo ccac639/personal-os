@@ -40,12 +40,12 @@ const activities: ActivityItem[] = [
 
 function getActivityColor(type: string) {
   const colors = {
-    commit: 'text-blue-600 bg-blue-50',
-    project: 'text-green-600 bg-green-50',
-    workflow: 'text-purple-600 bg-purple-50',
-    system: 'text-gray-600 bg-gray-50',
+    commit: 'text-blue-600 bg-blue-500/10',
+    project: 'text-green-600 bg-green-500/10',
+    workflow: 'text-purple-600 bg-purple-500/10',
+    system: 'text-surface-800/60 bg-surface-100',
   };
-  return colors[type as keyof typeof colors] || 'text-gray-600 bg-gray-50';
+  return colors[type as keyof typeof colors] || 'text-surface-800/60 bg-surface-100';
 }
 
 /** 每个 slide 使用不同的切换动画，按索引循环分配 */
@@ -82,13 +82,13 @@ onBeforeUnmount(() => {
 
 <template>
   <section
-    class="rounded-lg border border-neutral-200 bg-white p-6"
+    class="border-surface-100 bg-surface-0 rounded-lg border p-6"
     @mouseenter="paused = true"
     @mouseleave="paused = false"
   >
     <div class="mb-3 flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-neutral-900">最近活动</h2>
-      <span class="text-xs text-neutral-400 tabular-nums">
+      <h2 class="text-surface-900 text-lg font-semibold">最近活动</h2>
+      <span class="text-surface-800/50 text-xs tabular-nums">
         {{ current + 1 }} / {{ SLIDE_COUNT }}
       </span>
     </div>
@@ -105,13 +105,13 @@ onBeforeUnmount(() => {
               <component :is="currentActivity.icon" class="size-5" />
             </div>
             <div class="min-w-0 flex-1">
-              <h3 class="text-sm font-medium text-neutral-900">
+              <h3 class="text-surface-900 text-sm font-medium">
                 {{ currentActivity.title }}
               </h3>
-              <p class="mt-0.5 line-clamp-2 text-xs text-neutral-600">
+              <p class="text-surface-800/70 mt-0.5 line-clamp-2 text-xs">
                 {{ currentActivity.description }}
               </p>
-              <div class="mt-1.5 flex items-center gap-1 text-xs text-neutral-500">
+              <div class="text-surface-800/60 mt-1.5 flex items-center gap-1 text-xs">
                 <Clock class="size-3" />
                 {{ currentActivity.timestamp }}
               </div>
@@ -130,7 +130,9 @@ onBeforeUnmount(() => {
         :aria-label="`切换到第 ${index + 1} 条活动`"
         class="h-1.5 rounded-full transition-all duration-300"
         :class="
-          index === current ? 'w-5 bg-neutral-800' : 'w-1.5 bg-neutral-300 hover:bg-neutral-400'
+          index === current
+            ? 'bg-surface-900 w-5'
+            : 'bg-surface-800/25 hover:bg-surface-800/40 w-1.5'
         "
         @click="goTo(index)"
       />

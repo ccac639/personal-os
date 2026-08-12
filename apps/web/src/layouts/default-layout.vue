@@ -2,6 +2,7 @@
 import { motion, AnimatePresence, LayoutGroup } from 'motion-v';
 import { useRoute } from 'vue-router';
 import { ref } from 'vue';
+import PagePet from '@/components/PagePet.vue';
 
 const route = useRoute();
 
@@ -56,7 +57,7 @@ const brandLetters = 'Personal OS'.split('');
 </script>
 
 <template>
-  <div class="flex h-screen flex-col overflow-hidden">
+  <div class="bg-page text-surface-900 flex h-screen flex-col overflow-hidden">
     <motion.header
       :initial="{ opacity: 0, y: -18 }"
       :animate="{ opacity: 1, y: 0 }"
@@ -67,7 +68,7 @@ const brandLetters = 'Personal OS'.split('');
         <!-- 品牌区：字母逐字弹性入场（仅首屏，transform 动画零布局开销） -->
         <RouterLink
           to="/"
-          class="shrink-0 text-lg font-bold tracking-tight text-neutral-900"
+          class="text-surface-900 shrink-0 text-lg font-bold tracking-tight"
           aria-label="Personal OS"
         >
           <span class="inline-flex overflow-hidden">
@@ -108,7 +109,9 @@ const brandLetters = 'Personal OS'.split('');
                 :href="href"
                 class="relative flex h-full items-center px-1 text-sm"
                 :class="
-                  isActive(item.to) ? 'font-medium text-black' : 'text-[#666666] hover:text-black'
+                  isActive(item.to)
+                    ? 'text-surface-900 font-medium'
+                    : 'text-surface-800/70 hover:text-surface-900'
                 "
                 :initial="{ opacity: 0, y: -8 }"
                 :animate="{ opacity: 1, y: 0 }"
@@ -136,7 +139,7 @@ const brandLetters = 'Personal OS'.split('');
               >
                 <!-- hover 光晕 pill：仅 transform/opacity，GPU 合成零布局开销 -->
                 <motion.span
-                  class="absolute inset-x-0 h-[68%] rounded-full bg-neutral-100/90"
+                  class="bg-surface-100/90 absolute inset-x-0 h-[68%] rounded-full"
                   :style="{ top: '50%' }"
                   :initial="{ opacity: 0, scale: 0.7, y: '-50%' }"
                   :while-hover="{ opacity: 1, scale: 1, y: '-50%' }"
@@ -156,7 +159,7 @@ const brandLetters = 'Personal OS'.split('');
                 <motion.span
                   v-for="r in ripplesByNav[item.to] ?? []"
                   :key="r.id"
-                  class="pointer-events-none absolute h-10 w-10 rounded-full bg-neutral-900/15"
+                  class="bg-surface-900/15 pointer-events-none absolute h-10 w-10 rounded-full"
                   :style="{ left: r.x - 20 + 'px', top: r.y - 20 + 'px' }"
                   :initial="{ opacity: 0.55, scale: 0 }"
                   :animate="{ opacity: 0, scale: 2.4 }"
@@ -172,9 +175,9 @@ const brandLetters = 'Personal OS'.split('');
           <RouterLink v-slot="{ href, navigate }" to="/settings" custom>
             <motion.a
               :href="href"
-              class="rounded-md border border-neutral-200 px-3 py-1 text-[13px] text-neutral-600"
+              class="border-surface-100 text-surface-800/70 rounded-md border px-3 py-1 text-[13px]"
               :class="{
-                'border-neutral-300 text-black': route.path === '/settings',
+                'border-surface-800/40 text-surface-900': route.path === '/settings',
               }"
               :initial="{ opacity: 0, x: 8 }"
               :animate="{ opacity: 1, x: 0 }"
@@ -183,7 +186,7 @@ const brandLetters = 'Personal OS'.split('');
                 opacity: { duration: 0.35, ease: 'easeOut', delay: 0.52 },
                 x: { duration: 0.35, ease: 'easeOut', delay: 0.52 },
               }"
-              :while-hover="{ scale: 1.08, borderColor: '#000' }"
+              :while-hover="{ scale: 1.08 }"
               :while-tap="{ scale: 0.88 }"
               @click="navigate"
             >
@@ -210,5 +213,8 @@ const brandLetters = 'Personal OS'.split('');
         </motion.div>
       </AnimatePresence>
     </main>
+
+    <!-- 全局页面宠物：所有页面可见，点击换肤 -->
+    <PagePet />
   </div>
 </template>
