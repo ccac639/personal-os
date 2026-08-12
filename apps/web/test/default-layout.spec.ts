@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
+import { createPinia } from 'pinia';
 import { nextTick } from 'vue';
 import { describe, expect, it } from 'vitest';
 
@@ -14,7 +15,7 @@ const router = createRouter({
 async function mountLayout(path: string) {
   await router.push(path);
   await nextTick();
-  return mount(DefaultLayout, { global: { plugins: [router] } });
+  return mount(DefaultLayout, { global: { plugins: [router, createPinia()] } });
 }
 
 describe('default-layout 顶部导航', () => {
@@ -32,14 +33,14 @@ describe('default-layout 顶部导航', () => {
   it('首页精确匹配高亮（子路径不高亮首页）', async () => {
     const wrapper = await mountLayout('/chat');
     const homeLink = wrapper.findAll('nav a')[0];
-    expect(homeLink.classes()).not.toContain('text-black');
+    expect(homeLink.classes()).not.toContain('text-surface-900');
     const chatLink = wrapper.findAll('nav a')[1];
-    expect(chatLink.classes()).toContain('text-black');
+    expect(chatLink.classes()).toContain('text-surface-900');
   });
 
   it('前缀匹配：/projects 子路由高亮"开发中"', async () => {
     const wrapper = await mountLayout('/projects/123');
     const projectLink = wrapper.findAll('nav a')[3];
-    expect(projectLink.classes()).toContain('text-black');
+    expect(projectLink.classes()).toContain('text-surface-900');
   });
 });

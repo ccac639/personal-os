@@ -17,10 +17,10 @@
 
 ### Web
 
-- [ ] P1 Dashboard 首页（概览卡片 + ECharts 可视化）
+- [x] P1 Dashboard 首页（概览卡片 + ECharts 可视化）
+- [x] P2 Workflows 编排页（@vue-flow 画布 + 节点面板 + 属性面板 + 持久化 + 模拟运行）
 - [ ] P1 Chat 工作区（socket.io 流式对话 + Tiptap 富文本）
 - [ ] P2 Agents 管理页（Agent CRUD + 运行状态）
-- [ ] P2 Workflows 编排页（@vue-flow 画布 + 节点面板）
 - [ ] P2 Projects / Tasks 看板
 - [ ] P2 Achievements 成果展示
 - [ ] P2 Settings / Admin
