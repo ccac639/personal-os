@@ -5,13 +5,14 @@ import {
   ChevronRight,
   Clock,
   GitCommit,
+  Layers,
   Palette,
   Rocket,
   Workflow,
 } from '@lucide/vue';
 import type { ActivityItem } from './types';
 
-/** 真实近期开发动态（对应 git log 2026-08-12） */
+/** 真实近期开发动态（对应 git log 2026-08-12，每页 3 条） */
 const activities: ActivityItem[] = [
   {
     id: '1',
@@ -45,6 +46,22 @@ const activities: ActivityItem[] = [
     timestamp: '3 小时前',
     icon: Workflow,
   },
+  {
+    id: '5',
+    type: 'commit',
+    title: '最近活动模块优化',
+    description: '真实数据 + 进度条 + 手动切换',
+    timestamp: '4 小时前',
+    icon: Layers,
+  },
+  {
+    id: '6',
+    type: 'project',
+    title: 'Dashboard 轮播布局',
+    description: '统计卡/项目/技术栈三种动画切换',
+    timestamp: '昨天',
+    icon: Layers,
+  },
 ];
 
 const TYPE_LABELS: Record<string, string> = {
@@ -74,26 +91,34 @@ function getBadgeColor(type: string) {
   return colors[type as keyof typeof colors] || 'text-surface-800/60 bg-surface-100';
 }
 
-/** 每个 slide 使用不同的切换动画，按索引循环分配 */
+/** 每屏 3 条内容块 */
+const PAGE_SIZE = 3;
 const ANIMS = ['fade', 'slide-up', 'zoom', 'flip'] as const;
 
-const SLIDE_COUNT = activities.length;
-const AUTOPLAY_MS = 4000;
+const pages = computed(() => {
+  const result: ActivityItem[][] = [];
+  for (let i = 0; i < activities.length; i += PAGE_SIZE) {
+    result.push(activities.slice(i, i + PAGE_SIZE));
+  }
+  return result;
+});
+
+const PAGE_COUNT = computed(() => pages.value.length);
+const AUTOPLAY_MS = 5000;
 
 const current = ref(0);
 const paused = ref(false);
 let timer: ReturnType<typeof setInterval> | null = null;
 
 const animName = computed(() => ANIMS[current.value % ANIMS.length] ?? 'fade');
-const currentActivity = computed(() => activities[current.value]!);
-const currentType = computed(() => currentActivity.value.type);
+const currentPage = computed(() => pages.value[current.value] ?? []);
 
 function next() {
-  current.value = (current.value + 1) % SLIDE_COUNT;
+  current.value = (current.value + 1) % PAGE_COUNT.value;
 }
 
 function prev() {
-  current.value = (current.value - 1 + SLIDE_COUNT) % SLIDE_COUNT;
+  current.value = (current.value - 1 + PAGE_COUNT.value) % PAGE_COUNT.value;
 }
 
 function goTo(index: number) {
@@ -132,12 +157,12 @@ onBeforeUnmount(() => {
         </span>
       </div>
       <span class="text-surface-800/50 text-xs tabular-nums">
-        {{ current + 1 }} / {{ SLIDE_COUNT }}
+        {{ current + 1 }} / {{ PAGE_COUNT }}
       </span>
     </div>
 
     <!-- 自动播放进度条 -->
-    <div class="bg-surface-100 mb-4 h-0.5 overflow-hidden rounded-full">
+    <div class="bg-surface-100 mb-3 h-0.5 overflow-hidden rounded-full">
       <div
         :key="`progress-${current}`"
         class="bg-brand-600 h-full rounded-full"
@@ -145,35 +170,41 @@ onBeforeUnmount(() => {
       />
     </div>
 
-    <!-- 轮播区：每次显示一条活动 -->
-    <div class="relative min-h-[7.5rem] flex-1">
+    <!-- 轮播区：每屏 3 条内容块 -->
+    <div class="relative flex-1">
       <Transition :name="animName" mode="out-in">
-        <div :key="current" class="flex items-center px-1">
-          <div class="flex w-full items-start gap-3">
-            <div
-              class="flex size-10 shrink-0 items-center justify-center rounded-lg transition-transform duration-300 group-hover:scale-105"
-              :class="getActivityColor(currentActivity.type)"
-            >
-              <component :is="currentActivity.icon" class="size-5" />
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2">
-                <h3 class="text-surface-900 truncate text-sm font-medium">
-                  {{ currentActivity.title }}
-                </h3>
-                <span
-                  class="shrink-0 rounded-full border px-1.5 py-px text-[10px] leading-4"
-                  :class="getBadgeColor(currentType)"
-                >
-                  {{ TYPE_LABELS[currentType] ?? currentType }}
-                </span>
+        <div :key="current" class="space-y-1">
+          <div
+            v-for="activity in currentPage"
+            :key="activity.id"
+            class="hover:bg-surface-50 rounded-lg p-2 transition-colors duration-200"
+          >
+            <div class="flex items-start gap-2.5">
+              <div
+                class="flex size-8 shrink-0 items-center justify-center rounded-lg"
+                :class="getActivityColor(activity.type)"
+              >
+                <component :is="activity.icon" class="size-4" />
               </div>
-              <p class="text-surface-800/70 mt-1 line-clamp-2 text-xs leading-5">
-                {{ currentActivity.description }}
-              </p>
-              <div class="text-surface-800/60 mt-1.5 flex items-center gap-1 text-xs">
-                <Clock class="size-3" />
-                {{ currentActivity.timestamp }}
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  <h3 class="text-surface-900 truncate text-[13px] font-medium">
+                    {{ activity.title }}
+                  </h3>
+                  <span
+                    class="shrink-0 rounded-full border px-1.5 py-px text-[10px] leading-4"
+                    :class="getBadgeColor(activity.type)"
+                  >
+                    {{ TYPE_LABELS[activity.type] ?? activity.type }}
+                  </span>
+                </div>
+                <p class="text-surface-800/70 mt-0.5 line-clamp-1 text-xs leading-5">
+                  {{ activity.description }}
+                </p>
+                <div class="text-surface-800/50 mt-0.5 flex items-center gap-1 text-[11px]">
+                  <Clock class="size-3" />
+                  {{ activity.timestamp }}
+                </div>
               </div>
             </div>
           </div>
@@ -182,11 +213,11 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 底部：箭头 + 圆点 -->
-    <div class="mt-3 flex items-center justify-between">
+    <div class="mt-2 flex items-center justify-between">
       <div class="flex items-center gap-1">
         <button
           type="button"
-          aria-label="上一条"
+          aria-label="上一页"
           class="text-surface-800/50 hover:bg-surface-100 hover:text-surface-900 rounded-md p-1 transition"
           @click="prev"
         >
@@ -194,7 +225,7 @@ onBeforeUnmount(() => {
         </button>
         <button
           type="button"
-          aria-label="下一条"
+          aria-label="下一页"
           class="text-surface-800/50 hover:bg-surface-100 hover:text-surface-900 rounded-md p-1 transition"
           @click="next"
         >
@@ -204,10 +235,10 @@ onBeforeUnmount(() => {
 
       <div class="flex items-center gap-1.5">
         <button
-          v-for="(activity, index) in activities"
-          :key="activity.id"
+          v-for="(_, index) in PAGE_COUNT"
+          :key="index"
           type="button"
-          :aria-label="`切换到第 ${index + 1} 条活动`"
+          :aria-label="`切换到第 ${index + 1} 页`"
           class="h-1.5 rounded-full transition-all duration-300"
           :class="
             index === current
@@ -224,7 +255,7 @@ onBeforeUnmount(() => {
 <style scoped>
 /* 自动播放进度条 */
 .progress-running {
-  animation: progress-fill 4s linear forwards;
+  animation: progress-fill 5s linear forwards;
 }
 .progress-paused {
   animation-play-state: paused;
