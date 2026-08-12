@@ -1,13 +1,123 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { X } from '@lucide/vue';
 import { BACKGROUND_PRESETS, FONT_PRESETS, type ThemeSettings } from './theme';
 
 const props = defineProps<{ theme: ThemeSettings }>();
 const emit = defineEmits<{ 'update:theme': [value: ThemeSettings] }>();
 
+/** 宠物按钮尺寸与视口边距（px） */
+const PET_SIZE = 64;
+const MARGIN = 8;
+/** 位置持久化 key */
+const POS_KEY = 'personal-os-pet-position';
+
 const open = ref(false);
 const bouncing = ref(false);
+const dragging = ref(false);
+const suppressClick = ref(false);
+
+/** 宠物当前坐标（fixed 定位的 left/top） */
+const pos = ref<{ x: number; y: number } | null>(loadPosition() ?? defaultPosition());
+
+function loadPosition(): { x: number; y: number } | null {
+  try {
+    const raw = localStorage.getItem(POS_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && 'x' in parsed && 'y' in parsed) {
+      const { x, y } = parsed as { x: number; y: number };
+      if (typeof x === 'number' && typeof y === 'number') return { x, y };
+    }
+  } catch {
+    /* localStorage 不可用或数据损坏时忽略 */
+  }
+  return null;
+}
+
+function savePosition() {
+  if (!pos.value) return;
+  try {
+    localStorage.setItem(POS_KEY, JSON.stringify(pos.value));
+  } catch {
+    /* 忽略写入失败 */
+  }
+}
+
+/** 默认位置：视口右下角 */
+function defaultPosition() {
+  return clampPosition(window.innerWidth - PET_SIZE - 24, window.innerHeight - PET_SIZE - 24);
+}
+
+/** 限制在视口内 */
+function clampPosition(x: number, y: number) {
+  return {
+    x: Math.min(Math.max(x, MARGIN), window.innerWidth - PET_SIZE - MARGIN),
+    y: Math.min(Math.max(y, MARGIN), window.innerHeight - PET_SIZE - MARGIN),
+  };
+}
+
+const petStyle = computed(() => {
+  if (!pos.value) return {};
+  return { left: `${pos.value.x}px`, top: `${pos.value.y}px` };
+});
+
+/** 宠物靠近屏幕顶部时，面板改为显示在下方 */
+const panelBelow = computed(() => (pos.value?.y ?? 0) < 160);
+
+onMounted(() => {
+  if (pos.value) pos.value = clampPosition(pos.value.x, pos.value.y);
+  window.addEventListener('resize', handleResize);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize);
+  window.removeEventListener('pointermove', onPointerMove);
+  window.removeEventListener('pointerup', onPointerUp);
+});
+
+function handleResize() {
+  if (pos.value) pos.value = clampPosition(pos.value.x, pos.value.y);
+}
+
+/** 拖拽起始状态 */
+const dragStart = { x: 0, y: 0, px: 0, py: 0, moved: false };
+
+function onPointerDown(event: PointerEvent) {
+  if (!pos.value) return;
+  dragStart.x = event.clientX;
+  dragStart.y = event.clientY;
+  dragStart.px = pos.value.x;
+  dragStart.py = pos.value.y;
+  dragStart.moved = false;
+  dragging.value = true;
+}
+
+function onPointerMove(event: PointerEvent) {
+  if (!dragging.value || !pos.value) return;
+  const dx = event.clientX - dragStart.x;
+  const dy = event.clientY - dragStart.y;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragStart.moved = true;
+  pos.value = clampPosition(dragStart.px + dx, dragStart.py + dy);
+}
+
+function onPointerUp() {
+  if (!dragging.value) return;
+  dragging.value = false;
+  savePosition();
+  // 发生了拖拽则抑制随后的 click，避免误开面板
+  if (dragStart.moved) {
+    suppressClick.value = true;
+    window.setTimeout(() => (suppressClick.value = false), 0);
+  }
+}
+
+function onClick() {
+  if (suppressClick.value) return;
+  toggle();
+}
 
 function toggle() {
   if (open.value) {
@@ -29,13 +139,14 @@ function pickFont(value: string) {
 </script>
 
 <template>
-  <!-- 右下角页面宠物 -->
-  <div class="fixed right-6 bottom-6 z-50 flex flex-col items-end">
+  <!-- 可拖拽页面宠物（位置持久化） -->
+  <div class="fixed z-50 flex flex-col items-end select-none" :style="petStyle">
     <!-- 设置面板 -->
     <Transition name="pop">
       <div
         v-if="open"
-        class="absolute right-0 bottom-20 w-72 rounded-xl border border-neutral-200 bg-white p-5 shadow-xl"
+        class="absolute right-0 w-72 rounded-xl border border-neutral-200 bg-white p-5 shadow-xl"
+        :class="panelBelow ? 'top-24' : 'bottom-20'"
       >
         <div class="mb-4 flex items-center justify-between">
           <h3 class="font-semibold text-neutral-900">✨ 页面外观</h3>
@@ -91,28 +202,29 @@ function pickFont(value: string) {
       </div>
     </Transition>
 
-    <!-- 宠物按钮 -->
+    <!-- 宠物按钮：按住可拖拽，轻点打开面板 -->
     <button
       type="button"
-      class="pet-button group relative"
-      :class="{ 'pet-bounce': bouncing }"
+      class="pet-button group relative touch-none"
+      :class="{ 'pet-bounce': bouncing, 'pet-dragging': dragging }"
       :aria-label="open ? '收起外观设置' : '打开外观设置'"
-      @click="toggle"
+      @pointerdown="onPointerDown"
+      @click="onClick"
     >
       <!-- 气泡提示 -->
       <span
         v-if="!open"
         class="pointer-events-none absolute top-1/2 right-full mr-3 -translate-y-1/2 rounded-full bg-neutral-900 px-3 py-1.5 text-xs whitespace-nowrap text-white opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100"
       >
-        点击我换皮肤 🎨
+        拖动我，点我换皮肤 🎨
       </span>
 
       <!-- 小猫宠物 -->
-      <span class="pet-float block size-16">
+      <span class="block size-16" :class="{ 'pet-float': !dragging }">
         <svg
           viewBox="0 0 120 120"
-          class="size-full drop-shadow-lg transition-transform duration-200 group-hover:scale-105"
-          :class="{ 'group-hover:-rotate-6': !open }"
+          class="size-full drop-shadow-lg transition-transform duration-200"
+          :class="dragging ? 'scale-110' : 'group-hover:scale-105 group-hover:-rotate-6'"
         >
           <defs>
             <linearGradient id="petBodyGrad" x1="0" y1="0" x2="0" y2="1">
@@ -223,7 +335,7 @@ function pickFont(value: string) {
   transform: translateY(8px) scale(0.98);
 }
 
-/* 宠物上下浮动 */
+/* 宠物上下浮动（拖拽时暂停） */
 .pet-float {
   animation: pet-float 5s ease-in-out infinite;
 }
@@ -254,6 +366,11 @@ function pickFont(value: string) {
   100% {
     transform: translateY(0) scale(1);
   }
+}
+
+/* 拖拽状态 */
+.pet-dragging {
+  cursor: grabbing;
 }
 
 /* 眨眼 */
