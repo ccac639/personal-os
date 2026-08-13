@@ -40,9 +40,11 @@ export {
 } from './annual';
 export {
   buildReuseExport,
+  buildReuseMarkdown,
   hasReuse,
   reuseSummary,
   reuseFilename,
+  reuseMarkdownFilename,
   REUSE_EXPORT_APP,
   REUSE_EXPORT_VERSION,
   type ReuseExportPayload,
@@ -62,6 +64,7 @@ export {
   sanitizeFilters,
   normalizeStorage,
   parseImport,
+  describeImportScope,
   mergeImport,
   buildExport,
   exportFilename,
@@ -70,6 +73,7 @@ export {
   type ImportPayload,
   type ImportMode,
   type ImportParseResult,
+  type ImportScopeLabel,
   type MergeOutcome,
   type ExportPayload,
 } from './storage';

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { ACHIEVEMENT_STORAGE_KEY, useAchievementStore } from '@/features/achievements/store';
-import { parseImport } from '@/features/achievements/storage';
+import { describeImportScope, parseImport } from '@/features/achievements/storage';
 import type { AchievementStorageData } from '@/features/achievements/storage';
 
 function readStorage(): AchievementStorageData {
@@ -37,6 +37,44 @@ describe('achievement import（文件解析健壮性）', () => {
       expect(res.payload.items).toEqual([]);
       expect(res.dropped).toBe(0);
     }
+  });
+
+  it('describeImportScope：单项 / 集合 / 全库预览识别', () => {
+    const item = {
+      id: 'a1',
+      type: 'project',
+      title: '单项',
+      summary: '',
+      description: '',
+      tags: [],
+      completedAt: '2026-01-01',
+      metrics: [],
+      relations: { projectIds: [], workflowIds: [], predecessorIds: [], derivedIds: [] },
+      reuse: { links: [], usageGuide: '', checklist: [], retrospective: '', templateSnippet: '' },
+      pinned: false,
+      archived: false,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const col = {
+      id: 'c1',
+      name: '精选',
+      description: '',
+      color: '#0ea5e9',
+      achievementIds: ['a1'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    // 单项导出：1 条成果 + 无集合
+    expect(describeImportScope({ items: [item], collections: [] })).toBe('single');
+    // 集合导出：含集合（任意条成果）
+    expect(describeImportScope({ items: [item], collections: [col] })).toBe('collection');
+    // 全库导出：多条目无集合
+    expect(describeImportScope({ items: [item, { ...item, id: 'a2' }], collections: [] })).toBe(
+      'library',
+    );
+    // 空数组兜底：按 library 处理
+    expect(describeImportScope({ items: [], collections: [] })).toBe('library');
   });
 });
 

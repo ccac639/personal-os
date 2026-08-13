@@ -45,6 +45,14 @@ export interface AnnualReview {
   bestStreak: Streak;
   /** 截至年末的连续产出月份段 */
   currentStreak: Streak;
+  /** 当年完成且当前置顶（收藏）的数量与占比（0-100） */
+  pinnedCount: number;
+  pinnedRatio: number;
+  /** 当年完成且当前已归档的数量与占比（0-100） */
+  archivedCount: number;
+  archivedRatio: number;
+  /** 与上一年对比：同口径「当年完成且置顶/归档」数量差（上一年无数据为 0） */
+  vsPreviousYear: { pinned: number; archived: number };
 }
 
 function padMonth(m: number): string {
@@ -92,7 +100,22 @@ export function currentMonthStreak(months: number[], year: number): Streak {
   return { length: len, start: `${year}-${padMonth(start)}`, end: `${year}-${padMonth(end)}` };
 }
 
-/** 年度回顾：完成趋势（逐月）/ 类型构成 / 重点成果 / 连续产出周期 */
+/** 某年完成且当前置顶/归档的计数（同口径，供跨年对比） */
+function cohortPinnedArchived(
+  list: Achievement[],
+  year: number,
+): { pinned: number; archived: number } {
+  let pinned = 0;
+  let archived = 0;
+  for (const a of list) {
+    if (Number(a.completedAt.slice(0, 4)) !== year) continue;
+    if (a.pinned) pinned += 1;
+    if (a.archived) archived += 1;
+  }
+  return { pinned, archived };
+}
+
+/** 年度回顾：完成趋势（逐月）/ 类型构成 / 重点成果 / 连续产出周期 / 收藏与归档变化 */
 export function annualReview(list: Achievement[], year: number): AnnualReview {
   const inYear = list.filter((a) => Number(a.completedAt.slice(0, 4)) === year);
   const monthly: MonthCount[] = Array.from({ length: 12 }, (_, i) => ({
@@ -122,6 +145,8 @@ export function annualReview(list: Achievement[], year: number): AnnualReview {
     )
     .slice(0, 5);
   const monthsWith = monthly.filter((m) => m.count > 0).map((m) => m.month);
+  const cohort = cohortPinnedArchived(list, year);
+  const prev = cohortPinnedArchived(list, year - 1);
   return {
     year,
     total,
@@ -130,6 +155,14 @@ export function annualReview(list: Achievement[], year: number): AnnualReview {
     highlights,
     bestStreak: bestMonthStreak(monthsWith, year),
     currentStreak: currentMonthStreak(monthsWith, year),
+    pinnedCount: cohort.pinned,
+    pinnedRatio: total > 0 ? Math.round((cohort.pinned / total) * 100) : 0,
+    archivedCount: cohort.archived,
+    archivedRatio: total > 0 ? Math.round((cohort.archived / total) * 100) : 0,
+    vsPreviousYear: {
+      pinned: cohort.pinned - prev.pinned,
+      archived: cohort.archived - prev.archived,
+    },
   };
 }
 
@@ -153,6 +186,16 @@ export function annualSummary(review: AnnualReview): string {
     parts.push(
       `最长连续产出 ${review.bestStreak.length} 个月（${review.bestStreak.start} 至 ${review.bestStreak.end}）。`,
     );
+  }
+  if (review.total > 0) {
+    parts.push(
+      `收藏与归档：当年完成成果中置顶 ${review.pinnedCount} 项（${review.pinnedRatio}%）、已归档 ${review.archivedCount} 项（${review.archivedRatio}%）。`,
+    );
+    const vp = review.vsPreviousYear;
+    if (vp.pinned !== 0 || vp.archived !== 0) {
+      const delta = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+      parts.push(`与上一年相比：置顶 ${delta(vp.pinned)} 项、归档 ${delta(vp.archived)} 项。`);
+    }
   }
   if (review.highlights.length > 0) {
     parts.push(`重点成果：${review.highlights.map((h) => h.title).join('、')}。`);

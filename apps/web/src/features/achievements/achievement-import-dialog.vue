@@ -2,8 +2,8 @@
 import { computed, ref, watch } from 'vue';
 import { FileJson, Upload, X } from '@lucide/vue';
 import { useOverlayFocus } from './overlay';
-import { parseImport } from './storage';
-import type { ImportMode, ImportParseResult } from './storage';
+import { describeImportScope, parseImport } from './storage';
+import type { ImportMode, ImportParseResult, ImportScopeLabel } from './storage';
 import type { ImportPayload } from './storage';
 
 const props = defineProps<{
@@ -44,6 +44,17 @@ const conflictCount = computed(() => {
   const current = new Set(props.currentIds);
   return okPreview.value.payload.items.filter((a) => current.has(a.id)).length;
 });
+
+const SCOPE_LABELS: Record<ImportScopeLabel, string> = {
+  single: '单项',
+  collection: '集合',
+  library: '全库',
+};
+
+/** 导入内容范围（单项 / 集合 / 全库）预览 */
+const scopeLabel = computed<ImportScopeLabel | null>(() =>
+  okPreview.value ? describeImportScope(okPreview.value.payload) : null,
+);
 
 const MODES: { value: ImportMode; title: string; desc: string }[] = [
   {
@@ -178,6 +189,17 @@ watch(
               </p>
               <template v-else-if="okPreview">
                 <div class="space-y-1.5">
+                  <p class="text-surface-800/80 text-xs">
+                    文件内容：
+                    <span class="text-surface-900 font-semibold">{{
+                      scopeLabel ? SCOPE_LABELS[scopeLabel] : ''
+                    }}</span>
+                    <template v-if="scopeLabel === 'single'"> （单项成果，无集合） </template>
+                    <template v-else-if="scopeLabel === 'collection'">
+                      （{{ okPreview.payload.collections.length }} 个集合及其成果）
+                    </template>
+                    <template v-else>（全库导出或批量条目）</template>
+                  </p>
                   <p class="text-surface-800/80 text-xs">
                     文件包含
                     <span class="text-surface-900 font-semibold">{{

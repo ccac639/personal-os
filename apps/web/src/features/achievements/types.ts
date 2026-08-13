@@ -167,4 +167,6 @@ export interface SavedFilter {
   name: string;
   filters: AchievementFilters;
   createdAt: string;
+  /** 最近编辑时间（编辑方案时更新；旧数据缺失时回退到 createdAt） */
+  updatedAt?: string;
 }

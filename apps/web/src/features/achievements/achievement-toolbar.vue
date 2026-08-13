@@ -7,7 +7,9 @@ import {
   Inbox,
   LayoutGrid,
   List,
+  Pencil,
   Plus,
+  RefreshCw,
   RotateCcw,
   Rows3,
   Search,
@@ -39,6 +41,7 @@ const emit = defineEmits<{
   'save-scheme': [name: string];
   'apply-scheme': [id: string];
   'delete-scheme': [id: string];
+  'update-scheme': [id: string, patch: { name?: string; filters?: AchievementFilters }];
   'clear-collection': [];
 }>();
 
@@ -46,6 +49,32 @@ const activeCount = computed(() => activeFilterCount(props.filters));
 const advancedOpen = ref(false);
 const schemeName = ref('');
 const schemeSaved = ref(false);
+/** 内联编辑中的方案 id（重命名） */
+const editingSchemeId = ref<string | null>(null);
+const editingSchemeName = ref('');
+
+function startEditScheme(s: SavedFilter) {
+  editingSchemeId.value = s.id;
+  editingSchemeName.value = s.name;
+}
+
+function cancelEditScheme() {
+  editingSchemeId.value = null;
+  editingSchemeName.value = '';
+}
+
+function saveEditScheme() {
+  if (editingSchemeId.value) {
+    const name = editingSchemeName.value.trim();
+    if (name) emit('update-scheme', editingSchemeId.value, { name });
+  }
+  cancelEditScheme();
+}
+
+/** 用当前筛选条件覆盖方案快照（编辑筛选内容） */
+function refreshScheme(s: SavedFilter) {
+  emit('update-scheme', s.id, { filters: { ...props.filters } });
+}
 
 function patch(p: Partial<AchievementFilters>) {
   emit('update:filters', { ...props.filters, ...p });
@@ -444,23 +473,72 @@ const advancedActive = computed(
           :key="s.id"
           class="border-surface-100 bg-surface-50/70 flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]"
         >
-          <button
-            type="button"
-            class="text-surface-800/70 hover:text-brand-600 transition"
-            :title="`恢复方案：${s.name}`"
-            @click="emit('apply-scheme', s.id)"
-          >
-            {{ s.name }}
-          </button>
-          <button
-            type="button"
-            class="text-surface-800/40 transition hover:text-red-600"
-            :aria-label="`删除方案 ${s.name}`"
-            title="删除方案"
-            @click="emit('delete-scheme', s.id)"
-          >
-            <Trash2 class="size-3" />
-          </button>
+          <template v-if="editingSchemeId === s.id">
+            <input
+              v-model="editingSchemeName"
+              type="text"
+              maxlength="40"
+              :aria-label="`方案新名称：${s.name}`"
+              class="border-surface-100 text-surface-900 w-24 rounded border px-1.5 py-0.5 text-[11px] outline-none"
+              @keydown.enter="saveEditScheme"
+              @keydown.esc="cancelEditScheme"
+            />
+            <button
+              type="button"
+              class="text-brand-600 font-medium transition"
+              :disabled="!editingSchemeName.trim()"
+              title="保存名称"
+              @click="saveEditScheme"
+            >
+              保存
+            </button>
+            <button
+              type="button"
+              class="text-surface-800/40 hover:text-surface-900 transition"
+              title="取消"
+              aria-label="取消编辑"
+              @click="cancelEditScheme"
+            >
+              <X class="size-3" />
+            </button>
+          </template>
+          <template v-else>
+            <button
+              type="button"
+              class="text-surface-800/70 hover:text-brand-600 transition"
+              :title="`恢复方案：${s.name}`"
+              @click="emit('apply-scheme', s.id)"
+            >
+              {{ s.name }}
+            </button>
+            <button
+              type="button"
+              class="text-surface-800/40 hover:text-brand-600 transition"
+              :aria-label="`编辑方案名称 ${s.name}`"
+              title="重命名"
+              @click="startEditScheme(s)"
+            >
+              <Pencil class="size-3" />
+            </button>
+            <button
+              type="button"
+              class="text-surface-800/40 hover:text-brand-600 transition"
+              :aria-label="`用当前筛选更新方案 ${s.name}`"
+              title="更新为当前筛选"
+              @click="refreshScheme(s)"
+            >
+              <RefreshCw class="size-3" />
+            </button>
+            <button
+              type="button"
+              class="text-surface-800/40 transition hover:text-red-600"
+              :aria-label="`删除方案 ${s.name}`"
+              title="删除方案"
+              @click="emit('delete-scheme', s.id)"
+            >
+              <Trash2 class="size-3" />
+            </button>
+          </template>
         </span>
       </div>
     </div>

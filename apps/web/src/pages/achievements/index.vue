@@ -12,7 +12,12 @@ import {
   yearOptions,
 } from '@/features/achievements/filters';
 import { useToasts } from '@/features/achievements/toast';
-import { buildReuseExport, reuseFilename } from '@/features/achievements/reuse';
+import {
+  buildReuseExport,
+  buildReuseMarkdown,
+  reuseFilename,
+  reuseMarkdownFilename,
+} from '@/features/achievements/reuse';
 import { exportFilename } from '@/features/achievements/storage';
 import { emptyFilters } from '@/features/achievements/types';
 import type {
@@ -278,6 +283,11 @@ function deleteScheme(id: string) {
   toasts.push('筛选方案已删除', 'success');
 }
 
+function updateScheme(id: string, patch: { name?: string; filters?: AchievementFilters }) {
+  store.updateSavedFilter(id, patch);
+  toasts.push('筛选方案已更新', 'success');
+}
+
 /* ---------- 导出 / 导入 ---------- */
 
 /** 下载 JSON 文件（Blob + 临时链接） */
@@ -317,6 +327,17 @@ function exportCollection(colId: string) {
 function exportReuse(item: Achievement) {
   downloadJson(buildReuseExport(item), reuseFilename(item));
   toasts.push('复用包已导出为 JSON', 'success');
+}
+
+function exportReuseMarkdown(item: Achievement) {
+  const blob = new Blob([buildReuseMarkdown(item)], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = reuseMarkdownFilename(item);
+  a.click();
+  URL.revokeObjectURL(url);
+  toasts.push('复用包已导出为 Markdown', 'success');
 }
 
 const importVisible = ref(false);
@@ -437,6 +458,7 @@ function clearFilters() {
       @save-scheme="saveScheme"
       @apply-scheme="applyScheme"
       @delete-scheme="deleteScheme"
+      @update-scheme="updateScheme"
       @clear-collection="clearCollection"
     />
 
@@ -587,6 +609,7 @@ function clearFilters() {
       @open-linked="openLinked"
       @export="exportSingle"
       @export-reuse="exportReuse"
+      @export-reuse-md="exportReuseMarkdown"
     />
 
     <!-- 新增 / 编辑表单 -->

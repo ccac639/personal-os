@@ -20,7 +20,7 @@ import {
 import { TYPE_META, tagCls } from './constants';
 import { useOverlayFocus } from './overlay';
 import { useToasts } from './toast';
-import { hasReuse } from './reuse';
+import { buildReuseMarkdown, hasReuse } from './reuse';
 import type { Achievement } from './types';
 
 const props = defineProps<{
@@ -42,8 +42,10 @@ const emit = defineEmits<{
   'open-linked': [id: string];
   /** 导出单项 */
   export: [item: Achievement];
-  /** 导出复用包 */
+  /** 导出复用包（JSON） */
   'export-reuse': [item: Achievement];
+  /** 导出复用包（Markdown） */
+  'export-reuse-md': [item: Achievement];
 }>();
 
 const toasts = useToasts();
@@ -109,6 +111,19 @@ async function copySnippet() {
   try {
     await navigator.clipboard.writeText(snippet);
     toasts.push('模板片段已复制', 'success');
+  } catch {
+    toasts.push('复制失败，请手动复制', 'error');
+  }
+}
+
+/* ---------- 复制整包（Markdown） ---------- */
+
+async function copyReuseMarkdown() {
+  const item = props.item;
+  if (!item) return;
+  try {
+    await navigator.clipboard.writeText(buildReuseMarkdown(item));
+    toasts.push('复用包（Markdown）已复制', 'success');
   } catch {
     toasts.push('复制失败，请手动复制', 'error');
   }
@@ -404,21 +419,39 @@ watch(
                 v-if="reuseReady"
                 class="border-surface-100/80 bg-surface-50/40 rounded-xl border p-3.5"
               >
-                <div class="mb-2.5 flex items-center justify-between gap-2">
+                <div class="mb-2.5 flex flex-wrap items-center justify-between gap-1.5">
                   <h3
                     class="text-surface-900 flex items-center gap-1.5 text-xs font-semibold tracking-wide"
                   >
                     <Package class="size-3.5 text-emerald-600" />
                     复用包
                   </h3>
-                  <button
-                    type="button"
-                    class="text-brand-600 hover:text-brand-700 flex items-center gap-1 text-[11px] font-medium transition"
-                    @click="emit('export-reuse', item)"
-                  >
-                    <Download class="size-3" />
-                    导出复用包
-                  </button>
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      class="text-brand-600 hover:text-brand-700 flex items-center gap-1 text-[11px] font-medium transition"
+                      @click="copyReuseMarkdown"
+                    >
+                      <Copy class="size-3" />
+                      复制
+                    </button>
+                    <button
+                      type="button"
+                      class="text-brand-600 hover:text-brand-700 flex items-center gap-1 text-[11px] font-medium transition"
+                      @click="emit('export-reuse-md', item)"
+                    >
+                      <Download class="size-3" />
+                      导出 Markdown
+                    </button>
+                    <button
+                      type="button"
+                      class="text-brand-600 hover:text-brand-700 flex items-center gap-1 text-[11px] font-medium transition"
+                      @click="emit('export-reuse', item)"
+                    >
+                      <Download class="size-3" />
+                      导出 JSON
+                    </button>
+                  </div>
                 </div>
 
                 <div class="space-y-3">

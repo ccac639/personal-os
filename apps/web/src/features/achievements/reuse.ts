@@ -39,6 +39,51 @@ export function buildReuseExport(item: Achievement): string {
   return JSON.stringify(payload, null, 2);
 }
 
+/**
+ * 复用包 Markdown 导出（人可读、可复制到文档/笔记工具）。
+ * 只包含文本与 URL 元数据；外链按原样输出，无文件二进制。
+ */
+export function buildReuseMarkdown(item: Achievement): string {
+  const lines: string[] = [];
+  lines.push(`# 复用包：${item.title}`);
+  lines.push('');
+  lines.push(`- 类型：${item.type}`);
+  lines.push(`- 完成日期：${item.completedAt}`);
+  lines.push('');
+
+  const r = item.reuse;
+  if (r.links.length > 0) {
+    lines.push('## 关键链接');
+    for (const l of r.links) lines.push(`- [${l.label}](${l.url})`);
+    lines.push('');
+  }
+  if (r.usageGuide.trim()) {
+    lines.push('## 使用说明');
+    lines.push(r.usageGuide.trim());
+    lines.push('');
+  }
+  if (r.checklist.length > 0) {
+    lines.push('## 交付清单');
+    for (const c of r.checklist) lines.push(`- [ ] ${c}`);
+    lines.push('');
+  }
+  if (r.retrospective.trim()) {
+    lines.push('## 复盘笔记');
+    lines.push(r.retrospective.trim());
+    lines.push('');
+  }
+  if (r.templateSnippet.trim()) {
+    lines.push('## 模板片段');
+    lines.push('```');
+    lines.push(r.templateSnippet.trim());
+    lines.push('```');
+    lines.push('');
+  }
+  // 去掉结尾多余空行
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return `${lines.join('\n')}\n`;
+}
+
 /** 是否包含可复用的实质内容（任一字段非空） */
 export function hasReuse(item: Achievement): boolean {
   const r = item.reuse;
@@ -71,4 +116,14 @@ export function reuseFilename(item: Achievement, date = new Date()): string {
     .slice(0, 40);
   const label = safe || item.id;
   return `reuse-${label}-${date.toISOString().slice(0, 10)}.json`;
+}
+
+/** 复用包 Markdown 导出文件名（与 JSON 导出同源清洗，扩展名 .md） */
+export function reuseMarkdownFilename(item: Achievement, date = new Date()): string {
+  const safe = item.title
+    .replace(/[\\/:*?"<>|\s]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  const label = safe || item.id;
+  return `reuse-${label}-${date.toISOString().slice(0, 10)}.md`;
 }

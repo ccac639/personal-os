@@ -310,6 +310,21 @@ export const useAchievementStore = defineStore('achievements', () => {
     persistItems();
   }
 
+  /** 编辑筛选方案：重命名和/或更新筛选快照（名称清洗；空名称保留原名；筛选取快照副本） */
+  function updateSavedFilter(id: string, patch: { name?: string; filters?: AchievementFilters }) {
+    savedFilters.value = savedFilters.value.map((s) => {
+      if (s.id !== id) return s;
+      const next: SavedFilter = { ...s, updatedAt: nowIso() };
+      if (typeof patch.name === 'string') {
+        const name = patch.name.trim().slice(0, 40);
+        if (name) next.name = name;
+      }
+      if (patch.filters) next.filters = { ...patch.filters };
+      return next;
+    });
+    persistItems();
+  }
+
   /* ---------- 批量操作 ---------- */
 
   function batchSetPinned(ids: string[], pinned: boolean) {
@@ -450,6 +465,7 @@ export const useAchievementStore = defineStore('achievements', () => {
     setActiveCollection,
     saveFilter,
     deleteSavedFilter,
+    updateSavedFilter,
     batchSetPinned,
     batchSetArchived,
     batchDelete,

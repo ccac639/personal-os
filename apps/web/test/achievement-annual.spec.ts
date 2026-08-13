@@ -106,6 +106,41 @@ describe('achievement annual（年度回顾聚合）', () => {
     expect(review.currentStreak).toEqual({ length: 1, start: '2026-05', end: '2026-05' });
   });
 
+  it('收藏与归档：当年完成且置顶/归档的计数与占比', () => {
+    const review = annualReview(ITEMS, 2026);
+    // y4 置顶（milestone）；无归档
+    expect(review.pinnedCount).toBe(1);
+    expect(review.pinnedRatio).toBe(20); // 1/5
+    expect(review.archivedCount).toBe(0);
+    expect(review.archivedRatio).toBe(0);
+  });
+
+  it('收藏与归档变化：与上一年同口径对比（跨年增量）', () => {
+    const withArchive = [
+      ...ITEMS,
+      make({ id: 'y7', completedAt: '2026-04-02', type: 'code', archived: true }),
+    ];
+    const review = annualReview(withArchive, 2026);
+    // 2025 年仅 y6（无置顶无归档）→ 置顶 +1、归档 +1
+    expect(review.vsPreviousYear).toEqual({ pinned: 1, archived: 1 });
+
+    // 上一年有数据时计算差值：2025 有 1 个置顶 → 2026 置顶 1 - 1 = 0
+    const withPrevPinned = [
+      ...withArchive,
+      make({ id: 'y0', completedAt: '2025-06-01', type: 'project', pinned: true }),
+    ];
+    expect(annualReview(withPrevPinned, 2026).vsPreviousYear.pinned).toBe(0);
+  });
+
+  it('空年份：收藏与归档统计为零，对比无数据为 0', () => {
+    const review = annualReview(ITEMS, 2024);
+    expect(review.pinnedCount).toBe(0);
+    expect(review.pinnedRatio).toBe(0);
+    expect(review.archivedCount).toBe(0);
+    expect(review.archivedRatio).toBe(0);
+    expect(review.vsPreviousYear).toEqual({ pinned: 0, archived: 0 });
+  });
+
   it('空年份：全零统计与空摘要安全', () => {
     const review = annualReview(ITEMS, 2024);
     expect(review.total).toBe(0);
@@ -122,6 +157,17 @@ describe('achievement annual（年度回顾聚合）', () => {
     expect(text).toContain('项目发布 2 项（40%）');
     expect(text).toContain('最长连续产出 3 个月（2026-01 至 2026-03）');
     expect(text).toContain('重点成果：');
+  });
+
+  it('annualSummary：包含收藏与归档统计及跨年变化文本', () => {
+    const withArchive = [
+      ...ITEMS,
+      make({ id: 'y7', completedAt: '2026-04-02', type: 'code', archived: true }),
+    ];
+    const text = annualSummary(annualReview(withArchive, 2026));
+    expect(text).toContain('置顶 1 项（17%）');
+    expect(text).toContain('已归档 1 项（17%）');
+    expect(text).toContain('与上一年相比：置顶 +1 项、归档 +1 项');
   });
 });
 

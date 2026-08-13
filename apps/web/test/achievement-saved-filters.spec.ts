@@ -69,6 +69,39 @@ describe('achievement saved filters（保存/恢复/删除筛选方案）', () =
     expect(store.ui.filters.keyword).toBe('b'); // 当前筛选不受影响
   });
 
+  it('编辑方案：重命名与更新筛选快照均生效并持久化，名称清洗', () => {
+    const store = useAchievementStore();
+    const saved = store.saveFilter('旧名', filters({ keyword: 'vue', year: 2026 }));
+
+    // 重命名（带空白，应清洗）
+    store.updateSavedFilter(saved.id, { name: '  Vue 精选 ' });
+    expect(store.savedFilters[0]!.name).toBe('Vue 精选');
+
+    // 更新筛选快照（独立副本，后续修改当前筛选不影响方案）
+    store.updateSavedFilter(saved.id, { filters: filters({ keyword: 'release', sort: 'title' }) });
+    expect(store.savedFilters[0]!.filters.keyword).toBe('release');
+    expect(store.savedFilters[0]!.filters.year).toBe(null); // 快照整体替换
+    expect(readStorage().savedFilters[0]!.filters.sort).toBe('title');
+
+    // 持久化后仍可读到
+    setActivePinia(createPinia());
+    const reloaded = useAchievementStore();
+    expect(reloaded.savedFilters[0]!.name).toBe('Vue 精选');
+    expect(reloaded.savedFilters[0]!.filters.keyword).toBe('release');
+  });
+
+  it('编辑方案：仅传部分字段时保留其余字段，空名称不生效', () => {
+    const store = useAchievementStore();
+    const saved = store.saveFilter('原名', filters({ keyword: 'a', tags: ['x'] }));
+
+    store.updateSavedFilter(saved.id, { name: '  ' }); // 空名称：不生效
+    expect(store.savedFilters[0]!.name).toBe('原名');
+
+    store.updateSavedFilter(saved.id, {}); // 空补丁：原样保留
+    expect(store.savedFilters[0]!.filters.keyword).toBe('a');
+    expect(store.savedFilters[0]!.filters.tags).toEqual(['x']);
+  });
+
   it('清洗：非法方案被丢弃（缺名称/坏筛选字段），合法方案字段回退', () => {
     const cleaned = sanitizeSavedFilters([
       { id: 's1', name: '合法', filters: { keyword: 'vue', year: 2026, month: 7, titleQuery: 42 } },

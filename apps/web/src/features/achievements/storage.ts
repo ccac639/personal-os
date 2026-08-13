@@ -275,11 +275,13 @@ export function sanitizeSavedFilter(raw: unknown, index: number): SavedFilter | 
   if (!isRecord(raw)) return null;
   const name = str(raw.name, '').trim().slice(0, 40);
   if (!name) return null;
+  const createdAt = isValidIso(raw.createdAt) ? raw.createdAt : new Date().toISOString();
   return {
     id: str(raw.id, `saved-${index + 1}`) || `saved-${index + 1}`,
     name,
     filters: sanitizeFilters(raw.filters),
-    createdAt: isValidIso(raw.createdAt) ? raw.createdAt : new Date().toISOString(),
+    createdAt,
+    updatedAt: isValidIso(raw.updatedAt) ? raw.updatedAt : createdAt,
   };
 }
 
@@ -435,6 +437,15 @@ export function parseImport(raw: string): ImportParseResult {
       : [];
   const dropped = source.length - items.length;
   return { ok: true, payload: { items, collections }, dropped };
+}
+
+/** 导入内容范围识别（预览用）：单项 / 集合 / 全库 */
+export type ImportScopeLabel = 'single' | 'collection' | 'library';
+
+export function describeImportScope(payload: ImportPayload): ImportScopeLabel {
+  if (payload.collections.length === 0 && payload.items.length === 1) return 'single';
+  if (payload.collections.length > 0) return 'collection';
+  return 'library';
 }
 
 export interface MergeOutcome {

@@ -280,6 +280,52 @@ const streakText = computed(() => {
 
           <div class="border-surface-100/80 bg-surface-50/40 rounded-xl border p-3">
             <p class="text-surface-800/70 mb-1.5 flex items-center gap-1.5 text-xs">
+              <Pin class="size-3.5 text-amber-500" />
+              收藏与归档
+            </p>
+            <div class="space-y-1 text-[11px] leading-relaxed">
+              <p v-if="review.total > 0" class="text-surface-800/80">
+                当年完成成果中置顶
+                <span class="text-surface-900 font-semibold tabular-nums">{{
+                  review.pinnedCount
+                }}</span>
+                项（{{ review.pinnedRatio }}%）、已归档
+                <span class="text-surface-900 font-semibold tabular-nums">{{
+                  review.archivedCount
+                }}</span>
+                项（{{ review.archivedRatio }}%）。
+              </p>
+              <p v-else class="text-surface-800/40">当年暂无成果。</p>
+              <p
+                v-if="
+                  review.total > 0 &&
+                  (review.vsPreviousYear.pinned !== 0 || review.vsPreviousYear.archived !== 0)
+                "
+                class="text-surface-800/60"
+              >
+                与上一年相比：置顶
+                <span
+                  class="font-semibold tabular-nums"
+                  :class="review.vsPreviousYear.pinned >= 0 ? 'text-emerald-600' : 'text-red-600'"
+                >
+                  {{ review.vsPreviousYear.pinned > 0 ? '+' : ''
+                  }}{{ review.vsPreviousYear.pinned }}
+                </span>
+                项、归档
+                <span
+                  class="font-semibold tabular-nums"
+                  :class="review.vsPreviousYear.archived >= 0 ? 'text-emerald-600' : 'text-red-600'"
+                >
+                  {{ review.vsPreviousYear.archived > 0 ? '+' : ''
+                  }}{{ review.vsPreviousYear.archived }}
+                </span>
+                项。
+              </p>
+            </div>
+          </div>
+
+          <div class="border-surface-100/80 bg-surface-50/40 rounded-xl border p-3">
+            <p class="text-surface-800/70 mb-1.5 flex items-center gap-1.5 text-xs">
               <Flame class="size-3.5 text-amber-500" />
               连续产出
             </p>

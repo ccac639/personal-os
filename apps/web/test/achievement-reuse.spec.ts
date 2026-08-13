@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import {
   buildReuseExport,
+  buildReuseMarkdown,
   hasReuse,
   reuseFilename,
+  reuseMarkdownFilename,
   reuseSummary,
   REUSE_EXPORT_APP,
   REUSE_EXPORT_VERSION,
@@ -92,6 +94,48 @@ describe('achievement reuse（导出纯函数）', () => {
       reuseFilename(make({ id: 'x', title: '  ' }), new Date('2026-08-13T00:00:00.000Z')),
     ).toContain('reuse-x-');
   });
+
+  it('buildReuseMarkdown：完整复用包渲染为可读 Markdown，内容与元信息齐全', () => {
+    const md = buildReuseMarkdown(make());
+    expect(md).toContain('# 复用包：每日审查流水线');
+    expect(md).toContain('- 类型：workflow');
+    expect(md).toContain('- 完成日期：2026-05-20');
+    expect(md).toContain('## 关键链接');
+    expect(md).toContain('[使用文档](https://example.com/docs)');
+    expect(md).toContain('## 使用说明');
+    expect(md).toContain('导入 JSON 后替换 API Key。');
+    expect(md).toContain('## 交付清单');
+    expect(md).toContain('- [ ] 导入 JSON');
+    expect(md).toContain('- [ ] 试运行');
+    expect(md).toContain('## 复盘笔记');
+    expect(md).toContain('条件分支表达最直观。');
+    expect(md).toContain('## 模板片段');
+    expect(md).toContain('```');
+    expect(md).toContain('trigger: cron "0 9 * * 1-5"');
+  });
+
+  it('buildReuseMarkdown：空字段不输出对应小节，无复用内容时仅头部', () => {
+    const md = buildReuseMarkdown(
+      make({
+        reuse: {
+          links: [],
+          usageGuide: '',
+          checklist: [],
+          retrospective: '',
+          templateSnippet: '',
+        },
+      }),
+    );
+    expect(md).toContain('# 复用包：每日审查流水线');
+    expect(md).not.toContain('## ');
+    expect(md).toMatch(/\n$/);
+  });
+
+  it('reuseMarkdownFilename：与 JSON 同名同清洗，扩展名为 .md', () => {
+    const name = reuseMarkdownFilename(make(), new Date('2026-08-13T00:00:00.000Z'));
+    expect(name).toMatch(/^reuse-[\w\u4e00-\u9fa5-]+-2026-08-13\.md$/);
+    expect(name).not.toMatch(/[\\/:*?"<>|]/);
+  });
 });
 
 describe('achievement reuse（抽屉复用包区块）', () => {
@@ -125,18 +169,40 @@ describe('achievement reuse（抽屉复用包区块）', () => {
     expect(labelSpan.classList.contains('line-through')).toBe(true);
   });
 
-  it('导出按钮：导出复用包与导出单项分别派发事件', async () => {
+  it('导出按钮：导出 JSON / 导出 Markdown / 复制 分别派发事件或写剪贴板', async () => {
     wrapper = mount(AchievementDrawer, { props: { item: make() } });
     await nextTick();
     const dialog = document.body.querySelector('[role="dialog"]')!;
     const buttons = Array.from(dialog.querySelectorAll('button'));
     const text = (b: Element) => b.textContent ?? '';
 
-    (buttons.find((b) => text(b).includes('导出复用包')) as HTMLButtonElement).click();
+    (buttons.find((b) => text(b).includes('导出 JSON')) as HTMLButtonElement).click();
     expect(wrapper.emitted('export-reuse')![0]![0]).toMatchObject({ id: 'reuse-1' });
+
+    (buttons.find((b) => text(b).includes('导出 Markdown')) as HTMLButtonElement).click();
+    expect(wrapper.emitted('export-reuse-md')![0]![0]).toMatchObject({ id: 'reuse-1' });
 
     (buttons.find((b) => text(b).includes('导出单项')) as HTMLButtonElement).click();
     expect(wrapper.emitted('export')![0]![0]).toMatchObject({ id: 'reuse-1' });
+  });
+
+  it('复制按钮：点击复制整包 Markdown（剪贴板不可用时降级提示不崩溃）', async () => {
+    wrapper = mount(AchievementDrawer, { props: { item: make() } });
+    await nextTick();
+    const dialog = document.body.querySelector('[role="dialog"]')!;
+    const buttons = Array.from(dialog.querySelectorAll('button'));
+    const text = (b: Element) => b.textContent ?? '';
+    const copyBtn = buttons.find((b) => text(b).trim() === '复制') as HTMLButtonElement;
+    expect(copyBtn).toBeTruthy();
+
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: write } });
+    copyBtn.click();
+    await nextTick();
+    expect(write).toHaveBeenCalledTimes(1);
+    const copied = write.mock.calls[0]![0] as string;
+    expect(copied).toContain('# 复用包：每日审查流水线');
+    expect(copied).toContain('## 交付清单');
   });
 
   it('无复用内容时不渲染复用包区块', async () => {
