@@ -85,6 +85,24 @@ function run() {
 
 const isRunning = computed(() => store.running);
 
+/* ---------- 工作流输出（按契约汇总，__workflowOutputs 由 store 运行后写入） ---------- */
+const workflowOutputs = computed<Record<string, unknown>>(() => {
+  const o = store.runOutputs.__workflowOutputs;
+  return o && typeof o === 'object' ? (o as Record<string, unknown>) : {};
+});
+const workflowOutputKeys = computed(() => Object.keys(workflowOutputs.value));
+function formatOutputValue(v: unknown): string {
+  if (v === undefined || v === null) return '（无）';
+  if (typeof v === 'object') {
+    try {
+      return JSON.stringify(v, null, 2);
+    } catch {
+      return String(v);
+    }
+  }
+  return String(v);
+}
+
 function onPause() {
   store.pauseRun();
 }
@@ -322,11 +340,34 @@ const collapsed = ref(false);
         <template v-if="isRunning">
           <Loader2 class="text-brand-600 size-3.5 animate-spin" />
           <span class="text-surface-900 truncate font-medium">
-            {{ store.paused ? '已暂停' : `正在执行：${currentLabel || '…'}` }}
+            {{
+              store.paused
+                ? store.approvalPending
+                  ? '等待人工确认'
+                  : '已暂停'
+                : `正在执行：${currentLabel || '…'}`
+            }}
           </span>
           <span class="text-surface-800/50 tabular-nums">
             {{ doneCount }}/{{ totalCount }} 节点 · {{ durationLabel }}
           </span>
+          <!-- 人工确认：通过 / 拒绝 -->
+          <template v-if="store.approvalPending">
+            <button
+              type="button"
+              class="text-surface-0 rounded-md bg-green-600 px-2 py-0.5 text-[10px] font-medium transition hover:bg-green-700"
+              @click="store.approveRun"
+            >
+              确认
+            </button>
+            <button
+              type="button"
+              class="text-surface-0 rounded-md bg-red-600 px-2 py-0.5 text-[10px] font-medium transition hover:bg-red-700"
+              @click="store.rejectRun"
+            >
+              拒绝
+            </button>
+          </template>
           <button
             v-if="!store.paused"
             type="button"
@@ -508,6 +549,29 @@ const collapsed = ref(false);
           <RotateCcw class="size-3" />
           从失败节点重试
         </button>
+      </div>
+
+      <!-- 工作流输出（按输出契约汇总） -->
+      <div
+        v-if="workflowOutputKeys.length > 0"
+        class="border-surface-100 bg-surface-50/50 flex w-full shrink-0 flex-col rounded-lg border p-3"
+      >
+        <div class="flex items-center justify-between">
+          <p class="text-surface-900 text-xs font-semibold">工作流输出</p>
+          <span class="text-surface-800/40 text-[10px]">按输出契约汇总</span>
+        </div>
+        <div class="mt-2 space-y-1.5">
+          <div
+            v-for="key in workflowOutputKeys"
+            :key="key"
+            class="border-surface-100 bg-surface-0/60 rounded-md border px-2 py-1.5"
+          >
+            <p class="text-surface-800/60 font-mono text-[10px]">{{ key }}</p>
+            <pre
+              class="text-surface-900 mt-0.5 max-h-28 overflow-auto font-mono text-[11px] whitespace-pre-wrap"
+              >{{ formatOutputValue(workflowOutputs[key]) }}</pre>
+          </div>
+        </div>
       </div>
 
       <!-- 日志 -->

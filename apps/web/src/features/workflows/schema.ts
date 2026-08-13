@@ -345,6 +345,245 @@ export const NODE_SCHEMAS: Record<WorkflowNodeKind, NodeSchema> = {
       },
     ],
   },
+  /* ---------- 控制 / 数据 / 集成 / 人工交互 ---------- */
+  transform: {
+    kind: 'transform',
+    title: '数据转换',
+    defaults: { transformOp: 'template', transformTemplate: '{{input}}', label: '数据转换' },
+    fields: [
+      {
+        key: 'transformOp',
+        label: '转换操作',
+        type: 'select',
+        options: [
+          { value: 'template', label: '模板替换' },
+          { value: 'jsonpath', label: 'JSON 路径提取' },
+          { value: 'upper', label: '转大写' },
+          { value: 'lower', label: '转小写' },
+          { value: 'trim', label: '去除首尾空白' },
+          { value: 'concat', label: '拼接' },
+          { value: 'slice', label: '截取' },
+        ],
+      },
+      {
+        key: 'transformTemplate',
+        label: '模板文本',
+        type: 'textarea',
+        placeholder: '支持 {{ 变量 }} 插值，例如：{{input}} 已处理',
+        help: 'transformOp=template 时使用',
+        validate: (v, data) =>
+          data.transformOp === 'template' ? requiredText(v, '模板文本') : null,
+      },
+      {
+        key: 'jsonPath',
+        label: 'JSON 路径',
+        type: 'text',
+        placeholder: 'data.items[0].name',
+        help: 'transformOp=jsonpath 时使用，点路径提取',
+        validate: (v, data) =>
+          data.transformOp === 'jsonpath' ? requiredText(v, 'JSON 路径') : null,
+      },
+      {
+        key: 'separator',
+        label: '拼接分隔符',
+        type: 'text',
+        placeholder: ',',
+        help: 'transformOp=concat 时使用',
+      },
+      {
+        key: 'sliceStart',
+        label: '起始位置',
+        type: 'number',
+        min: 0,
+        help: 'transformOp=slice 时使用',
+      },
+      {
+        key: 'sliceEnd',
+        label: '结束位置',
+        type: 'number',
+        min: 0,
+        help: 'transformOp=slice 时使用（留空到末尾）',
+      },
+    ],
+  },
+  switch: {
+    kind: 'switch',
+    title: '多分支路由',
+    defaults: { cases: [{ label: 'case-1', expr: 'value == 1' }], label: '多分支路由' },
+    fields: [
+      {
+        key: 'expr',
+        label: '判断表达式',
+        type: 'text',
+        placeholder: 'value',
+        help: '被路由到各用例的输入变量路径',
+        validate: (v) => requiredText(v, '判断表达式'),
+      },
+      {
+        key: 'defaultLabel',
+        label: '默认分支标签',
+        type: 'text',
+        placeholder: '默认',
+      },
+    ],
+  },
+  merge: {
+    kind: 'merge',
+    title: '聚合合并',
+    defaults: { mergeMode: 'concat', label: '聚合合并' },
+    fields: [
+      {
+        key: 'mergeMode',
+        label: '合并模式',
+        type: 'select',
+        options: [
+          { value: 'concat', label: '拼接为数组' },
+          { value: 'object', label: '合并为对象' },
+          { value: 'first', label: '取第一个非空' },
+          { value: 'last', label: '取最后一个' },
+        ],
+      },
+    ],
+  },
+  'manual-approval': {
+    kind: 'manual-approval',
+    title: '人工确认',
+    defaults: { approvalPrompt: '是否继续执行？', label: '人工确认' },
+    fields: [
+      {
+        key: 'approvalPrompt',
+        label: '确认提示',
+        type: 'textarea',
+        placeholder: '是否继续执行？',
+        help: '模拟运行暂停并展示此提示，由本地用户确认 / 拒绝',
+        validate: (v) => requiredText(v, '确认提示'),
+      },
+    ],
+  },
+  'http-request': {
+    kind: 'http-request',
+    title: 'HTTP 请求（Mock）',
+    defaults: {
+      method: 'GET',
+      url: 'https://api.example.com/data',
+      mockStatus: 200,
+      mockBody: '{"ok":true}',
+      label: 'HTTP 请求',
+    },
+    fields: [
+      {
+        key: 'method',
+        label: '请求方法',
+        type: 'select',
+        options: [
+          { value: 'GET', label: 'GET' },
+          { value: 'POST', label: 'POST' },
+          { value: 'PUT', label: 'PUT' },
+          { value: 'DELETE', label: 'DELETE' },
+          { value: 'PATCH', label: 'PATCH' },
+        ],
+      },
+      {
+        key: 'url',
+        label: '请求地址',
+        type: 'text',
+        placeholder: 'https://api.example.com/data',
+        help: '仅做配置展示与 mock 响应，绝不发起真实网络请求',
+        validate: (v) => requiredText(v, '请求地址'),
+      },
+      {
+        key: 'headersText',
+        label: '请求头（JSON）',
+        type: 'textarea',
+        placeholder: '{"Authorization": "Bearer {{token}}"}',
+        help: '仅配置展示；导出时自动脱敏敏感头',
+      },
+      {
+        key: 'bodyText',
+        label: '请求体（JSON）',
+        type: 'textarea',
+        placeholder: '{"name": "{{input}}"}',
+      },
+      {
+        key: 'mockStatus',
+        label: 'Mock 状态码',
+        type: 'number',
+        min: 100,
+        max: 599,
+        validate: (v) => rangeNumber(v, 'Mock 状态码', 100, 599),
+      },
+      {
+        key: 'mockBody',
+        label: 'Mock 响应体',
+        type: 'textarea',
+        placeholder: '{"ok":true}',
+        help: '模拟运行返回的确定性响应',
+      },
+    ],
+  },
+  schedule: {
+    kind: 'schedule',
+    title: '定时计划',
+    defaults: { scheduleType: 'cron', cron: '0 9 * * *', label: '定时计划' },
+    fields: [
+      {
+        key: 'scheduleType',
+        label: '计划类型',
+        type: 'select',
+        options: [
+          { value: 'cron', label: 'Cron 表达式' },
+          { value: 'interval', label: '固定间隔' },
+        ],
+      },
+      {
+        key: 'cron',
+        label: 'Cron 表达式',
+        type: 'text',
+        placeholder: '0 9 * * *',
+        help: 'scheduleType=cron 时使用，仅本地预览，不注册真实定时任务',
+        validate: (v, data) => {
+          if (data.scheduleType !== 'cron') return null;
+          const err = requiredText(v, 'Cron 表达式');
+          if (err) return err;
+          return isValidCron(String(v)) ? null : 'Cron 格式无效（需 5 段，如 0 9 * * *）';
+        },
+      },
+      {
+        key: 'intervalValue',
+        label: '间隔数值',
+        type: 'number',
+        min: 1,
+        validate: (v, data) =>
+          data.scheduleType === 'interval' ? rangeNumber(v, '间隔数值', 1, 525600) : null,
+      },
+      {
+        key: 'intervalUnit',
+        label: '间隔单位',
+        type: 'select',
+        options: [
+          { value: 'ms', label: '毫秒' },
+          { value: 's', label: '秒' },
+          { value: 'min', label: '分钟' },
+          { value: 'hour', label: '小时' },
+        ],
+      },
+    ],
+  },
+  subworkflow: {
+    kind: 'subworkflow',
+    title: '子流程',
+    defaults: { label: '子流程' },
+    fields: [
+      {
+        key: 'workflowRef',
+        label: '被调用工作流',
+        type: 'text',
+        placeholder: '选择其他本地工作流',
+        help: '调用本地其他工作流作为子流程；禁止选择自身或形成循环引用',
+        validate: (v) => requiredText(v, '被调用工作流'),
+      },
+    ],
+  },
 };
 
 export function getNodeSchema(kind: WorkflowNodeKind): NodeSchema {
@@ -413,6 +652,20 @@ const STRING_KEYS: Array<keyof WorkflowNodeData> = [
   'message',
   'format',
   'outputName',
+  'transformOp',
+  'transformTemplate',
+  'jsonPath',
+  'separator',
+  'defaultLabel',
+  'approvalPrompt',
+  'method',
+  'url',
+  'headersText',
+  'bodyText',
+  'mockBody',
+  'scheduleType',
+  'intervalUnit',
+  'workflowRef',
 ];
 
 /**
@@ -466,5 +719,81 @@ export function validateDataShape(data: WorkflowNodeData): string[] {
       errors.push(`outputFormat 无效：${String(data.outputFormat)}（可选 text/markdown/json）`);
     }
   }
+  /* ---------- 新增节点类型形状校验 ---------- */
+  if (data.kind === 'transform') {
+    if (
+      data.transformOp !== undefined &&
+      !['template', 'jsonpath', 'upper', 'lower', 'trim', 'concat', 'slice'].includes(
+        data.transformOp,
+      )
+    ) {
+      errors.push(`transformOp 无效：${String(data.transformOp)}`);
+    }
+    if (data.sliceStart !== undefined && typeof data.sliceStart !== 'number') {
+      errors.push('sliceStart 必须是数字');
+    }
+    if (data.sliceEnd !== undefined && typeof data.sliceEnd !== 'number') {
+      errors.push('sliceEnd 必须是数字');
+    }
+  }
+  if (data.kind === 'switch') {
+    if (data.cases !== undefined) {
+      if (!Array.isArray(data.cases)) {
+        errors.push('cases 必须是数组');
+      } else {
+        for (const c of data.cases) {
+          if (
+            !c ||
+            typeof c !== 'object' ||
+            typeof c.label !== 'string' ||
+            typeof c.expr !== 'string'
+          ) {
+            errors.push('cases 项必须包含 label 与 expr 字符串');
+            break;
+          }
+        }
+      }
+    }
+  }
+  if (data.kind === 'merge') {
+    if (
+      data.mergeMode !== undefined &&
+      !['concat', 'object', 'first', 'last'].includes(data.mergeMode)
+    ) {
+      errors.push(`mergeMode 无效：${String(data.mergeMode)}`);
+    }
+  }
+  if (data.kind === 'http-request') {
+    if (
+      data.method !== undefined &&
+      !['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(data.method)
+    ) {
+      errors.push(`method 无效：${String(data.method)}`);
+    }
+    if (data.mockStatus !== undefined && typeof data.mockStatus !== 'number') {
+      errors.push('mockStatus 必须是数字');
+    }
+  }
+  if (data.kind === 'schedule') {
+    if (data.scheduleType !== undefined && !['cron', 'interval'].includes(data.scheduleType)) {
+      errors.push(`scheduleType 无效：${String(data.scheduleType)}`);
+    }
+    if (data.intervalValue !== undefined && typeof data.intervalValue !== 'number') {
+      errors.push('intervalValue 必须是数字');
+    }
+  }
+  if (data.kind === 'subworkflow') {
+    if (data.inputMap !== undefined && !isPortMap(data.inputMap)) {
+      errors.push('inputMap 必须是「变量路径 → 端口名」对象');
+    }
+    if (data.outputMap !== undefined && !isPortMap(data.outputMap)) {
+      errors.push('outputMap 必须是「本地名 → 端口名」对象');
+    }
+  }
   return errors;
+}
+
+function isPortMap(v: unknown): v is Record<string, string> {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  return Object.values(v as Record<string, unknown>).every((x) => typeof x === 'string');
 }

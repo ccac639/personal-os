@@ -13,8 +13,12 @@ import {
   getNodeDef,
   NODE_KINDS,
   type WorkflowEdgeModel,
+  type WorkflowInputDef,
+  type WorkflowModule,
   type WorkflowNodeData,
   type WorkflowNodeModel,
+  type WorkflowOutputDef,
+  type WorkflowRunConfig,
   type WorkflowVersion,
 } from './types';
 import { validateDataShape } from './schema';
@@ -22,6 +26,9 @@ import { validateDataShape } from './schema';
 export const STORAGE_KEY_V3 = 'personal-os-workflows-v3';
 export const STORAGE_KEY_V2 = 'personal-os-workflows-v1';
 export const LEGACY_STORAGE_KEY = 'personal-os-workflow-v1';
+
+/** 当前存储版本（v4） */
+export const STORAGE_VERSION = 4 as const;
 
 /** 版本快照上限（防无限增长） */
 export const MAX_VERSIONS = 20;
@@ -35,7 +42,7 @@ export interface WorkflowLastRun {
   logs: string[];
 }
 
-/** 持久化结构：一个工作流的完整数据（v3） */
+/** 持久化结构：一个工作流的完整数据（v4） */
 export interface StoredWorkflow {
   id: string;
   name: string;
@@ -54,6 +61,12 @@ export interface StoredWorkflow {
   isTemplate?: boolean;
   /** 版本快照（上限 MAX_VERSIONS） */
   versions?: WorkflowVersion[];
+  /* ---------- v4 输入输出契约与运行配置 ---------- */
+  inputs?: WorkflowInputDef[];
+  outputs?: WorkflowOutputDef[];
+  runConfig?: WorkflowRunConfig;
+  /** 模块化子图（当前工作流内的可复用模块） */
+  modules?: WorkflowModule[];
 }
 
 /** 列表视图使用的轻量元数据 */
@@ -72,8 +85,33 @@ export interface WorkflowMeta {
 }
 
 export interface StorageEnvelopeV3 {
-  version: 3;
+  version: 3 | 4;
   workflows: StoredWorkflow[];
+}
+
+/** v4 默认运行配置（旧数据自动补齐） */
+export function defaultRunConfig(): WorkflowRunConfig {
+  return { maxSteps: 100, timeoutMs: 60000, failStrategy: 'stop', allowManualRun: true };
+}
+
+/** 幂等补齐 v4 契约字段（旧工作流自动获得默认 inputs/outputs/runConfig/modules） */
+export function ensureV4Defaults(rec: StoredWorkflow): StoredWorkflow {
+  const next: StoredWorkflow = {
+    ...rec,
+    inputs: Array.isArray(rec.inputs) ? rec.inputs : [],
+    outputs: Array.isArray(rec.outputs) ? rec.outputs : [],
+    runConfig:
+      rec.runConfig && typeof rec.runConfig === 'object' ? rec.runConfig : defaultRunConfig(),
+    modules: Array.isArray(rec.modules) ? rec.modules : [],
+  };
+  // 修正 runConfig 字段类型（损坏时回退默认）
+  const rc = next.runConfig ?? defaultRunConfig();
+  if (typeof rc.maxSteps !== 'number' || rc.maxSteps <= 0) rc.maxSteps = 100;
+  if (typeof rc.timeoutMs !== 'number' || rc.timeoutMs < 0) rc.timeoutMs = 60000;
+  if (rc.failStrategy !== 'stop' && rc.failStrategy !== 'continue') rc.failStrategy = 'stop';
+  if (typeof rc.allowManualRun !== 'boolean') rc.allowManualRun = true;
+  next.runConfig = rc;
+  return next;
 }
 
 export interface LoadResult {
@@ -143,7 +181,7 @@ function sanitizeWorkflowRecord(raw: unknown): {
         })
         .slice(0, MAX_VERSIONS)
     : [];
-  const record: StoredWorkflow = {
+  const record: StoredWorkflow = ensureV4Defaults({
     id: w.id as string,
     name: typeof w.name === 'string' && w.name ? w.name : '未命名工作流',
     updatedAt: typeof w.updatedAt === 'number' ? w.updatedAt : Date.now(),
@@ -158,7 +196,7 @@ function sanitizeWorkflowRecord(raw: unknown): {
     favorite: w.favorite === true,
     isTemplate: w.isTemplate === true,
     versions,
-  };
+  });
   return { record, warnings };
 }
 
@@ -167,7 +205,7 @@ function sanitizeWorkflowRecord(raw: unknown): {
 export function loadAllWorkflows(): LoadResult {
   const warnings: string[] = [];
 
-  // 1. v3 信封
+  // 1. v3/v4 信封（v4 优先，v3 兼容降级）
   const v3Raw = localStorage.getItem(STORAGE_KEY_V3);
   if (v3Raw) {
     try {
@@ -175,7 +213,8 @@ export function loadAllWorkflows(): LoadResult {
       if (
         parsed &&
         typeof parsed === 'object' &&
-        (parsed as StorageEnvelopeV3).version === 3 &&
+        ((parsed as StorageEnvelopeV3).version === 3 ||
+          (parsed as StorageEnvelopeV3).version === 4) &&
         Array.isArray((parsed as StorageEnvelopeV3).workflows)
       ) {
         const records: StoredWorkflow[] = [];
@@ -248,10 +287,13 @@ export function loadAllWorkflows(): LoadResult {
   return { records: [], warnings, source: 'empty' };
 }
 
-/** 写 v3 信封；失败返回 false（调用方展示非阻塞警告） */
+/** 写 v3/v4 信封（当前写 v4）；失败返回 false（调用方展示非阻塞警告） */
 export function saveAllWorkflows(records: StoredWorkflow[]): boolean {
   try {
-    const envelope: StorageEnvelopeV3 = { version: 3, workflows: records };
+    const envelope: StorageEnvelopeV3 = {
+      version: STORAGE_VERSION,
+      workflows: records.map((r) => ensureV4Defaults(r)),
+    };
     localStorage.setItem(STORAGE_KEY_V3, JSON.stringify(envelope));
     return true;
   } catch {
@@ -267,6 +309,12 @@ export interface ImportPreview {
   edgeCount: number;
   /** 信封版本（无信封时为 0） */
   version: number;
+  /** 输入定义数量 */
+  inputCount: number;
+  /** 输出定义数量 */
+  outputCount: number;
+  /** 模块数量 */
+  moduleCount: number;
   errors: string[];
   warnings: string[];
 }
@@ -276,9 +324,13 @@ export interface ParsedWorkflow {
   seq: number;
   nodes: WorkflowNodeModel[];
   edges: WorkflowEdgeModel[];
+  inputs: WorkflowInputDef[];
+  outputs: WorkflowOutputDef[];
+  runConfig: WorkflowRunConfig;
+  modules: WorkflowModule[];
 }
 
-const KNOWN_VERSIONS = [1, 2, 3];
+const KNOWN_VERSIONS = [1, 2, 3, 4];
 
 /**
  * 解析导入 JSON：未知节点类型 → 明确错误；孤立边 → 警告；
@@ -294,6 +346,9 @@ export function parseWorkflowJson(text: string): {
     nodeCount: 0,
     edgeCount: 0,
     version: 0,
+    inputCount: 0,
+    outputCount: 0,
+    moduleCount: 0,
     errors: [],
     warnings: [],
   };
@@ -307,14 +362,14 @@ export function parseWorkflowJson(text: string): {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // 支持 v3 信封与裸工作流对象
+  // 支持 v3/v4 信封与裸工作流对象
   const envelope = parsed as { version?: number; workflows?: unknown[] };
   let body: unknown = parsed;
   let version = 0;
   if (envelope && typeof envelope === 'object' && Array.isArray(envelope.workflows)) {
     version = typeof envelope.version === 'number' ? envelope.version : 0;
-    if (version > 3) {
-      errors.push(`数据版本过新（v${version}），当前仅支持到 v3，请升级应用后再导入`);
+    if (version > 4) {
+      errors.push(`数据版本过新（v${version}），当前仅支持到 v4，请升级应用后再导入`);
       return { ok: false, preview: { ...empty, version, errors } };
     }
     if (!KNOWN_VERSIONS.includes(version)) {
@@ -412,6 +467,63 @@ export function parseWorkflowJson(text: string): {
         nodeCount: nodes.length,
         edgeCount: edges.length,
         version,
+        inputCount: countInputs(obj),
+        outputCount: countOutputs(obj),
+        moduleCount: countModules(obj),
+        errors,
+        warnings,
+      },
+    };
+  }
+
+  // 子流程引用校验：引用的工作流 id 必须在同一导入包中或已存在本地
+  const subflowNodes = nodes.filter((n) => n.data.kind === 'subworkflow' && n.data.workflowRef);
+  const importedIds = new Set<string>();
+  if (envelope && Array.isArray(envelope.workflows)) {
+    for (const wf of envelope.workflows) {
+      const w = wf as Record<string, unknown>;
+      if (typeof w.id === 'string') importedIds.add(w.id);
+    }
+  }
+  const importedRootId = typeof obj.id === 'string' ? obj.id : '';
+  for (const sn of subflowNodes) {
+    const ref = sn.data.workflowRef!;
+    if (ref === importedRootId) {
+      errors.push(`子流程节点 ${sn.id}：引用了自身（禁止自引用）`);
+      continue;
+    }
+    if (!importedIds.has(ref)) {
+      warnings.push(
+        `子流程节点 ${sn.id}：被调用工作流（id: ${ref}）不在导入包中，运行前需在本地存在`,
+      );
+    }
+  }
+
+  // 输入输出定义解析与校验
+  const inputs = parseInputDefs(obj, errors);
+  const outputs = parseOutputDefs(obj, nodeIds, errors);
+  const modules = parseModules(obj, nodeIds, edges, errors);
+
+  // 输出名称唯一校验
+  const outNames = new Set<string>();
+  for (const o of outputs) {
+    if (outNames.has(o.name)) {
+      errors.push(`输出名称「${o.name}」重复`);
+    }
+    outNames.add(o.name);
+  }
+
+  if (errors.length > 0) {
+    return {
+      ok: false,
+      preview: {
+        name: typeof obj.name === 'string' ? obj.name : '',
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        version,
+        inputCount: inputs.length,
+        outputCount: outputs.length,
+        moduleCount: modules.length,
         errors,
         warnings,
       },
@@ -419,23 +531,175 @@ export function parseWorkflowJson(text: string): {
   }
 
   const seq = typeof obj.seq === 'number' && obj.seq > 0 ? obj.seq : 1;
+  const name = typeof obj.name === 'string' && obj.name ? obj.name : '导入的工作流';
   return {
     ok: true,
     preview: {
-      name: typeof obj.name === 'string' && obj.name ? obj.name : '导入的工作流',
+      name,
       nodeCount: nodes.length,
       edgeCount: edges.length,
       version,
+      inputCount: inputs.length,
+      outputCount: outputs.length,
+      moduleCount: modules.length,
       errors,
       warnings,
     },
     snapshot: {
-      name: typeof obj.name === 'string' && obj.name ? obj.name : '导入的工作流',
+      name,
       seq,
       nodes,
       edges,
+      inputs,
+      outputs,
+      runConfig: parseRunConfig(obj),
+      modules,
     },
   };
+}
+
+function countInputs(obj: Record<string, unknown>): number {
+  return Array.isArray(obj.inputs) ? obj.inputs.length : 0;
+}
+function countOutputs(obj: Record<string, unknown>): number {
+  return Array.isArray(obj.outputs) ? obj.outputs.length : 0;
+}
+function countModules(obj: Record<string, unknown>): number {
+  return Array.isArray(obj.modules) ? obj.modules.length : 0;
+}
+
+function parseInputDefs(obj: Record<string, unknown>, errors: string[]): WorkflowInputDef[] {
+  if (!Array.isArray(obj.inputs)) return [];
+  const defs: WorkflowInputDef[] = [];
+  for (let i = 0; i < obj.inputs.length; i++) {
+    const raw = obj.inputs[i] as Record<string, unknown> | null | undefined;
+    if (!raw || typeof raw !== 'object' || typeof raw.name !== 'string' || !raw.name) {
+      errors.push(`输入定义 #${i + 1}：缺少 name`);
+      continue;
+    }
+    const type = raw.type;
+    if (
+      typeof type !== 'string' ||
+      !['text', 'number', 'boolean', 'json', 'select'].includes(type)
+    ) {
+      errors.push(`输入定义「${raw.name}」：类型无效（可选 text/number/boolean/json/select）`);
+      continue;
+    }
+    defs.push({
+      name: raw.name,
+      label: typeof raw.label === 'string' ? raw.label : raw.name,
+      type: type as WorkflowInputDef['type'],
+      required: raw.required === true,
+      defaultValue: raw.defaultValue,
+      description: typeof raw.description === 'string' ? raw.description : undefined,
+      options: Array.isArray(raw.options)
+        ? (raw.options as unknown[]).filter((o): o is string => typeof o === 'string')
+        : undefined,
+    });
+  }
+  return defs;
+}
+
+function parseOutputDefs(
+  obj: Record<string, unknown>,
+  nodeIds: Set<string>,
+  errors: string[],
+): WorkflowOutputDef[] {
+  if (!Array.isArray(obj.outputs)) return [];
+  const defs: WorkflowOutputDef[] = [];
+  for (let i = 0; i < obj.outputs.length; i++) {
+    const raw = obj.outputs[i] as Record<string, unknown> | null | undefined;
+    if (!raw || typeof raw !== 'object' || typeof raw.name !== 'string' || !raw.name) {
+      errors.push(`输出定义 #${i + 1}：缺少 name`);
+      continue;
+    }
+    if (typeof raw.source !== 'string' || !raw.source) {
+      errors.push(`输出定义「${raw.name}」：缺少来源 source`);
+      continue;
+    }
+    const head = raw.source.split('.')[0] ?? '';
+    if (!nodeIds.has(head)) {
+      errors.push(`输出定义「${raw.name}」：来源节点「${head}」不存在`);
+      continue;
+    }
+    defs.push({
+      name: raw.name,
+      type: typeof raw.type === 'string' ? raw.type : 'any',
+      source: raw.source,
+      description: typeof raw.description === 'string' ? raw.description : undefined,
+    });
+  }
+  return defs;
+}
+
+function parseRunConfig(obj: Record<string, unknown>): WorkflowRunConfig {
+  const rc = (obj.runConfig ?? {}) as Record<string, unknown>;
+  const def = defaultRunConfig();
+  return {
+    maxSteps: typeof rc.maxSteps === 'number' && rc.maxSteps > 0 ? rc.maxSteps : def.maxSteps,
+    timeoutMs: typeof rc.timeoutMs === 'number' && rc.timeoutMs >= 0 ? rc.timeoutMs : def.timeoutMs,
+    failStrategy: rc.failStrategy === 'continue' ? 'continue' : 'stop',
+    allowManualRun: typeof rc.allowManualRun === 'boolean' ? rc.allowManualRun : true,
+  };
+}
+
+function parseModules(
+  obj: Record<string, unknown>,
+  nodeIds: Set<string>,
+  edges: WorkflowEdgeModel[],
+  errors: string[],
+): WorkflowModule[] {
+  if (!Array.isArray(obj.modules)) return [];
+  const edgeIds = new Set(edges.map((e) => e.id));
+  const modules: WorkflowModule[] = [];
+  for (let i = 0; i < obj.modules.length; i++) {
+    const raw = obj.modules[i] as Record<string, unknown> | null | undefined;
+    if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string') {
+      errors.push(`模块 #${i + 1}：缺少 id`);
+      continue;
+    }
+    if (!Array.isArray(raw.nodes) || !Array.isArray(raw.edges) || !Array.isArray(raw.ports)) {
+      errors.push(`模块「${raw.id}」：缺少 nodes/edges/ports`);
+      continue;
+    }
+    // 模块内部节点必须存在于工作流节点集合（引用校验）
+    const modNodeIds = (raw.nodes as unknown[]).filter(
+      (n): n is WorkflowNodeModel =>
+        !!n && typeof n === 'object' && typeof (n as Record<string, unknown>).id === 'string',
+    );
+    for (const mn of modNodeIds) {
+      if (!nodeIds.has(mn.id)) {
+        errors.push(`模块「${raw.id}」：内部节点「${mn.id}」不在工作流节点中`);
+        break;
+      }
+    }
+    // 模块内部边必须存在于工作流边集合
+    const modEdges = (raw.edges as unknown[]).filter(
+      (e): e is WorkflowEdgeModel =>
+        !!e && typeof e === 'object' && typeof (e as Record<string, unknown>).id === 'string',
+    );
+    for (const me of modEdges) {
+      if (!edgeIds.has(me.id)) {
+        errors.push(`模块「${raw.id}」：内部连线「${me.id}」不在工作流连线中`);
+        break;
+      }
+    }
+    modules.push({
+      id: raw.id,
+      name: typeof raw.name === 'string' && raw.name ? raw.name : '未命名模块',
+      description: typeof raw.description === 'string' ? raw.description : undefined,
+      version: typeof raw.version === 'number' && raw.version > 0 ? raw.version : 1,
+      nodes: modNodeIds,
+      edges: modEdges,
+      ports: (raw.ports as unknown[]).filter(
+        (p): p is WorkflowModule['ports'][number] =>
+          !!p && typeof p === 'object' && typeof (p as Record<string, unknown>).name === 'string',
+      ),
+      createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
+      updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
+    });
+  }
+  return modules;
 }
 
 /* ---------- 导出脱敏 ---------- */

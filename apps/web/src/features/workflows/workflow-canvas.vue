@@ -28,6 +28,7 @@ import {
 } from './types';
 import WorkflowNode from './workflow-node.vue';
 import WorkflowAiPreview from './workflow-ai-preview.vue';
+import ReplayBar from './replay-bar.vue';
 
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
@@ -46,6 +47,8 @@ const flowNodes = computed<Node[]>(() => store.nodes as unknown as Node[]);
 const flowEdges = computed<Edge[]>(() => store.edges as unknown as Edge[]);
 
 function onNodesChange(changes: NodeChange[]) {
+  // 回放态只读：忽略一切节点变更
+  if (store.isReplaying) return;
   const hasRemove = changes.some((c) => c.type === 'remove');
   const removedIds = hasRemove ? changes.filter((c) => c.type === 'remove').map((c) => c.id) : [];
   if (hasRemove && !dragging) store.recordUndoPoint();
@@ -57,6 +60,7 @@ function onNodesChange(changes: NodeChange[]) {
 }
 
 function onEdgesChange(changes: EdgeChange[]) {
+  if (store.isReplaying) return;
   const hasRemove = changes.some((c) => c.type === 'remove');
   if (hasRemove) {
     store.recordUndoPoint();
@@ -101,6 +105,7 @@ function onPaneClick() {
 }
 
 function onConnect(conn: Connection) {
+  if (store.isReplaying) return;
   store.addEdge(conn);
 }
 
@@ -117,6 +122,7 @@ function onDragOver(e: DragEvent) {
 }
 
 function onDrop(e: DragEvent) {
+  if (store.isReplaying) return;
   const kind = e.dataTransfer?.getData('application/x-workflow-kind') as WorkflowNodeKind | '';
   if (!kind || !NODE_KINDS.has(kind)) return;
   const flow = flowRef.value as unknown as
@@ -131,6 +137,7 @@ function onKeydown(e: KeyboardEvent) {
   const mod = e.ctrlKey || e.metaKey;
   if (!mod) return;
   const key = e.key.toLowerCase();
+  if (store.isReplaying) return;
   if (key === 'z') {
     e.preventDefault();
     if (e.shiftKey) store.redo();
@@ -286,6 +293,9 @@ function onContainerKeydown(e: KeyboardEvent) {
 
     <!-- AI 生成预览层（叠加，不修改正式数据） -->
     <WorkflowAiPreview ref="aiPreviewRef" />
+
+    <!-- 回放态横幅（只读） -->
+    <ReplayBar v-if="store.isReplaying" />
 
     <!-- 运行中编辑锁定提示 -->
     <div

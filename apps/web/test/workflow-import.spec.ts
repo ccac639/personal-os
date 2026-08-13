@@ -171,10 +171,14 @@ describe('workflow 持久化与迁移', () => {
     expect(result.source).toBe('v2');
     expect(store.workflows).toHaveLength(1);
     expect(store.name).toBe('旧工作流');
-    // 已写为 v3
-    const v3 = JSON.parse(localStorage.getItem(STORAGE_KEY_V3)!);
-    expect(v3.version).toBe(3);
-    expect(v3.workflows).toHaveLength(1);
+    // 已写为 v4 信封（v3 → v4 升级，旧数据自动补契约默认值）
+    const v4 = JSON.parse(localStorage.getItem(STORAGE_KEY_V3)!);
+    expect(v4.version).toBe(4);
+    expect(v4.workflows).toHaveLength(1);
+    expect(v4.workflows[0].inputs).toEqual([]);
+    expect(v4.workflows[0].outputs).toEqual([]);
+    expect(v4.workflows[0].runConfig).toBeTruthy();
+    expect(v4.workflows[0].modules).toEqual([]);
   });
 
   it('旧版单工作流（v1）迁移', () => {

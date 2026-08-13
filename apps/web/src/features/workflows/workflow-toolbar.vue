@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import {
+  ArrowLeftRight,
   Download,
   Focus,
   History,
@@ -20,11 +21,17 @@ import type { ImportPreview } from './store';
 import type { AlignAxis, DistributeAxis } from './layout';
 import VersionPanel from './version-panel.vue';
 import TemplatePanel from './template-panel.vue';
+import ContractPanel from './contract-panel.vue';
+import RunHistoryPanel from './run-history-panel.vue';
+import DiagnosticsPanel from './diagnostics-panel.vue';
 
 const store = useWorkflowStore();
 const fileInput = ref<HTMLInputElement>();
 const versionOpen = ref(false);
 const templateOpen = ref(false);
+const contractOpen = ref(false);
+const historyOpen = ref(false);
+const diagnosticsOpen = ref(false);
 
 /* ---------- 名称（输入框草稿，提交时单次撤销） ---------- */
 
@@ -210,6 +217,47 @@ const savedLabel = computed(() => (store.dirty ? '未保存' : '已保存'));
         >
           <LayoutTemplate class="size-3.5" />
           模板
+        </button>
+        <button
+          type="button"
+          class="text-surface-800/70 hover:bg-surface-100 hover:text-surface-900 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition"
+          title="输入输出契约与运行配置"
+          @click="contractOpen = true"
+        >
+          <ArrowLeftRight class="size-3.5" />
+          输入输出
+        </button>
+        <button
+          type="button"
+          class="text-surface-800/70 hover:bg-surface-100 hover:text-surface-900 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition"
+          title="运行历史与回放"
+          @click="historyOpen = true"
+        >
+          <History class="size-3.5" />
+          运行历史
+        </button>
+        <button
+          type="button"
+          class="relative flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition"
+          :class="
+            store.diagnosticsCount.error > 0
+              ? 'bg-red-500/10 text-red-600 hover:bg-red-500/20'
+              : 'text-surface-800/70 hover:bg-surface-100 hover:text-surface-900'
+          "
+          title="健康诊断与性能预估"
+          @click="
+            diagnosticsOpen = true;
+            store.runDiagnostics();
+          "
+        >
+          <TriangleAlert class="size-3.5" />
+          诊断
+          <span
+            v-if="store.diagnosticsCount.error + store.diagnosticsCount.warning > 0"
+            class="rounded-full bg-red-500/15 px-1 text-[9px] font-bold text-red-600"
+          >
+            {{ store.diagnosticsCount.error + store.diagnosticsCount.warning }}
+          </span>
         </button>
         <button
           type="button"
@@ -407,8 +455,11 @@ const savedLabel = computed(() => (store.dirty ? '未保存' : '已保存'));
       </div>
     </Teleport>
 
-    <!-- 版本与模板 -->
+    <!-- 版本与模板 / 输入输出 / 历史 / 诊断 -->
     <VersionPanel v-if="versionOpen" @close="versionOpen = false" />
     <TemplatePanel v-if="templateOpen" @close="templateOpen = false" />
+    <ContractPanel v-if="contractOpen" @close="contractOpen = false" />
+    <RunHistoryPanel v-if="historyOpen" @close="historyOpen = false" />
+    <DiagnosticsPanel v-if="diagnosticsOpen" @close="diagnosticsOpen = false" />
   </div>
 </template>

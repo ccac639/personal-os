@@ -65,6 +65,38 @@ export const NODE_PORTS: Record<WorkflowNodeKind, NodePorts> = {
     inputs: [{ id: 'input', label: '输出数据', type: 'data' }],
     outputs: [],
   },
+  /* ---------- 自动化节点端口 ---------- */
+  transform: {
+    inputs: [{ id: 'input', label: '输入数据', type: 'data' }],
+    outputs: [{ id: 'result', label: '转换结果', type: 'data' }],
+  },
+  switch: {
+    inputs: [{ id: 'value', label: '路由值', type: 'data' }],
+    outputs: [{ id: 'case', label: '用例分支', type: 'control' }],
+  },
+  merge: {
+    inputs: [{ id: 'a', label: '输入 A', type: 'data' }],
+    outputs: [{ id: 'merged', label: '合并结果', type: 'data' }],
+  },
+  'manual-approval': {
+    inputs: [{ id: 'payload', label: '待确认内容', type: 'data' }],
+    outputs: [
+      { id: 'approved', label: '已确认', type: 'control' },
+      { id: 'rejected', label: '已拒绝', type: 'control' },
+    ],
+  },
+  'http-request': {
+    inputs: [{ id: 'body', label: '请求体', type: 'data' }],
+    outputs: [{ id: 'response', label: 'Mock 响应', type: 'data' }],
+  },
+  schedule: {
+    inputs: [],
+    outputs: [{ id: 'tick', label: '触发', type: 'control' }],
+  },
+  subworkflow: {
+    inputs: [{ id: 'input', label: '子流程输入', type: 'data' }],
+    outputs: [{ id: 'output', label: '子流程输出', type: 'data' }],
+  },
 };
 
 export function getPorts(kind: WorkflowNodeKind): NodePorts {

@@ -393,10 +393,8 @@ const FIELD_LABELS: Record<string, string> = {
             v-if="missingVars.length > 0"
             class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700"
           >
-            缺失变量：<span class="font-mono">{{ missingVars.join('、') }}</span> <br /><span
-              class="opacity-80"
-              >请在「运行参数」中提供，或连接上游节点作为输入。</span
-            >
+            缺失变量：<span class="font-mono">{{ missingVars.join('、') }}</span> <br />
+            <span class="opacity-80">请在「运行参数」中提供，或连接上游节点作为输入。</span>
           </div>
           <p v-else-if="nodeVarFields.length > 0" class="text-[11px] text-green-700">
             ✓ 引用的变量均可用

@@ -24,13 +24,22 @@ import {
   nextNodeId,
   NODE_KINDS,
   nodeData,
+  type NodeStatus,
+  type ReplayState,
+  type RunHistoryEntry,
+  type RunHistoryStatus,
   type RunLogEntry,
   type RunMode,
+  type RunNodeResult,
   type RunParams,
   type WorkflowEdgeModel,
+  type WorkflowInputDef,
+  type WorkflowModule,
   type WorkflowNodeData,
   type WorkflowNodeKind,
   type WorkflowNodeModel,
+  type WorkflowOutputDef,
+  type WorkflowRunConfig,
   type WorkflowVersion,
   type XYPosition,
 } from './types';
@@ -54,6 +63,38 @@ import {
 } from './templates';
 import { extractVars } from './vars';
 import {
+  buildRunInput,
+  summarizeOutputs,
+  summarizeValue,
+  validateInputDefs,
+  validateOutputDefs,
+} from './io';
+import {
+  appendRunRecord,
+  clearRunHistory,
+  compareRuns,
+  createRunRecord,
+  exportRunRecord,
+  filterRunHistory,
+  loadRunHistory as loadHistoryStorage,
+  removeRunRecord,
+  saveRunHistory,
+  type RunHistoryFilter,
+} from './history';
+import { buildModule, instantiateModule } from './modules';
+import {
+  checkTypeCompatibility,
+  diagnoseWorkflow,
+  estimatePerformance,
+  type DiagnosticIssue,
+} from './diagnostics';
+import {
+  detectWorkflowCycle,
+  validateSubflowRefs,
+  type SubflowIssue,
+  type WorkflowStub,
+} from './subworkflow';
+import {
   mockAiGenerateService,
   parseAiResponse,
   type AiGenerateService,
@@ -61,6 +102,7 @@ import {
   type WorkflowAiResponse,
 } from './ai-workflow';
 import {
+  defaultRunConfig,
   loadAllWorkflows,
   saveAllWorkflows,
   parseWorkflowJson,
@@ -76,6 +118,18 @@ import {
 } from './migrate';
 
 export type { WorkflowLastRun, WorkflowMeta, StoredWorkflow, ImportPreview };
+
+/** 运行结果摘要（历史写入用，与 runner.RunResult 兼容子集） */
+interface RunResultLike {
+  status: 'success' | 'failed' | 'cancelled';
+  ok: boolean;
+  outputs: Record<string, unknown>;
+  logs: Array<{ level: string; text: string; nodeId?: string; ts?: number }>;
+  failedNodeId?: string;
+  error?: string;
+  suggestion?: string;
+  durationMs: number;
+}
 
 /** 撤销栈深度上限 */
 const UNDO_LIMIT = 50;
@@ -144,6 +198,18 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const runOutputs = ref<Record<string, unknown>>({});
   /** 节点模板库（localStorage 独立持久化） */
   const nodeTemplates = ref<NodeTemplate[]>([]);
+  /** 运行历史（独立持久化边界） */
+  const runHistory = ref<RunHistoryEntry[]>([]);
+  /** 运行历史读取警告（非阻塞展示） */
+  const runHistoryWarnings = ref<string[]>([]);
+  /** 人工确认等待状态（manual-approval 节点） */
+  const approvalPending = ref(false);
+  /** 回放态：节点 id → 历史状态（非空 = 只读回放） */
+  const replayState = ref<ReplayState | null>(null);
+  /** 回放对应的运行记录 id */
+  const replayRunId = ref<string | null>(null);
+  /** 健康诊断结果（按需计算） */
+  const diagnostics = ref<DiagnosticIssue[]>([]);
   const dirty = ref(false);
   /** 每次加载/示例/导入/清空/切换自增，画布据此重新 fitView */
   const layoutBump = ref(0);
@@ -530,6 +596,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   }
 
   function addNode(kind: WorkflowNodeKind, position?: XYPosition): string {
+    if (replayState.value) return '';
     const rec = ensureActive();
     pushUndo();
     const def = getNodeDef(kind);
@@ -545,6 +612,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   }
 
   function updateNodeData(id: string, patch: Partial<WorkflowNodeData>) {
+    if (replayState.value) return;
     const node = nodes.value.find((n) => n.id === id);
     if (!node) return;
     pushUndo();
@@ -554,6 +622,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   }
 
   function removeNode(id: string) {
+    if (replayState.value) return;
     if (!active.value) return;
     pushUndo();
     active.value.nodes = active.value.nodes.filter((n) => n.id !== id);
@@ -935,6 +1004,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   /* ---------- 连线 ---------- */
 
   function addEdge(conn: Connection) {
+    if (replayState.value) return;
     if (!conn.source || !conn.target) return;
     const dup = edges.value.some(
       (e) =>
@@ -1076,6 +1146,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     records.value = result.records;
     migrationWarnings.value = result.warnings;
     ensureTemplates();
+    loadRunHistoryLocal();
     if (records.value.length > 0) {
       activeId.value = records.value[0]!.id;
       selectNode(null);
@@ -1261,6 +1332,10 @@ export const useWorkflowStore = defineStore('workflow', () => {
     onPause: () => {
       paused.value = true;
     },
+    onApprovalWait: () => {
+      paused.value = true;
+      approvalPending.value = true;
+    },
   };
 
   async function runWorkflowFn(mode: RunMode = runMode.value, targetId?: string) {
@@ -1301,17 +1376,20 @@ export const useWorkflowStore = defineStore('workflow', () => {
     paused.value = false;
     dirty.value = false;
     runningNodeId.value = null;
+    approvalPending.value = false;
     resetStatus();
     // 重置控制句柄（保留同一实例，避免 UI 引用失效）
     control.cancelled = false;
     control.paused = false;
     control.stepOnce = false;
+    control.approval = null;
     control.breakpoints = new Set(breakpoints.value);
 
     const snapshot: RunSnapshot = {
       nodes: nodes.value.map((n) => ({ ...n, data: { ...nodeData(n) } })),
       edges: edges.value.map((e) => ({ ...e })),
     };
+    const recSnapshot = rec;
 
     const result = await runWorkflow({
       snapshot,
@@ -1320,18 +1398,30 @@ export const useWorkflowStore = defineStore('workflow', () => {
       params: runParams.value,
       control,
       hooks: runnerHooks,
+      runConfig: rec.runConfig,
+      inputDefs: rec.inputs,
+      outputDefs: rec.outputs,
+      subflowExecutor: async (node, inputValues) => {
+        // 递归执行被调用工作流（本地 mock，禁止真实后端）
+        return executeSubflow(node, inputValues);
+      },
     });
 
     running.value = false;
     runningNodeId.value = null;
     paused.value = false;
+    approvalPending.value = false;
     // 保留本次输出供变量浏览器 / 节点输出预览（previous 取最后执行节点）
     runOutputs.value = { ...result.outputs };
     const outKeys = Object.keys(result.outputs);
     if (outKeys.length > 0) {
       runOutputs.value.previous = result.outputs[outKeys[outKeys.length - 1]!];
     }
+    // 工作流输出契约汇总
+    runOutputs.value.__workflowOutputs = summarizeWorkflowOutputs(result.outputs);
     finishRun(result.status === 'success' ? 'success' : 'failed', Date.now() - started);
+    // 写入运行历史（不阻塞主流程）
+    appendHistory(recSnapshot, result, mode, started);
   }
 
   /** 兼容旧 API：完整运行 */
@@ -1357,9 +1447,24 @@ export const useWorkflowStore = defineStore('workflow', () => {
     paused.value = false;
   }
 
+  /** 人工确认：通过（继续执行） */
+  function approveRun() {
+    control.approval = 'approved';
+    approvalPending.value = false;
+    resumeRun();
+  }
+
+  /** 人工确认：拒绝（继续执行，节点输出 approved=false） */
+  function rejectRun() {
+    control.approval = 'rejected';
+    approvalPending.value = false;
+    resumeRun();
+  }
+
   function cancelRun() {
     control.cancel();
     paused.value = false;
+    approvalPending.value = false;
   }
 
   /** 从最近失败节点重新运行（失败节点重试） */
@@ -1369,6 +1474,497 @@ export const useWorkflowStore = defineStore('workflow', () => {
     selectNode(failed.id);
     void runWorkflowFn('from', failed.id);
     return true;
+  }
+
+  /* ================= v4 输入输出契约与运行配置 ================= */
+
+  /** 输入定义（computed 读写） */
+  const inputDefs = computed<WorkflowInputDef[]>(() => active.value?.inputs ?? []);
+  const outputDefs = computed<WorkflowOutputDef[]>(() => active.value?.outputs ?? []);
+  const runConfig = computed<WorkflowRunConfig | null>(() => active.value?.runConfig ?? null);
+
+  function setInputDefs(defs: WorkflowInputDef[]) {
+    const rec = active.value;
+    if (!rec) return;
+    const issues = validateInputDefs(defs);
+    if (issues.length > 0) return;
+    pushUndo();
+    rec.inputs = defs.map((d) => ({ ...d }));
+    rec.updatedAt = Date.now();
+  }
+
+  function setOutputDefs(defs: WorkflowOutputDef[]) {
+    const rec = active.value;
+    if (!rec) return;
+    const issues = validateOutputDefs(
+      defs,
+      rec.nodes.map((n) => n.id),
+    );
+    if (issues.length > 0) return;
+    pushUndo();
+    rec.outputs = defs.map((d) => ({ ...d }));
+    rec.updatedAt = Date.now();
+  }
+
+  function updateRunConfig(patch: Partial<WorkflowRunConfig>) {
+    const rec = active.value;
+    if (!rec) return;
+    pushUndo();
+    rec.runConfig = { ...(rec.runConfig ?? defaultRunConfig()), ...patch };
+    rec.updatedAt = Date.now();
+  }
+
+  /** 运行输入校验（字段级错误，供输入编辑器展示） */
+  function validateRunInputs(userInput: Record<string, unknown>): Record<string, string> {
+    return buildRunInput(inputDefs.value, userInput).errors;
+  }
+
+  /** 运行输入标准化（默认值合并 + 校验） */
+  function buildInputs(userInput: Record<string, unknown>): Record<string, unknown> {
+    return buildRunInput(inputDefs.value, userInput).variables;
+  }
+
+  /** 上次运行输入（供「从上次运行复用输入」） */
+  const lastRunInput = computed<Record<string, unknown>>(() => {
+    const latest = runHistory.value.find((r) => r.workflowId === activeId.value);
+    return latest?.inputSummary ?? {};
+  });
+
+  /** 恢复默认输入（各定义的 defaultValue） */
+  function defaultInputs(): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const def of inputDefs.value) {
+      if (def.defaultValue !== undefined) out[def.name] = def.defaultValue;
+    }
+    return out;
+  }
+
+  /** 工作流输出汇总（按输出契约提取，脱敏） */
+  function summarizeWorkflowOutputs(nodeOutputs: Record<string, unknown>): Record<string, unknown> {
+    const defs = active.value?.outputs ?? [];
+    const { outputs } = summarizeOutputs(defs, nodeOutputs);
+    const cleaned: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(outputs)) {
+      cleaned[k] = summarizeValue(v);
+    }
+    return cleaned;
+  }
+
+  /* ================= 子流程执行（本地递归 mock） ================= */
+
+  async function executeSubflow(
+    node: WorkflowNodeModel,
+    inputValues: Record<string, unknown>,
+  ): Promise<{
+    ok: boolean;
+    outputs: Record<string, unknown>;
+    error?: string;
+    suggestion?: string;
+  }> {
+    const refId = node.data.workflowRef;
+    const target = records.value.find((r) => r.id === refId);
+    if (!refId || !target) {
+      return {
+        ok: false,
+        outputs: {},
+        error: `被调用工作流不存在（id: ${refId ?? '未选择'}）`,
+        suggestion: '在检查器中重新选择被调用工作流',
+      };
+    }
+    // 禁止循环引用（防御）
+    const allRefs = new Map<string, string[]>();
+    for (const r of records.value) {
+      const refs = r.nodes
+        .filter((n) => n.data.kind === 'subworkflow' && n.data.workflowRef)
+        .map((n) => n.data.workflowRef!);
+      allRefs.set(r.id, refs);
+    }
+    const cycle = detectWorkflowCycle(activeId.value ?? '', allRefs);
+    if (cycle) {
+      return {
+        ok: false,
+        outputs: {},
+        error: `检测到子流程循环引用：${cycle.join(' → ')}`,
+        suggestion: '断开循环引用后再运行',
+      };
+    }
+    // 递归执行目标工作流（输入：映射后的端口值；输出：端口名 → 值）
+    const subControl = createRunControl();
+    const subResult = await runWorkflow({
+      snapshot: {
+        nodes: target.nodes.map((n) => ({ ...n, data: { ...nodeData(n) } })),
+        edges: target.edges.map((e) => ({ ...e })),
+      },
+      mode: 'full',
+      params: { variables: inputValues, context: {} },
+      control: subControl,
+      hooks: { sleep: () => Promise.resolve() },
+      runConfig: { ...(target.runConfig ?? defaultRunConfig()), failStrategy: 'stop' },
+      inputDefs: target.inputs,
+      outputDefs: target.outputs,
+    });
+    if (subResult.status !== 'success') {
+      return {
+        ok: false,
+        outputs: {},
+        error: subResult.error ?? '子流程执行失败',
+        suggestion: subResult.suggestion,
+      };
+    }
+    // 按子流程输出契约汇总
+    const { outputs } = summarizeOutputs(target.outputs ?? [], subResult.outputs);
+    return { ok: true, outputs };
+  }
+
+  /* ================= 运行历史 ================= */
+
+  function loadRunHistoryLocal() {
+    const { records: recs, warnings } = loadHistoryStorage();
+    runHistory.value = recs;
+    runHistoryWarnings.value = warnings;
+  }
+
+  function persistRunHistory(): boolean {
+    const ok = saveRunHistory(runHistory.value);
+    if (!ok) {
+      runHistoryWarnings.value = ['运行历史写入失败（存储空间不足？），本次记录仅保留在内存'];
+    }
+    return ok;
+  }
+
+  function appendHistory(
+    rec: StoredWorkflow,
+    result: RunResultLike,
+    mode: RunMode,
+    startedAt: number,
+  ) {
+    const nodeResults: RunNodeResult[] = rec.nodes.map((n) => {
+      const out = result.outputs[n.id];
+      const status =
+        n.id === result.failedNodeId ? 'error' : out !== undefined ? 'success' : 'idle';
+      return {
+        nodeId: n.id,
+        label: n.data.label || n.id,
+        kind: n.data.kind,
+        status,
+        output: out !== undefined ? summarizeValue(out) : undefined,
+        error: n.id === result.failedNodeId ? result.error : undefined,
+      };
+    });
+    const entry = createRunRecord({
+      workflowId: rec.id,
+      workflowName: rec.name,
+      workflowVersion: snapshotSignature(rec.nodes, rec.edges).slice(0, 12),
+      mode,
+      status: (result.status === 'cancelled' ? 'cancelled' : result.status) as RunHistoryStatus,
+      startedAt,
+      finishedAt: Date.now(),
+      durationMs: result.durationMs,
+      inputSummary: summarizeValue(runParams.value.variables ?? {}) as Record<string, unknown>,
+      outputSummary: summarizeWorkflowOutputs(result.outputs),
+      nodeResults,
+      logs: result.logs.map((l, i) => ({
+        id: (l as RunLogEntry).id ?? i,
+        level: l.level as RunLogEntry['level'],
+        text: l.text,
+        nodeId: l.nodeId,
+        ts: l.ts,
+      })),
+      failedNodeId: result.failedNodeId,
+      error: result.error,
+    });
+    runHistory.value = appendRunRecord(runHistory.value, entry);
+    persistRunHistory();
+  }
+
+  function deleteRunEntry(id: string) {
+    runHistory.value = removeRunRecord(runHistory.value, id);
+    persistRunHistory();
+  }
+
+  function pinRunEntry(id: string, pinned: boolean) {
+    runHistory.value = runHistory.value.map((r) => (r.id === id ? { ...r, pinned } : r));
+    persistRunHistory();
+  }
+
+  function clearAllRuns(keepPinned: boolean) {
+    runHistory.value = clearRunHistory(runHistory.value, keepPinned);
+    persistRunHistory();
+  }
+
+  function exportRunEntryJson(id: string): string {
+    const entry = runHistory.value.find((r) => r.id === id);
+    return entry ? exportRunRecord(entry) : '{}';
+  }
+
+  function filterRuns(filter: RunHistoryFilter): RunHistoryEntry[] {
+    return filterRunHistory(runHistory.value, filter);
+  }
+
+  function compareRunEntries(aId: string, bId: string) {
+    const a = runHistory.value.find((r) => r.id === aId);
+    const b = runHistory.value.find((r) => r.id === bId);
+    if (!a || !b) return null;
+    return compareRuns(a, b);
+  }
+
+  /* ================= 回放 ================= */
+
+  /** 进入只读回放态：按历史节点状态着色，禁止编辑 */
+  function startReplay(runId: string) {
+    const entry = runHistory.value.find((r) => r.id === runId);
+    if (!entry || !active.value) return false;
+    const map = new Map<string, NodeStatus>();
+    for (const nr of entry.nodeResults) {
+      map.set(nr.nodeId, nr.status);
+    }
+    replayState.value = map;
+    replayRunId.value = runId;
+    // 画布节点着色（不改动工作流数据）
+    active.value.nodes = active.value.nodes.map((n) => ({
+      ...n,
+      data: { ...nodeData(n), status: map.get(n.id) ?? 'idle' },
+    }));
+    layoutBump.value++;
+    return true;
+  }
+
+  /** 退出回放：恢复当前编辑状态 */
+  function exitReplay() {
+    if (!replayState.value) return;
+    replayState.value = null;
+    replayRunId.value = null;
+    if (active.value) {
+      active.value.nodes = active.value.nodes.map((n) => ({
+        ...n,
+        data: { ...nodeData(n), status: 'idle' as const },
+      }));
+    }
+    layoutBump.value++;
+  }
+
+  /** 从历史输入重新运行（新运行，不覆盖历史） */
+  async function rerunFromHistory(runId: string) {
+    const entry = runHistory.value.find((r) => r.id === runId);
+    if (!entry || entry.workflowId !== activeId.value) return false;
+    runParams.value = {
+      initialText: runParams.value.initialText,
+      variables: { ...entry.inputSummary },
+      context: {},
+    };
+    exitReplay();
+    await runWorkflowFn('full');
+    return true;
+  }
+
+  const isReplaying = computed(() => replayState.value !== null);
+
+  /* ================= 模块化子图 ================= */
+
+  const modules = computed<WorkflowModule[]>(() => active.value?.modules ?? []);
+
+  function persistModules() {
+    persist();
+  }
+
+  /** 保存选中节点为模块 */
+  function saveSelectionAsModule(name: string, description = ''): WorkflowModule | null {
+    const rec = active.value;
+    const sel = nodes.value.filter((n) => n.selected);
+    if (!rec || sel.length === 0) return null;
+    const { module, warnings } = buildModule(sel, rec.edges, name, description);
+    if (warnings.length > 0) void warnings;
+    pushUndo();
+    rec.modules = [...(rec.modules ?? []), module];
+    rec.updatedAt = Date.now();
+    persistModules();
+    return module;
+  }
+
+  /** 插入模块实例（生成全新 ID，内部边重映射） */
+  function insertModule(moduleId: string, position?: XYPosition): boolean {
+    const rec = active.value;
+    const module = rec?.modules?.find((m) => m.id === moduleId);
+    if (!rec || !module || module.nodes.length === 0) return false;
+    pushUndo();
+    const instance = instantiateModule(module);
+    const offset = position ?? { x: 60, y: 60 };
+    // 以模块第一个节点为锚点平移到插入位置
+    const anchor = instance.nodes[0]?.position ?? { x: 0, y: 0 };
+    const dx = offset.x - anchor.x;
+    const dy = offset.y - anchor.y;
+    const placed = instance.nodes.map((n) => ({
+      ...n,
+      position: { x: n.position.x + dx, y: n.position.y + dy },
+    }));
+    const maxSeq = Math.max(rec.seq, ...placed.map((n) => Number(n.id.replace(/\D/g, '')) || 0));
+    rec.seq = maxSeq + 1;
+    rec.nodes = [...rec.nodes, ...placed];
+    rec.edges = [...rec.edges, ...instance.edges];
+    rec.updatedAt = Date.now();
+    selectMany(placed.map((n) => n.id));
+    layoutBump.value++;
+    return true;
+  }
+
+  /** 更新模块定义：同步画布实例或仅创建新版本 */
+  function updateModuleDefinition(
+    moduleId: string,
+    name: string,
+    description: string,
+    syncExisting: boolean,
+  ): boolean {
+    const rec = active.value;
+    const module = rec?.modules?.find((m) => m.id === moduleId);
+    if (!rec || !module) return false;
+    pushUndo();
+    const updated = {
+      ...module,
+      name,
+      description,
+      version: module.version + 1,
+      updatedAt: Date.now(),
+    };
+    rec.modules = (rec.modules ?? []).map((m) => (m.id === moduleId ? updated : m));
+    if (syncExisting) {
+      // 同步实例：按实例节点 id 前缀查找（模块实例节点 id 以 m- 开头无法区分，
+      // 通过保存时的实例根映射实现——这里退化为重建全部实例代价高，
+      // 因此仅在模块可被唯一识别时替换：记录实例锚点由 UI 层负责，
+      // store 层提供 replaceModuleInstances 供精确同步。
+      void replaceModuleInstances;
+    }
+    rec.updatedAt = Date.now();
+    persistModules();
+    return true;
+  }
+
+  /** 删除模块定义（画布中的实例保留，仅移除定义） */
+  function removeModule(moduleId: string) {
+    const rec = active.value;
+    if (!rec) return;
+    pushUndo();
+    rec.modules = (rec.modules ?? []).filter((m) => m.id !== moduleId);
+    rec.updatedAt = Date.now();
+    persistModules();
+  }
+
+  // 模块实例同步占位（由 UI 传入旧实例节点 id 列表时替换）
+  function replaceModuleInstances(
+    moduleId: string,
+    instanceNodeIds: string[],
+    latest: WorkflowModule,
+  ): boolean {
+    const rec = active.value;
+    if (!rec || instanceNodeIds.length === 0) return false;
+    pushUndo();
+    const idSet = new Set(instanceNodeIds);
+    const keptNodes = rec.nodes.filter((n) => !idSet.has(n.id));
+    const keptEdges = rec.edges.filter((e) => !idSet.has(e.source) && !idSet.has(e.target));
+    const inst = instantiateModule(latest);
+    rec.nodes = [...keptNodes, ...inst.nodes];
+    rec.edges = [...keptEdges, ...inst.edges];
+    rec.seq = Math.max(rec.seq, ...inst.nodes.map((n) => Number(n.id.replace(/\D/g, '')) || 0)) + 1;
+    rec.updatedAt = Date.now();
+    selectMany(inst.nodes.map((n) => n.id));
+    layoutBump.value++;
+    return true;
+  }
+
+  /* ================= 健康诊断与性能预估 ================= */
+
+  function runDiagnostics(): DiagnosticIssue[] {
+    const rec = active.value;
+    if (!rec) return [];
+    diagnostics.value = diagnoseWorkflow(
+      rec.nodes,
+      rec.edges,
+      rec.inputs ?? [],
+      rec.outputs ?? [],
+      rec.runConfig ?? undefined,
+    );
+    // 追加子流程引用问题
+    const subIssues = checkSubflowIssues();
+    for (const s of subIssues) {
+      diagnostics.value.push({
+        id: `d-sub-${diagnostics.value.length + 1}`,
+        severity: s.level,
+        category: 'structure',
+        nodeId: s.nodeId,
+        title: s.level === 'error' ? '子流程引用错误' : '子流程引用警告',
+        detail: s.message,
+      });
+    }
+    return diagnostics.value;
+  }
+
+  const diagnosticsCount = computed(() => ({
+    error: diagnostics.value.filter((d) => d.severity === 'error').length,
+    warning: diagnostics.value.filter((d) => d.severity === 'warning').length,
+    info: diagnostics.value.filter((d) => d.severity === 'info').length,
+  }));
+
+  function estimateRunPerformance() {
+    const rec = active.value;
+    if (!rec) return null;
+    return estimatePerformance(rec.nodes, rec.edges);
+  }
+
+  /** 类型兼容性检查（含 merge/switch/subworkflow 重点覆盖） */
+  function runTypeCheck() {
+    const rec = active.value;
+    if (!rec) return [];
+    return checkTypeCompatibility(rec.nodes, rec.edges);
+  }
+
+  /* ================= 子流程引用诊断 ================= */
+
+  const workflowStubs = computed<WorkflowStub[]>(() =>
+    records.value.map((r) => ({
+      id: r.id,
+      name: r.name,
+      archived: r.isTemplate === true,
+      inputPorts: Object.fromEntries((r.inputs ?? []).map((i) => [i.name, i.required])),
+      outputPorts: (r.outputs ?? []).map((o) => o.name),
+    })),
+  );
+
+  /** 当前工作流内子流程引用校验（自引用 / 缺失 / 映射） */
+  function checkSubflowIssues(): SubflowIssue[] {
+    const rec = active.value;
+    if (!rec) return [];
+    return validateSubflowRefs(rec.nodes, workflowStubs.value, rec.id);
+  }
+
+  /** 全工作流级循环引用检测 */
+  function checkWorkflowCycles(): string[] | null {
+    const rec = active.value;
+    if (!rec) return null;
+    const allRefs = new Map<string, string[]>();
+    for (const r of records.value) {
+      allRefs.set(
+        r.id,
+        r.nodes
+          .filter((n) => n.data.kind === 'subworkflow' && n.data.workflowRef)
+          .map((n) => n.data.workflowRef!),
+      );
+    }
+    return detectWorkflowCycle(rec.id, allRefs);
+  }
+
+  /** 校验子流程引用 + 循环（编辑期调用，供 UI 展示） */
+  function validateSubflows(): { issues: SubflowIssue[]; cycle: string[] | null } {
+    return { issues: checkSubflowIssues(), cycle: checkWorkflowCycles() };
+  }
+
+  /* ================= 输入/输出映射 UI 辅助 ================= */
+
+  /** 更新选中节点的子流程映射（inputMap/outputMap） */
+  function updateSubflowMap(
+    nodeId: string,
+    field: 'inputMap' | 'outputMap',
+    map: Record<string, string>,
+  ) {
+    updateNodeData(nodeId, { [field]: { ...map } } as Partial<WorkflowNodeData>);
   }
 
   /* ---------- 运行结果导出 ---------- */
@@ -1786,6 +2382,58 @@ export const useWorkflowStore = defineStore('workflow', () => {
     missingVarsFor,
     nodeOutputPreview,
     runOutputs,
+    // v4 输入输出契约与运行配置
+    inputDefs,
+    outputDefs,
+    runConfig,
+    setInputDefs,
+    setOutputDefs,
+    updateRunConfig,
+    validateRunInputs,
+    buildInputs,
+    lastRunInput,
+    defaultInputs,
+    summarizeWorkflowOutputs,
+    // 子流程
+    workflowStubs,
+    checkSubflowIssues,
+    checkWorkflowCycles,
+    validateSubflows,
+    updateSubflowMap,
+    executeSubflow,
+    // 运行历史
+    runHistory,
+    runHistoryWarnings,
+    deleteRunEntry,
+    pinRunEntry,
+    clearAllRuns,
+    exportRunEntryJson,
+    filterRuns,
+    compareRunEntries,
+    // 回放
+    replayState,
+    replayRunId,
+    isReplaying,
+    startReplay,
+    exitReplay,
+    rerunFromHistory,
+    // 模块化子图
+    modules,
+    saveSelectionAsModule,
+    insertModule,
+    updateModuleDefinition,
+    removeModule,
+    replaceModuleInstances,
+    // 诊断 / 预估 / 类型检查
+    diagnostics,
+    diagnosticsCount,
+    runDiagnostics,
+    estimateRunPerformance,
+    runTypeCheck,
+    // 人工确认
+    approvalPending,
+    approveRun,
+    rejectRun,
     // 断点 / 单步
     breakpoints,
     toggleBreakpoint,
