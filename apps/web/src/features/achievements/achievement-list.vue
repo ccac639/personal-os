@@ -11,7 +11,6 @@ import {
   Trash2,
 } from '@lucide/vue';
 import { TYPE_META, tagCls } from './constants';
-import { hasReuse } from './reuse';
 import type { Achievement } from './types';
 
 defineProps<{
@@ -111,7 +110,7 @@ function resetConfirm() {
         <component :is="TYPE_META[item.type].icon" class="size-4" />
       </span>
 
-      <!-- 标题 + 摘要 -->
+      <!-- 标题 + 置顶/归档状态 -->
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-1.5">
           <p class="text-surface-900 truncate text-sm font-medium">{{ item.title }}</p>
@@ -126,17 +125,10 @@ function resetConfirm() {
           >
             已归档
           </span>
-          <span
-            v-if="hasReuse(item)"
-            class="shrink-0 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-1.5 py-0.5 text-[9px] text-emerald-600/80"
-          >
-            复用包
-          </span>
         </div>
-        <p class="text-surface-800/50 mt-0.5 truncate text-xs">{{ item.summary || '暂无摘要' }}</p>
       </div>
 
-      <!-- 标签（前 2 个） -->
+      <!-- 标签（前 2 个，高密度扫描用） -->
       <div class="hidden w-36 shrink-0 flex-wrap gap-1 md:flex">
         <span
           v-for="t in item.tags.slice(0, 2)"

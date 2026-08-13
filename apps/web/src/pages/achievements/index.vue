@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { AlertTriangle, CircleCheck, Download, FileJson, SearchX } from '@lucide/vue';
+import { AlertTriangle, CircleCheck, Plus, SearchX } from '@lucide/vue';
 import { useAchievementStore } from '@/features/achievements/store';
 import {
   activeFilterCount,
@@ -113,6 +113,11 @@ const summaryParts = computed(() => filterSummary(filters.value));
 const selectedSet = computed(() => new Set(store.selectedIds));
 const manualSort = computed(() => filters.value.sort === 'manual');
 
+/** 列表类视图（卡片/列表/时间线）才需要窗口化渲染；概览/集合视图不渲染列表 */
+const isListArea = computed(
+  () => view.value === 'card' || view.value === 'list' || view.value === 'timeline',
+);
+
 /* ---------- 大数据列表：窗口化渲染（滚动到底加载更多，避免一次性渲染全部） ---------- */
 const RENDER_PAGE = 60;
 const renderLimit = ref(RENDER_PAGE);
@@ -126,6 +131,11 @@ function resetRenderWindow() {
 }
 
 watch(filtered, resetRenderWindow);
+
+watch(sentinel, (el) => {
+  // 视图切换会重建哨兵元素：重新观察，避免滚动加载失效
+  if (io && el) io.observe(el);
+});
 
 onMounted(() => {
   if (!('IntersectionObserver' in window)) return;
@@ -256,8 +266,11 @@ function moveCollectionItem(colId: string, achievementId: string, dir: -1 | 1) {
   store.moveCollectionItem(colId, achievementId, dir);
 }
 
+/** 打开集合：进入集合聚焦态并切回卡片视图查看成员（集合管理在「集合」视图） */
 function openCollection(colId: string) {
-  store.setActiveCollection(store.activeCollectionId === colId ? null : colId);
+  const opening = store.activeCollectionId !== colId;
+  store.setActiveCollection(opening ? colId : null);
+  if (opening && view.value === 'collections') store.setView('card');
 }
 
 function clearCollection() {
@@ -374,7 +387,7 @@ function clearFilters() {
 
 <template>
   <div class="space-y-4 p-6">
-    <!-- 标题区 -->
+    <!-- 标题区：仅保留标题 + 总数 + 主操作 -->
     <header
       class="border-surface-100/70 bg-surface-0/70 shadow-card flex items-center justify-between rounded-xl border px-5 py-4 backdrop-blur-xl"
     >
@@ -386,34 +399,17 @@ function clearFilters() {
         </span>
         <div>
           <h1 class="text-surface-900 text-lg leading-tight font-semibold">已完成</h1>
-          <p class="text-surface-800/50 mt-0.5 text-xs">
-            个人成果归档与展示 · 共 {{ totalCount }} 项，当前显示 {{ visibleCount }} 项
-            <template v-if="truncated">
-              （已展示 {{ rendered.length }} 项，滚动加载更多）
-            </template>
-          </p>
+          <p class="text-surface-800/50 mt-0.5 text-xs">共 {{ totalCount }} 项成果</p>
         </div>
       </div>
-      <div class="flex items-center gap-2">
-        <button
-          type="button"
-          title="导出全部成果与集合为 JSON"
-          class="border-surface-100 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition"
-          @click="exportAll"
-        >
-          <Download class="size-3.5" />
-          导出全库
-        </button>
-        <button
-          type="button"
-          title="从 JSON 导入成果（含集合）"
-          class="border-surface-100 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition"
-          @click="importVisible = true"
-        >
-          <FileJson class="size-3.5" />
-          导入
-        </button>
-      </div>
+      <button
+        type="button"
+        class="bg-brand-500 hover:bg-brand-600 flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-medium text-white shadow-sm transition"
+        @click="startCreate"
+      >
+        <Plus class="size-3.5" />
+        新建成果
+      </button>
     </header>
 
     <!-- 写入失败横幅（非阻塞） -->
@@ -426,25 +422,7 @@ function clearFilters() {
       本地存储不可用（配额或隐私模式），更改仅保留在当前页面，刷新后将丢失。
     </div>
 
-    <!-- 统计概览（含年度回顾） -->
-    <AchievementStats :items="store.achievements" />
-
-    <!-- 成果集合 -->
-    <AchievementCollections
-      :collections="store.collections"
-      :items="store.achievements"
-      :active-collection-id="store.activeCollectionId"
-      @create="createCollection"
-      @update="updateCollection"
-      @remove="removeCollection"
-      @open="openCollection"
-      @add-items="addCollectionItems"
-      @remove-item="removeCollectionItem"
-      @move-item="moveCollectionItem"
-      @export="exportCollection"
-    />
-
-    <!-- 筛选工具条 -->
+    <!-- 次级工具栏：搜索 / 视图切换 / 筛选（抽屉）/ 排序 / 导出导入 -->
     <AchievementToolbar
       v-model:filters="filters"
       v-model:view="view"
@@ -454,12 +432,13 @@ function clearFilters() {
       :saved-filters="store.savedFilters"
       :active-collection="activeCollection"
       @clear="clearFilters"
-      @create="startCreate"
       @save-scheme="saveScheme"
       @apply-scheme="applyScheme"
       @delete-scheme="deleteScheme"
       @update-scheme="updateScheme"
       @clear-collection="clearCollection"
+      @export-all="exportAll"
+      @open-import="importVisible = true"
     />
 
     <!-- 批量操作条 -->
@@ -488,12 +467,39 @@ function clearFilters() {
       @clear="store.clearSelection"
     />
 
-    <!-- 内容区 -->
+    <!-- 概览视图：统计 + 年度回顾（默认收起，不占成果浏览首屏；图表懒初始化，隐藏即 dispose） -->
+    <div v-show="view === 'overview'">
+      <AchievementStats :items="store.achievements" :active="view === 'overview'" />
+    </div>
+
+    <!-- 集合视图：集合管理独立成视图，不与主列表抢占空间 -->
+    <div v-show="view === 'collections'">
+      <AchievementCollections
+        :collections="store.collections"
+        :items="store.achievements"
+        :active-collection-id="store.activeCollectionId"
+        @create="createCollection"
+        @update="updateCollection"
+        @remove="removeCollection"
+        @open="openCollection"
+        @add-items="addCollectionItems"
+        @remove-item="removeCollectionItem"
+        @move-item="moveCollectionItem"
+        @export="exportCollection"
+      />
+    </div>
+
+    <!-- 列表类内容区（卡片 / 列表 / 时间线） -->
     <section
+      v-show="isListArea"
       class="border-surface-100/70 bg-surface-0/70 shadow-card rounded-xl border backdrop-blur-xl"
     >
-      <!-- 卡片视图（v-memo 避免无关变化重复渲染） -->
-      <div v-if="view === 'card'" class="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+      <!-- 卡片视图（v-memo 避免无关变化重复渲染；移动端单列不横向溢出） -->
+      <div
+        v-if="view === 'card'"
+        data-testid="achievement-card-grid"
+        class="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3"
+      >
         <AchievementCard
           v-for="item in rendered"
           :key="item.id"
@@ -511,7 +517,7 @@ function clearFilters() {
         />
       </div>
 
-      <!-- 列表视图 -->
+      <!-- 列表视图（高密度扫描） -->
       <div v-else-if="view === 'list'" class="p-3">
         <AchievementList
           :items="rendered"
@@ -528,7 +534,7 @@ function clearFilters() {
       </div>
 
       <!-- 时间线视图 -->
-      <div v-else class="p-4 sm:p-5">
+      <div v-else-if="view === 'timeline'" class="p-4 sm:p-5">
         <AchievementTimeline
           :items="rendered"
           :selected-ids="store.selectedIds"
@@ -545,7 +551,7 @@ function clearFilters() {
 
       <!-- 窗口化加载哨兵（滚动到底加载更多） -->
       <div
-        v-if="truncated"
+        v-if="truncated && isListArea"
         ref="sentinel"
         class="text-surface-800/50 flex items-center justify-center gap-2 py-4 text-xs"
       >

@@ -39,26 +39,28 @@ describe('achievement card（渲染健壮性）', () => {
     wrapper.unmount();
   });
 
-  it('缺失链接不渲染外链；缺失指标显示占位而非 0', () => {
+  it('卡片精简：不渲染摘要/关键指标/关系角标（长描述由详情抽屉承载）', () => {
     const noLink = make({ link: undefined, metrics: [] });
     const wrapper = mount(AchievementCard, {
       props: { item: noLink, selected: false, manual: false },
     });
     expect(wrapper.find('a').exists()).toBe(false);
-    expect(wrapper.text()).toContain('暂无关键指标');
-    expect(wrapper.text()).not.toContain('指标 0');
+    expect(wrapper.text()).not.toContain('暂无关键指标');
+    expect(wrapper.text()).not.toContain('常规摘要');
+    // 卡片只保留封面预设色条 + 标题 + 类型 + 标签 + 完成日期
+    expect(wrapper.find('h3').text()).toBe('常规标题');
+    expect(wrapper.text()).toContain('项目发布');
+    expect(wrapper.text()).toContain('vue');
+    expect(wrapper.text()).toContain('2026-08-13');
+    expect(wrapper.find('[role="presentation"]').exists()).toBe(true);
     wrapper.unmount();
   });
 
-  it('指标值为空时显示占位符', () => {
+  it('置顶状态直接可见（置顶图标 + aria-label）', () => {
     const wrapper = mount(AchievementCard, {
-      props: {
-        item: make({ metrics: [{ label: '指标', value: '' }] }),
-        selected: false,
-        manual: false,
-      },
+      props: { item: make({ pinned: true }), selected: false, manual: false },
     });
-    expect(wrapper.text()).toContain('—');
+    expect(wrapper.find('[aria-label="已置顶"]').exists()).toBe(true);
     wrapper.unmount();
   });
 

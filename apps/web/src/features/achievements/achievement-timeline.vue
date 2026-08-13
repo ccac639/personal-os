@@ -2,7 +2,6 @@
 import { computed, ref } from 'vue';
 import { Archive, ChevronDown, ChevronUp, Inbox, Pencil, Pin, Trash2 } from '@lucide/vue';
 import { TYPE_META, tagCls } from './constants';
-import { hasReuse } from './reuse';
 import type { Achievement } from './types';
 
 const props = defineProps<{
@@ -139,23 +138,12 @@ function resetConfirm() {
                     class="size-3 fill-amber-500 text-amber-500"
                     aria-label="已置顶"
                   />
-                  <span
-                    v-if="hasReuse(item)"
-                    class="rounded-full border border-emerald-500/20 bg-emerald-500/5 px-1.5 py-0.5 text-[9px] text-emerald-600/80"
-                  >
-                    复用包
-                  </span>
                 </div>
                 <h4
                   class="text-surface-900 mt-1.5 line-clamp-2 text-sm leading-snug font-semibold break-words"
                 >
                   {{ item.title }}
                 </h4>
-                <p
-                  class="text-surface-800/60 mt-1 line-clamp-2 text-xs leading-relaxed break-words"
-                >
-                  {{ item.summary || '暂无摘要' }}
-                </p>
                 <div v-if="item.tags.length" class="mt-2 flex flex-wrap gap-1">
                   <span
                     v-for="t in item.tags.slice(0, 4)"

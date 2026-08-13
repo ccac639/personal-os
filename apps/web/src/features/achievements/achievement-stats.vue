@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { BarChart } from 'echarts/charts';
@@ -22,7 +22,19 @@ import type { Achievement } from './types';
 
 use([CanvasRenderer, BarChart, GridComponent, TooltipComponent]);
 
-const props = defineProps<{ items: Achievement[] }>();
+// active 为布尔 prop：缺省时 Vue 会转为 false，用 withDefaults 显式默认 true，
+// 保证直接挂载（未传 active）时图表默认启用，仅在显式 false 时懒初始化。
+const props = withDefaults(
+  defineProps<{
+    items: Achievement[];
+    /** 概览视图激活时才初始化图表；隐藏时 dispose（配合父级 v-show） */
+    active?: boolean;
+  }>(),
+  { active: true },
+);
+
+/** 图表渲染开关：非激活时不创建 ECharts 实例 */
+const enabled = computed(() => props.active);
 
 /* ---------- 概览统计（纯函数 + computed 记忆化） ---------- */
 const overview = computed(() => overviewStats(props.items));
@@ -58,6 +70,7 @@ const STAT_CARDS = computed(() => [
 /* ---------- ECharts 主题同步 ----------
  * 颜色从 CSS 变量解析：主题切换（documentElement.style 变化）时
  * 通过 MutationObserver 触发重算，卸载时断开观察并交由 VChart 销毁实例。
+ * 仅在概览视图激活时挂载观察器：非激活不初始化图表，隐藏时 dispose。
  */
 const palette = ref<ChartPalette>(DEFAULT_CHART_PALETTE);
 let observer: MutationObserver | null = null;
@@ -71,11 +84,20 @@ function syncPalette() {
   });
 }
 
-onMounted(() => {
-  syncPalette();
-  observer = new MutationObserver(syncPalette);
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
-});
+watch(
+  enabled,
+  (on) => {
+    if (!on) {
+      observer?.disconnect();
+      observer = null;
+      return;
+    }
+    syncPalette();
+    observer = new MutationObserver(syncPalette);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+  },
+  { immediate: true },
+);
 
 onBeforeUnmount(() => {
   observer?.disconnect();
@@ -166,8 +188,11 @@ const streakText = computed(() => {
           <h3 class="text-surface-900 text-sm font-semibold">月度成果趋势</h3>
           <span class="text-surface-800/50 text-[10px]">最近 {{ series.length }} 个月</span>
         </div>
+        <div v-if="!enabled" class="flex h-44 items-center justify-center">
+          <p class="text-surface-800/40 text-xs">概览未激活</p>
+        </div>
         <div
-          v-if="series.length === 0"
+          v-else-if="series.length === 0"
           class="flex h-44 flex-col items-center justify-center gap-2"
         >
           <BarChart3 class="text-surface-800/30 size-7" />
@@ -237,21 +262,21 @@ const streakText = computed(() => {
 
       <div v-if="review" class="grid gap-3 lg:grid-cols-3">
         <!-- 完成趋势（当年逐月） -->
-        <div class="border-surface-100/80 bg-surface-50/40 rounded-xl border p-3 lg:col-span-2">
+        <div class="lg:col-span-2">
           <p class="text-surface-800/70 mb-2 text-xs">
             {{ review.year }} 年完成趋势：共
             <span class="text-surface-900 font-semibold tabular-nums">{{ review.total }}</span>
             项
           </p>
-          <div role="img" :aria-label="reviewSummary">
-            <VChart v-if="annualOption" class="h-40 w-full" :option="annualOption" autoresize />
+          <div v-if="enabled && annualOption" role="img" :aria-label="reviewSummary">
+            <VChart class="h-40 w-full" :option="annualOption" autoresize />
           </div>
           <p class="sr-only">{{ reviewSummary }}</p>
         </div>
 
         <!-- 类型构成 + 连续产出 -->
         <div class="space-y-3">
-          <div class="border-surface-100/80 bg-surface-50/40 rounded-xl border p-3">
+          <div>
             <p class="text-surface-800/70 mb-2 text-xs">当年类型构成</p>
             <ul v-if="review.total > 0" class="space-y-1.5">
               <li
@@ -278,7 +303,7 @@ const streakText = computed(() => {
             <p v-else class="text-surface-800/40 text-xs">当年暂无成果</p>
           </div>
 
-          <div class="border-surface-100/80 bg-surface-50/40 rounded-xl border p-3">
+          <div>
             <p class="text-surface-800/70 mb-1.5 flex items-center gap-1.5 text-xs">
               <Pin class="size-3.5 text-amber-500" />
               收藏与归档
@@ -324,7 +349,7 @@ const streakText = computed(() => {
             </div>
           </div>
 
-          <div class="border-surface-100/80 bg-surface-50/40 rounded-xl border p-3">
+          <div>
             <p class="text-surface-800/70 mb-1.5 flex items-center gap-1.5 text-xs">
               <Flame class="size-3.5 text-amber-500" />
               连续产出

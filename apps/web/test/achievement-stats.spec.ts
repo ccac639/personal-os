@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { monthlySeries, overviewStats, typeDistribution } from '@/features/achievements/stats';
 import AchievementStats from '@/features/achievements/achievement-stats.vue';
@@ -87,11 +87,60 @@ describe('achievement stats 组件（空态）', () => {
   it('无数据时显示占位文案，不渲染图表', () => {
     const wrapper = mount(AchievementStats, {
       props: { items: [] },
-      global: { stubs: { VChart: true } },
+      global: { stubs: { Echarts: true } },
     });
     expect(wrapper.text()).toContain('暂无月度数据');
-    expect(wrapper.findComponent({ name: 'VChart' }).exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'Echarts' }).exists()).toBe(false);
     // 无障碍摘要仍可用
     expect(wrapper.find('.sr-only').text()).toContain('暂无数据');
+  });
+});
+
+describe('achievement stats 组件（图表懒初始化与卸载）', () => {
+  it('active=false 时不初始化图表；激活后延迟初始化', async () => {
+    const items = [
+      make({ id: '1', completedAt: '2026-08-01' }),
+      make({ id: '2', completedAt: '2026-07-15' }),
+    ];
+    const wrapper = mount(AchievementStats, {
+      props: { items, active: false },
+      global: { stubs: { Echarts: true } },
+    });
+    expect(wrapper.findComponent({ name: 'Echarts' }).exists()).toBe(false);
+    expect(wrapper.text()).toContain('概览未激活');
+
+    await wrapper.setProps({ active: true });
+    expect(wrapper.findComponent({ name: 'Echarts' }).exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('隐藏（active=false）时图表卸载 dispose；重新激活可再次渲染', async () => {
+    const items = [make({ id: '1', completedAt: '2026-08-01' })];
+    const wrapper = mount(AchievementStats, {
+      props: { items, active: true },
+      global: { stubs: { Echarts: true } },
+    });
+    expect(wrapper.findComponent({ name: 'Echarts' }).exists()).toBe(true);
+
+    await wrapper.setProps({ active: false });
+    expect(wrapper.findComponent({ name: 'Echarts' }).exists()).toBe(false);
+
+    await wrapper.setProps({ active: true });
+    expect(wrapper.findComponent({ name: 'Echarts' }).exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('非激活时不注册主题 MutationObserver；卸载时断开观察', async () => {
+    const items = [make({ id: '1', completedAt: '2026-08-01' })];
+    const disconnectSpy = vi.spyOn(MutationObserver.prototype, 'disconnect');
+    const wrapper = mount(AchievementStats, {
+      props: { items, active: false },
+      global: { stubs: { Echarts: true } },
+    });
+    expect(disconnectSpy).not.toHaveBeenCalled();
+    await wrapper.setProps({ active: true });
+    wrapper.unmount();
+    expect(disconnectSpy).toHaveBeenCalled();
+    disconnectSpy.mockRestore();
   });
 });

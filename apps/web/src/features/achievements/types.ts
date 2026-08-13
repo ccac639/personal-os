@@ -93,8 +93,8 @@ export type AchievementDraft = Omit<
 /** 归档过滤：全部 / 仅未归档 / 仅已归档 */
 export type ArchiveFilter = 'all' | 'active' | 'archived';
 
-/** 成果库视图模式 */
-export type AchievementView = 'card' | 'list' | 'timeline';
+/** 成果库视图模式（概览 = 统计 + 年度回顾；集合 = 集合管理，均独立成视图，不占主列表空间） */
+export type AchievementView = 'card' | 'list' | 'timeline' | 'overview' | 'collections';
 
 /** 排序方式（置顶恒优先） */
 export type AchievementSort = 'date-desc' | 'date-asc' | 'updated' | 'title' | 'manual';

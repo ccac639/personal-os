@@ -169,20 +169,38 @@ describe('achievement reuse（抽屉复用包区块）', () => {
     expect(labelSpan.classList.contains('line-through')).toBe(true);
   });
 
-  it('导出按钮：导出 JSON / 导出 Markdown / 复制 分别派发事件或写剪贴板', async () => {
+  it('导出按钮：导出 JSON / 导出 Markdown / 导出单项（低频操作收进更多菜单）', async () => {
     wrapper = mount(AchievementDrawer, { props: { item: make() } });
     await nextTick();
     const dialog = document.body.querySelector('[role="dialog"]')!;
-    const buttons = Array.from(dialog.querySelectorAll('button'));
     const text = (b: Element) => b.textContent ?? '';
+    const openMore = async () => {
+      (dialog.querySelector('button[aria-label="更多操作"]') as HTMLButtonElement).click();
+      await nextTick();
+    };
 
-    (buttons.find((b) => text(b).includes('导出 JSON')) as HTMLButtonElement).click();
+    await openMore();
+    (
+      Array.from(dialog.querySelectorAll('button')).find((b) =>
+        text(b).includes('导出复用包 JSON'),
+      ) as HTMLButtonElement
+    ).click();
     expect(wrapper.emitted('export-reuse')![0]![0]).toMatchObject({ id: 'reuse-1' });
 
-    (buttons.find((b) => text(b).includes('导出 Markdown')) as HTMLButtonElement).click();
+    await openMore();
+    (
+      Array.from(dialog.querySelectorAll('button')).find((b) =>
+        text(b).includes('导出复用包 Markdown'),
+      ) as HTMLButtonElement
+    ).click();
     expect(wrapper.emitted('export-reuse-md')![0]![0]).toMatchObject({ id: 'reuse-1' });
 
-    (buttons.find((b) => text(b).includes('导出单项')) as HTMLButtonElement).click();
+    await openMore();
+    (
+      Array.from(dialog.querySelectorAll('button')).find((b) =>
+        text(b).includes('导出单项'),
+      ) as HTMLButtonElement
+    ).click();
     expect(wrapper.emitted('export')![0]![0]).toMatchObject({ id: 'reuse-1' });
   });
 

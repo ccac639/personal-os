@@ -1,25 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import {
-  Archive,
-  Bookmark,
+  BarChart3,
+  Download,
+  FileJson,
   Folder,
-  Inbox,
   LayoutGrid,
   List,
-  Pencil,
-  Plus,
-  RefreshCw,
   RotateCcw,
   Rows3,
   Search,
   SlidersHorizontal,
-  Tag,
-  Trash2,
   X,
 } from '@lucide/vue';
-import { ACHIEVEMENT_TYPES, SORT_OPTIONS, TYPE_META } from './constants';
+import { SORT_OPTIONS } from './constants';
 import { activeFilterCount } from './filters';
+import AchievementFilterDrawer from './achievement-filter-drawer.vue';
 import type { AchievementFilters, AchievementView, SavedFilter } from './types';
 
 const props = defineProps<{
@@ -37,124 +33,94 @@ const emit = defineEmits<{
   'update:filters': [filters: AchievementFilters];
   'update:view': [view: AchievementView];
   clear: [];
-  create: [];
   'save-scheme': [name: string];
   'apply-scheme': [id: string];
   'delete-scheme': [id: string];
   'update-scheme': [id: string, patch: { name?: string; filters?: AchievementFilters }];
   'clear-collection': [];
+  'export-all': [];
+  'open-import': [];
 }>();
 
+/* ---------- 筛选抽屉（复杂筛选收纳；紧凑条展示当前生效条件） ---------- */
+
+const filterOpen = ref(false);
 const activeCount = computed(() => activeFilterCount(props.filters));
-const advancedOpen = ref(false);
-const schemeName = ref('');
-const schemeSaved = ref(false);
-/** 内联编辑中的方案 id（重命名） */
-const editingSchemeId = ref<string | null>(null);
-const editingSchemeName = ref('');
+const hasActiveState = computed(() => activeCount.value > 0 || props.activeCollection !== null);
 
-function startEditScheme(s: SavedFilter) {
-  editingSchemeId.value = s.id;
-  editingSchemeName.value = s.name;
-}
-
-function cancelEditScheme() {
-  editingSchemeId.value = null;
-  editingSchemeName.value = '';
-}
-
-function saveEditScheme() {
-  if (editingSchemeId.value) {
-    const name = editingSchemeName.value.trim();
-    if (name) emit('update-scheme', editingSchemeId.value, { name });
+/** 当前生效筛选的摘要 chips（点击移除对应条件） */
+const summaryChips = computed(() => {
+  const f = props.filters;
+  const chips: { key: string; label: string; clear: Partial<AchievementFilters> }[] = [];
+  if (f.types.length > 0) {
+    chips.push({ key: 'types', label: `类型 ${f.types.length}`, clear: { types: [] } });
   }
-  cancelEditScheme();
-}
-
-/** 用当前筛选条件覆盖方案快照（编辑筛选内容） */
-function refreshScheme(s: SavedFilter) {
-  emit('update-scheme', s.id, { filters: { ...props.filters } });
-}
+  if (f.year != null) {
+    chips.push({
+      key: 'time',
+      label: f.month != null ? `${f.year} 年 ${f.month} 月` : `${f.year} 年`,
+      clear: { year: null, month: null },
+    });
+  }
+  if (f.tags.length > 0) {
+    chips.push({ key: 'tags', label: `标签 ${f.tags.length}`, clear: { tags: [] } });
+  }
+  if (f.archived === 'archived') {
+    chips.push({ key: 'archived', label: '仅已归档', clear: { archived: 'active' } });
+  } else if (f.archived === 'all') {
+    chips.push({ key: 'archived', label: '包含已归档', clear: { archived: 'active' } });
+  }
+  if (f.titleQuery.trim()) {
+    chips.push({
+      key: 'titleQuery',
+      label: `标题含「${f.titleQuery.trim()}」`,
+      clear: { titleQuery: '' },
+    });
+  }
+  if (f.descQuery.trim()) {
+    chips.push({
+      key: 'descQuery',
+      label: `描述含「${f.descQuery.trim()}」`,
+      clear: { descQuery: '' },
+    });
+  }
+  if (f.projectQuery.trim()) {
+    chips.push({
+      key: 'projectQuery',
+      label: `项目「${f.projectQuery.trim()}」`,
+      clear: { projectQuery: '' },
+    });
+  }
+  return chips;
+});
 
 function patch(p: Partial<AchievementFilters>) {
   emit('update:filters', { ...props.filters, ...p });
 }
 
-function toggleType(type: (typeof ACHIEVEMENT_TYPES)[number]) {
-  const types = props.filters.types.includes(type)
-    ? props.filters.types.filter((t) => t !== type)
-    : [...props.filters.types, type];
-  patch({ types });
-}
-
-function toggleTag(tag: string) {
-  const tags = props.filters.tags.includes(tag)
-    ? props.filters.tags.filter((t) => t !== tag)
-    : [...props.filters.tags, tag];
-  patch({ tags });
-}
-
-function setYear(value: string) {
-  const year = value ? Number(value) : null;
-  patch({ year, month: null });
-}
-
-function setMonth(value: string) {
-  patch({ month: value ? Number(value) : null });
-}
-
-function saveScheme() {
-  const name = schemeName.value.trim();
-  if (!name) return;
-  emit('save-scheme', name);
-  schemeName.value = '';
-  schemeSaved.value = true;
-  setTimeout(() => {
-    schemeSaved.value = false;
-  }, 1500);
-}
-
-function applyScheme(event: Event) {
-  const id = (event.target as HTMLSelectElement).value;
-  if (id) emit('apply-scheme', id);
-  (event.target as HTMLSelectElement).value = '';
-}
+/* ---------- 视图 ---------- */
 
 const VIEWS: { value: AchievementView; label: string; icon: typeof LayoutGrid }[] = [
   { value: 'card', label: '卡片', icon: LayoutGrid },
   { value: 'list', label: '列表', icon: List },
   { value: 'timeline', label: '时间线', icon: Rows3 },
-];
-
-const ARCHIVE_TABS: { value: AchievementFilters['archived']; label: string }[] = [
-  { value: 'all', label: '全部' },
-  { value: 'active', label: '未归档' },
-  { value: 'archived', label: '已归档' },
+  { value: 'overview', label: '概览', icon: BarChart3 },
+  { value: 'collections', label: '集合', icon: Folder },
 ];
 
 const selectCls =
-  'border-surface-100 bg-surface-0/70 text-surface-800/80 hover:border-surface-800/30 rounded-lg border px-2 py-1.5 text-xs outline-none transition';
+  'border-surface-100 bg-surface-0/70 text-surface-800/80 hover:border-surface-800/30 rounded-lg border px-2 py-1.5 text-xs transition outline-none';
 
-const inputCls =
-  'border-surface-100 bg-surface-0/70 text-surface-900 placeholder:text-surface-800/40 hover:border-surface-800/30 focus:border-brand-500 w-full rounded-lg border px-2.5 py-1.5 text-xs outline-none transition';
+const chipCls =
+  'text-surface-800/70 bg-surface-100/70 hover:bg-surface-100 flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] transition';
 
-const unselectedTagCls = computed(() =>
-  props.filters.tags.length > 0
-    ? 'border-surface-100 bg-surface-0/70 text-surface-800/50'
-    : 'border-surface-100 bg-surface-0/70 text-surface-800/80',
-);
-
-const advancedActive = computed(
-  () =>
-    props.filters.titleQuery.trim() !== '' ||
-    props.filters.descQuery.trim() !== '' ||
-    props.filters.projectQuery.trim() !== '',
-);
+const toolBtnCls =
+  'border-surface-100 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2 py-2 text-xs transition';
 </script>
 
 <template>
-  <section class="space-y-3">
-    <!-- 第一行：搜索 + 高级筛选 + 视图切换 + 筛选状态 + 新增 -->
+  <section class="space-y-2" aria-label="成果工具栏">
+    <!-- 第一行：搜索 + 视图切换 + 筛选 + 排序 + 数据工具 -->
     <div class="flex flex-wrap items-center gap-2">
       <div class="relative min-w-0 flex-1 sm:max-w-xs">
         <Search
@@ -169,27 +135,6 @@ const advancedActive = computed(
           @input="patch({ keyword: ($event.target as HTMLInputElement).value })"
         />
       </div>
-
-      <button
-        type="button"
-        class="flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition"
-        :class="
-          advancedOpen || advancedActive
-            ? 'bg-brand-500/10 text-brand-600 border-brand-500/30'
-            : 'border-surface-100 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900'
-        "
-        :aria-expanded="advancedOpen ? 'true' : 'false'"
-        @click="advancedOpen = !advancedOpen"
-      >
-        <SlidersHorizontal class="size-3.5" />
-        高级
-        <span
-          v-if="advancedActive"
-          class="bg-brand-500/15 rounded-full px-1.5 text-[10px] tabular-nums"
-        >
-          {{ advancedActive ? '●' : '' }}
-        </span>
-      </button>
 
       <div
         class="border-surface-100 bg-surface-0/70 shadow-card flex items-center gap-0.5 rounded-lg border p-0.5"
@@ -216,174 +161,29 @@ const advancedActive = computed(
         </button>
       </div>
 
-      <div class="flex items-center gap-1.5">
-        <button
+      <button
+        type="button"
+        class="flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition"
+        :class="
+          filterOpen || activeCount > 0
+            ? 'bg-brand-500/10 text-brand-600 border-brand-500/30'
+            : 'border-surface-100 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900'
+        "
+        :aria-expanded="filterOpen ? 'true' : 'false'"
+        @click="filterOpen = !filterOpen"
+      >
+        <SlidersHorizontal class="size-3.5" />
+        筛选
+        <span
           v-if="activeCount > 0"
-          type="button"
-          class="text-brand-600 hover:bg-brand-500/10 flex items-center gap-1 rounded-lg border border-transparent px-2 py-1.5 text-xs font-medium transition"
-          title="清空全部筛选条件"
-          @click="emit('clear')"
+          class="bg-brand-500/15 rounded-full px-1.5 py-0.5 text-[10px] tabular-nums"
         >
-          <RotateCcw class="size-3.5" />
-          清空筛选
-          <span class="bg-brand-500/15 rounded-full px-1.5 py-0.5 text-[10px] tabular-nums">
-            {{ activeCount }}
-          </span>
-        </button>
-        <button
-          type="button"
-          class="bg-brand-500 hover:bg-brand-600 flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-white shadow-sm transition"
-          @click="emit('create')"
-        >
-          <Plus class="size-3.5" />
-          新增成果
-        </button>
-      </div>
-    </div>
-
-    <!-- 高级筛选面板（结构化搜索：标题 / 描述 / 关联项目名称） -->
-    <div
-      v-if="advancedOpen"
-      class="border-surface-100/80 bg-surface-0/70 grid grid-cols-1 gap-2 rounded-xl border p-3 sm:grid-cols-3"
-    >
-      <div>
-        <label class="text-surface-800/80 mb-1 block text-[11px] font-medium" for="adv-title">
-          标题包含
-        </label>
-        <input
-          id="adv-title"
-          :value="filters.titleQuery"
-          type="text"
-          :class="inputCls"
-          placeholder="标题关键词"
-          @input="patch({ titleQuery: ($event.target as HTMLInputElement).value })"
-        />
-      </div>
-      <div>
-        <label class="text-surface-800/80 mb-1 block text-[11px] font-medium" for="adv-desc">
-          描述包含
-        </label>
-        <input
-          id="adv-desc"
-          :value="filters.descQuery"
-          type="text"
-          :class="inputCls"
-          placeholder="描述关键词"
-          @input="patch({ descQuery: ($event.target as HTMLInputElement).value })"
-        />
-      </div>
-      <div>
-        <label class="text-surface-800/80 mb-1 block text-[11px] font-medium" for="adv-project">
-          关联项目名称
-        </label>
-        <input
-          id="adv-project"
-          :value="filters.projectQuery"
-          type="text"
-          :class="inputCls"
-          placeholder="如：Personal OS"
-          @input="patch({ projectQuery: ($event.target as HTMLInputElement).value })"
-        />
-      </div>
-    </div>
-
-    <!-- 第二行：类型 chips + 归档 + 时间 + 标签 + 排序 -->
-    <div class="flex flex-wrap items-center gap-2">
-      <div class="flex flex-wrap items-center gap-1">
-        <button
-          type="button"
-          aria-pressed="false"
-          class="rounded-full px-2.5 py-1 text-[11px] font-medium transition"
-          :class="
-            filters.types.length === 0
-              ? 'bg-brand-500/10 text-brand-600'
-              : 'bg-surface-100/70 text-surface-800/60 hover:text-surface-900'
-          "
-          @click="patch({ types: [] })"
-        >
-          全部类型
-        </button>
-        <button
-          v-for="t in ACHIEVEMENT_TYPES"
-          :key="t"
-          type="button"
-          :aria-pressed="filters.types.includes(t)"
-          :title="TYPE_META[t].label"
-          class="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition"
-          :class="
-            filters.types.includes(t)
-              ? 'bg-brand-500/10 text-brand-600'
-              : 'bg-surface-100/70 text-surface-800/60 hover:text-surface-900'
-          "
-          @click="toggleType(t)"
-        >
-          <component :is="TYPE_META[t].icon" class="size-3" />
-          {{ TYPE_META[t].label }}
-        </button>
-      </div>
-
-      <span class="bg-surface-100/70 mx-1 hidden h-4 w-px sm:block" />
-
-      <div
-        class="border-surface-100 bg-surface-0/70 flex items-center rounded-lg border p-0.5"
-        role="group"
-        aria-label="归档状态筛选"
-      >
-        <button
-          v-for="tab in ARCHIVE_TABS"
-          :key="tab.value"
-          type="button"
-          :aria-pressed="filters.archived === tab.value"
-          class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition"
-          :class="
-            filters.archived === tab.value
-              ? 'bg-brand-500/10 text-brand-600'
-              : 'text-surface-800/50 hover:text-surface-900'
-          "
-          @click="patch({ archived: tab.value })"
-        >
-          <component :is="tab.value === 'archived' ? Archive : Inbox" class="size-3" />
-          {{ tab.label }}
-        </button>
-      </div>
-
-      <select
-        class="text-surface-800/80 hover:border-surface-800/30 border-surface-100 bg-surface-0/70 rounded-lg border px-2 py-1.5 text-xs transition outline-none"
-        :value="filters.year ?? ''"
-        aria-label="按年份筛选"
-        @change="setYear(($event.target as HTMLSelectElement).value)"
-      >
-        <option value="">全部年份</option>
-        <option v-for="y in years" :key="y" :value="y">{{ y }} 年</option>
-      </select>
-
-      <select
-        v-if="filters.year != null"
-        class="text-surface-800/80 hover:border-surface-800/30 border-surface-100 bg-surface-0/70 rounded-lg border px-2 py-1.5 text-xs transition outline-none"
-        :value="filters.month ?? ''"
-        aria-label="按月份筛选"
-        @change="setMonth(($event.target as HTMLSelectElement).value)"
-      >
-        <option value="">全部月份</option>
-        <option v-for="m in months" :key="m" :value="m">{{ m }} 月</option>
-      </select>
+          {{ activeCount }}
+        </span>
+      </button>
 
       <select
         :class="selectCls"
-        value=""
-        aria-label="按标签筛选"
-        @change="
-          const t = ($event.target as HTMLSelectElement).value;
-          if (t && !filters.tags.includes(t)) toggleTag(t);
-          ($event.target as HTMLSelectElement).value = '';
-        "
-      >
-        <option value="" :class="unselectedTagCls">+ 标签</option>
-        <option v-for="t in tags" :key="t" :value="t">{{ t }}</option>
-      </select>
-
-      <select
-        class="text-surface-800/80 hover:border-surface-800/30 border-surface-100 bg-surface-0/70 rounded-lg border px-2 py-1.5 text-xs transition outline-none"
         :value="filters.sort"
         aria-label="排序方式"
         @change="
@@ -392,38 +192,55 @@ const advancedActive = computed(
       >
         <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
       </select>
+
+      <div class="ml-auto flex items-center gap-1.5">
+        <button
+          type="button"
+          :class="toolBtnCls"
+          title="导出全部成果与集合为 JSON"
+          aria-label="导出全库"
+          @click="emit('export-all')"
+        >
+          <Download class="size-3.5" />
+          <span class="hidden md:inline">导出</span>
+        </button>
+        <button
+          type="button"
+          :class="toolBtnCls"
+          title="从 JSON 导入成果（含集合）"
+          aria-label="导入成果"
+          @click="emit('open-import')"
+        >
+          <FileJson class="size-3.5" />
+          <span class="hidden md:inline">导入</span>
+        </button>
+      </div>
     </div>
 
-    <!-- 手动排序提示 -->
-    <p v-if="filters.sort === 'manual'" class="text-surface-800/50 text-[11px]">
-      手动排序模式：置顶成果始终在最前，使用卡片 / 列表 / 时间线上的 ↑ ↓ 按钮调整同组顺序。
-    </p>
-
-    <!-- 已选标签 chips -->
-    <div v-if="filters.tags.length > 0" class="flex flex-wrap items-center gap-1.5">
-      <span class="text-surface-800/50 flex items-center gap-1 text-[11px]">
-        <Tag class="size-3" />
-        已选标签
+    <!-- 第二行：紧凑筛选条（默认折叠态，点击 chip 移除对应条件） -->
+    <div
+      v-if="hasActiveState"
+      class="border-surface-100/70 bg-surface-0/70 flex flex-wrap items-center gap-1.5 rounded-lg border px-2.5 py-1.5"
+    >
+      <span class="text-brand-600 flex items-center gap-1 text-[11px] font-semibold">
+        <SlidersHorizontal class="size-3" />
+        已筛选 {{ activeCount }} 项
       </span>
       <button
-        v-for="t in filters.tags"
-        :key="t"
+        v-for="c in summaryChips"
+        :key="c.key"
         type="button"
-        class="bg-brand-500/10 text-brand-600 flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] transition hover:opacity-80"
-        :aria-label="`移除标签 ${t}`"
-        @click="toggleTag(t)"
+        :class="chipCls"
+        :title="`移除条件：${c.label}`"
+        @click="patch(c.clear)"
       >
-        {{ t }}
+        {{ c.label }}
         <X class="size-3" />
       </button>
-    </div>
-
-    <!-- 当前集合 + 筛选方案 -->
-    <div class="flex flex-wrap items-center gap-2">
       <button
         v-if="activeCollection"
         type="button"
-        class="bg-brand-500/10 text-brand-600 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition hover:opacity-85"
+        class="bg-brand-500/10 text-brand-600 flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition hover:opacity-85"
         :title="`正在查看集合「${activeCollection.name}」，点击退出`"
         @click="emit('clear-collection')"
       >
@@ -431,116 +248,37 @@ const advancedActive = computed(
         集合：{{ activeCollection.name }}
         <X class="size-3" />
       </button>
-
-      <span class="bg-surface-100/70 hidden h-4 w-px sm:block" />
-
-      <div class="flex items-center gap-1.5">
-        <Bookmark class="text-surface-800/40 size-3.5" />
-        <input
-          v-model="schemeName"
-          type="text"
-          maxlength="40"
-          placeholder="方案名称"
-          aria-label="筛选方案名称"
-          class="border-surface-100 bg-surface-0/70 text-surface-900 placeholder:text-surface-800/40 w-28 rounded-lg border px-2 py-1.5 text-xs transition outline-none"
-          @keydown.enter="saveScheme"
-        />
-        <button
-          type="button"
-          class="border-surface-100 text-surface-800/70 hover:bg-surface-50 flex items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition"
-          :disabled="!schemeName.trim()"
-          @click="saveScheme"
-        >
-          {{ schemeSaved ? '已保存' : '保存方案' }}
-        </button>
-        <select
-          v-if="savedFilters.length > 0"
-          class="text-surface-800/80 hover:border-surface-800/30 border-surface-100 bg-surface-0/70 rounded-lg border px-2 py-1.5 text-xs transition outline-none"
-          value=""
-          aria-label="应用保存的筛选方案"
-          @change="applyScheme"
-        >
-          <option value="">应用方案…</option>
-          <option v-for="s in savedFilters" :key="s.id" :value="s.id">
-            {{ s.name }}
-          </option>
-        </select>
-      </div>
-
-      <div v-if="savedFilters.length > 0" class="flex flex-wrap items-center gap-1">
-        <span
-          v-for="s in savedFilters"
-          :key="s.id"
-          class="border-surface-100 bg-surface-50/70 flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]"
-        >
-          <template v-if="editingSchemeId === s.id">
-            <input
-              v-model="editingSchemeName"
-              type="text"
-              maxlength="40"
-              :aria-label="`方案新名称：${s.name}`"
-              class="border-surface-100 text-surface-900 w-24 rounded border px-1.5 py-0.5 text-[11px] outline-none"
-              @keydown.enter="saveEditScheme"
-              @keydown.esc="cancelEditScheme"
-            />
-            <button
-              type="button"
-              class="text-brand-600 font-medium transition"
-              :disabled="!editingSchemeName.trim()"
-              title="保存名称"
-              @click="saveEditScheme"
-            >
-              保存
-            </button>
-            <button
-              type="button"
-              class="text-surface-800/40 hover:text-surface-900 transition"
-              title="取消"
-              aria-label="取消编辑"
-              @click="cancelEditScheme"
-            >
-              <X class="size-3" />
-            </button>
-          </template>
-          <template v-else>
-            <button
-              type="button"
-              class="text-surface-800/70 hover:text-brand-600 transition"
-              :title="`恢复方案：${s.name}`"
-              @click="emit('apply-scheme', s.id)"
-            >
-              {{ s.name }}
-            </button>
-            <button
-              type="button"
-              class="text-surface-800/40 hover:text-brand-600 transition"
-              :aria-label="`编辑方案名称 ${s.name}`"
-              title="重命名"
-              @click="startEditScheme(s)"
-            >
-              <Pencil class="size-3" />
-            </button>
-            <button
-              type="button"
-              class="text-surface-800/40 hover:text-brand-600 transition"
-              :aria-label="`用当前筛选更新方案 ${s.name}`"
-              title="更新为当前筛选"
-              @click="refreshScheme(s)"
-            >
-              <RefreshCw class="size-3" />
-            </button>
-            <button
-              type="button"
-              class="text-surface-800/40 transition hover:text-red-600"
-              :aria-label="`删除方案 ${s.name}`"
-              title="删除方案"
-              @click="emit('delete-scheme', s.id)"
-            >
-              <Trash2 class="size-3" />
-            </button>
-          </template>
-        </span>
-      </div>
+      <button
+        v-if="activeCount > 0"
+        type="button"
+        class="text-brand-600 hover:bg-brand-500/10 ml-auto flex items-center gap-1 rounded-lg border border-transparent px-2 py-1 text-[11px] font-medium transition"
+        @click="emit('clear')"
+      >
+        <RotateCcw class="size-3" />
+        清空
+      </button>
     </div>
+
+    <!-- 手动排序提示 -->
+    <p v-if="filters.sort === 'manual'" class="text-surface-800/50 text-[11px]">
+      手动排序模式：置顶成果始终在最前，使用卡片 / 列表 / 时间线上的 ↑ ↓ 按钮调整同组顺序。
+    </p>
+
+    <!-- 筛选抽屉 -->
+    <AchievementFilterDrawer
+      :visible="filterOpen"
+      :filters="filters"
+      :years="years"
+      :months="months"
+      :tags="tags"
+      :saved-filters="savedFilters"
+      @close="filterOpen = false"
+      @update:filters="emit('update:filters', $event)"
+      @clear="emit('clear')"
+      @save-scheme="emit('save-scheme', $event)"
+      @apply-scheme="emit('apply-scheme', $event)"
+      @delete-scheme="emit('delete-scheme', $event)"
+      @update-scheme="(id, p) => emit('update-scheme', id, p)"
+    />
   </section>
 </template>

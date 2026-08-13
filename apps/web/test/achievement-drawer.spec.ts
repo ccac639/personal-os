@@ -107,7 +107,7 @@ describe('achievement drawer（键盘 / 焦点 / 滚动）', () => {
     expect(queryDialog()!.querySelector('h2')!.classList.contains('break-words')).toBe(true);
   });
 
-  it('编辑 / 置顶 / 归档 / 删除操作正确派发', async () => {
+  it('编辑 / 归档 / 删除直显；置顶收纳在更多菜单并可正确派发', async () => {
     wrapper = mount(AchievementDrawer, { props: { item: make() } });
     await nextTick();
     const dialog = queryDialog()!;
@@ -117,7 +117,13 @@ describe('achievement drawer（键盘 / 焦点 / 滚动）', () => {
     (buttons.find((b) => text(b).includes('编辑')) as HTMLButtonElement).click();
     expect(wrapper.emitted('edit')![0]![0]).toMatchObject({ id: 'drawer-1' });
 
-    (buttons.find((b) => text(b).includes('置顶')) as HTMLButtonElement).click();
+    // 低频操作收纳：置顶需先打开「更多」菜单
+    const more = dialog.querySelector('button[aria-label="更多操作"]') as HTMLButtonElement;
+    expect(more).toBeTruthy();
+    more.click();
+    await nextTick();
+    const menuButtons = Array.from(dialog.querySelectorAll('footer button'));
+    (menuButtons.find((b) => text(b).includes('置顶')) as HTMLButtonElement).click();
     expect(wrapper.emitted('pin')![0]).toEqual(['drawer-1']);
 
     (buttons.find((b) => text(b).includes('归档')) as HTMLButtonElement).click();
@@ -127,6 +133,24 @@ describe('achievement drawer（键盘 / 焦点 / 滚动）', () => {
     del.click();
     del.click();
     expect(wrapper.emitted('remove')![0]).toEqual(['drawer-1']);
+  });
+
+  it('更多菜单：点击菜单外区域关闭；菜单项派发后自动收起', async () => {
+    wrapper = mount(AchievementDrawer, { props: { item: make() } });
+    await nextTick();
+    const dialog = queryDialog()!;
+    const more = dialog.querySelector('button[aria-label="更多操作"]') as HTMLButtonElement;
+    more.click();
+    await nextTick();
+    expect(dialog.textContent).toContain('导出单项');
+
+    // 点击遮罩层关闭菜单
+    const backdrop = dialog.querySelector('button[aria-label="关闭更多菜单"]') as HTMLButtonElement;
+    expect(backdrop).toBeTruthy();
+    backdrop.click();
+    await nextTick();
+    expect(dialog.textContent).not.toContain('导出单项');
+    expect(wrapper.emitted('close')).toBeFalsy(); // 只关菜单，不关抽屉
   });
 
   it('指标为空时显示无数据占位，不渲染误导性 0', async () => {

@@ -51,7 +51,7 @@ export type ImportMode = 'skip' | 'overwrite' | 'copy';
 
 const TYPE_SET = new Set<string>(ACHIEVEMENT_TYPES);
 const SORT_SET = new Set<string>(['date-desc', 'date-asc', 'updated', 'title', 'manual']);
-const VIEW_SET = new Set<string>(['card', 'list', 'timeline']);
+const VIEW_SET = new Set<string>(['card', 'list', 'timeline', 'overview', 'collections']);
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
