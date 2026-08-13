@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   ArrowRight,
+  BookOpen,
   CalendarClock,
   Check,
   Circle,
@@ -17,6 +18,7 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { formatDateTime, relativeTime } from '@/features/projects/utils';
+import { useKnowledgeStore } from '@/features/projects/knowledge-store';
 import { blockingDependencies, canAddDependency } from './dependencies';
 import { subtaskStats } from './subtasks';
 import { taskEstimate, formatHoursShort } from './estimates';
@@ -39,6 +41,28 @@ const emit = defineEmits<{
 }>();
 
 const store = useTaskStore();
+const knowledgeStore = useKnowledgeStore();
+/** 记入知识反馈 */
+const knowledgeNote = ref('');
+
+function createKnowledgeFromTask() {
+  const t = task.value;
+  if (!t) return;
+  if (!t.projectId) {
+    knowledgeNote.value = '收件箱任务请先分配到项目后再记录知识';
+    return;
+  }
+  knowledgeStore.createEntry({
+    projectId: t.projectId,
+    type: 'issue',
+    title: `关于「${t.title}」`,
+    body: '',
+    tags: [],
+    taskIds: [t.id],
+  });
+  knowledgeNote.value = '已记入项目知识（问题）并自动关联本任务';
+  setTimeout(() => (knowledgeNote.value = ''), 2500);
+}
 const newSubtask = ref('');
 const depError = ref('');
 const selectedDepId = ref('');
@@ -183,16 +207,30 @@ function addToFocus() {
                 创建于 {{ formatDateTime(task.createdAt) }} · 更新于
                 {{ relativeTime(task.updatedAt) }}
               </p>
+              <div v-if="knowledgeNote" class="mt-1 text-xs text-green-600">
+                {{ knowledgeNote }}
+              </div>
             </div>
-            <button
-              type="button"
-              class="text-surface-800/50 hover:bg-surface-100 hover:text-surface-900 flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors"
-              aria-label="关闭详情"
-              title="关闭（Esc）"
-              @click="emit('close')"
-            >
-              <X class="size-4" />
-            </button>
+            <div class="flex shrink-0 flex-col items-end gap-1">
+              <button
+                type="button"
+                class="text-surface-800/50 hover:bg-surface-100 hover:text-surface-900 flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors"
+                aria-label="关闭详情"
+                title="关闭（Esc）"
+                @click="emit('close')"
+              >
+                <X class="size-4" />
+              </button>
+              <button
+                type="button"
+                class="border-surface-100 bg-surface-0 text-surface-800/60 hover:border-brand-500/40 hover:text-brand-600 rounded-lg border px-2 py-1 text-xs font-medium transition-colors"
+                title="把本任务记入项目知识并自动关联"
+                @click="createKnowledgeFromTask"
+              >
+                <BookOpen class="mr-1 inline size-3" />
+                记入知识
+              </button>
+            </div>
           </header>
 
           <!-- 主体 -->

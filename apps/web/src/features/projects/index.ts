@@ -14,8 +14,17 @@ export { default as ProjectPlanView } from './project-plan-view.vue';
 export { default as RetroView } from './retro-view.vue';
 export { default as SnapshotViewer } from './snapshot-viewer.vue';
 export { default as TechTree } from './tech-tree.vue';
+export { default as ExecutionPanel } from './execution-panel.vue';
+export { default as ExecutionTab } from './execution-tab.vue';
+export { default as WeeklyGoalForm } from './weekly-goal-form.vue';
+export { default as ArchiveDialog } from './archive-dialog.vue';
+export { default as ReleasePanel } from './release-panel.vue';
+export { default as KnowledgePanel } from './knowledge-panel.vue';
 
 export { useProjectStore } from './store';
+export { useReleaseStore } from './release-store';
+export { useKnowledgeStore } from './knowledge-store';
+export { useWeeklyGoalStore } from './weekly-goals-store';
 export {
   PROJECT_STATUS_META,
   PROJECT_FILTERS,
@@ -63,6 +72,70 @@ export {
   buildSnapshot,
 } from './health';
 export type { HealthRange, RiskRule, RiskLevel, RiskRuleInput } from './health';
+export {
+  buildThroughput,
+  buildPriorities,
+  todayPlanRows,
+  weekStartOf,
+  weekLabel,
+  weekProgress,
+  streakDays,
+  milestoneRiskSummary,
+  trimWeeklyGoalHistory,
+  WEEKLY_GOAL_HISTORY_LIMIT,
+} from './execution';
+export type {
+  ThroughputStats,
+  PriorityRow,
+  PriorityKind,
+  PriorityInput,
+  WeeklyGoal,
+  WeeklyGoalProgress,
+} from './execution';
+export {
+  BUILTIN_RELEASE_ITEMS,
+  BUILTIN_RELEASE_TEMPLATES,
+  isValidVersion,
+  buildChecklistDraft,
+  recordFromChecklist,
+  buildReleaseMarkdown,
+  createReleaseTemplate,
+  deleteReleaseTemplate,
+  normalizeChecklist,
+  normalizeRecord,
+} from './releases';
+export type {
+  ReleaseChecklist,
+  ReleaseChecklistItem,
+  ReleaseRecord,
+  ReleaseStatus,
+  ReleaseTemplate,
+} from './releases';
+export {
+  KNOWLEDGE_TYPE_META,
+  DECISION_STATUS_META,
+  ISSUE_STATUS_META,
+  filterKnowledge,
+  knowledgeTags,
+  buildKnowledgeMarkdown,
+  normalizeKnowledgeEntry,
+} from './knowledge';
+export type {
+  KnowledgeEntry,
+  KnowledgeType,
+  DecisionStatus,
+  IssueStatus,
+  KnowledgeFilter,
+} from './knowledge';
+export {
+  archivePreview,
+  archiveProjectWithTasks,
+  undoArchiveWithTasks,
+  restoreProjectWithTasks,
+  deleteProjectWithTasks,
+  releaseSummaryForRetro,
+} from './archive';
+export type { ArchivePreview, ArchiveOptions } from './archive';
 export { parseSnapshotJson, serializeSnapshot } from './persistence';
 export { serializeProjectBundle, parseProjectBundle } from './transfer';
 export type { ProjectBundle, ProjectImportResult, ProjectImportReport } from './transfer';

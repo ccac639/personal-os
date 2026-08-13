@@ -5,7 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 
 import ProjectDetailPage from '@/pages/projects/[id].vue';
 
-describe('项目详情二级导航（概览 / 任务 / 计划 / 复盘 / 活动）', () => {
+describe('项目详情二级导航（概览 / 任务 / 计划 / 执行 / 发布 / 知识 / 复盘 / 活动）', () => {
   let pinia: ReturnType<typeof createPinia>;
   let router: ReturnType<typeof createRouter>;
 
@@ -43,15 +43,19 @@ describe('项目详情二级导航（概览 / 任务 / 计划 / 复盘 / 活动�
           TaskForm: { template: '<div />' },
           ProjectDeleteDialog: { template: '<div />' },
           ConfirmDialog: { template: '<div />' },
+          ArchiveDialog: { template: '<div data-test="archive-dialog" />' },
+          ExecutionTab: { template: '<div data-test="execution-tab" />' },
+          ReleasePanel: { template: '<div data-test="release-panel" />' },
+          KnowledgePanel: { template: '<div data-test="knowledge-panel" />' },
         },
       },
     });
   }
 
-  it('渲染五个二级导航 tab：概览 / 任务 / 计划 / 复盘 / 活动记录', async () => {
+  it('渲染八个二级导航 tab：概览 / 任务 / 计划 / 执行 / 发布 / 知识 / 复盘 / 活动记录', async () => {
     const wrapper = await mountPage();
     const labels = wrapper.findAll('nav button').map((b) => b.text());
-    expect(labels).toEqual(['概览', '任务', '计划', '复盘', '活动记录']);
+    expect(labels).toEqual(['概览', '任务', '计划', '执行', '发布', '知识', '复盘', '活动记录']);
     wrapper.unmount();
   });
 
@@ -69,7 +73,7 @@ describe('项目详情二级导航（概览 / 任务 / 计划 / 复盘 / 活动�
     wrapper.unmount();
   });
 
-  it('点击「复盘」与「任务」「活动记录」均能正确切换', async () => {
+  it('点击「复盘」「任务」「执行」「活动记录」均能正确切换', async () => {
     const wrapper = await mountPage();
     const clickTab = async (label: string) => {
       const tab = wrapper.findAll('nav button').find((b) => b.text() === label)!;
@@ -81,6 +85,15 @@ describe('项目详情二级导航（概览 / 任务 / 计划 / 复盘 / 活动�
 
     await clickTab('任务');
     expect(wrapper.find('[data-test="task-kanban"]').exists()).toBe(true);
+
+    await clickTab('执行');
+    expect(wrapper.find('[data-test="execution-tab"]').exists()).toBe(true);
+
+    await clickTab('发布');
+    expect(wrapper.find('[data-test="release-panel"]').exists()).toBe(true);
+
+    await clickTab('知识');
+    expect(wrapper.find('[data-test="knowledge-panel"]').exists()).toBe(true);
 
     await clickTab('活动记录');
     expect(wrapper.find('[data-test="retro-view"]').exists()).toBe(false);

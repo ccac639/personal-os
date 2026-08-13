@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { ArrowDownUp, FolderPlus, Layers, Plus, Search, SearchX, Star, Upload } from '@lucide/vue';
+import {
+  ArrowDownUp,
+  FolderPlus,
+  Layers,
+  Plus,
+  RotateCcw,
+  Search,
+  SearchX,
+  Star,
+  Upload,
+} from '@lucide/vue';
 import { computed, ref } from 'vue';
 
 import { useTaskStore } from '@/features/tasks/store';
@@ -7,6 +17,8 @@ import { TaskForm } from '@/features/tasks';
 import type { TaskForm as TaskFormData } from '@/features/tasks/types';
 import {
   ConfirmDialog,
+  ArchiveDialog,
+  ExecutionPanel,
   ProjectCard,
   ProjectDeleteDialog,
   ProjectForm,
@@ -14,7 +26,16 @@ import {
   TechTree,
   useProjectStore,
 } from '@/features/projects';
+import { useKnowledgeStore } from '@/features/projects/knowledge-store';
+import { useReleaseStore } from '@/features/projects/release-store';
+import { useWeeklyGoalStore } from '@/features/projects/weekly-goals-store';
 import { effectiveProgress, sortProjects } from '@/features/projects';
+import {
+  archivePreview,
+  archiveProjectWithTasks,
+  deleteProjectWithTasks,
+  undoArchiveWithTasks,
+} from '@/features/projects/archive';
 import { parseProjectBundle } from '@/features/projects/transfer';
 import type { ProjectImportResult } from '@/features/projects/transfer';
 import { PROJECT_FILTERS, PROJECT_SORT_OPTIONS, PROJECT_VIEWS } from '@/features/projects/types';
@@ -76,15 +97,52 @@ function onQuickTaskSubmit(form: TaskFormData) {
   quickTaskProject.value = null;
 }
 
+/** 归档预检对话框（预检摘要 + 直接归档 / 转入收件箱再归档 / 取消） */
+const releaseStore = useReleaseStore();
+const knowledgeStore = useKnowledgeStore();
+const weeklyGoalStore = useWeeklyGoalStore();
+
+const archivePreviewData = computed(() =>
+  archiving.value
+    ? archivePreview(store, taskStore, releaseStore, knowledgeStore, archiving.value.id, todayStr())
+    : null,
+);
+
 function confirmArchive() {
-  if (archiving.value) store.archiveProject(archiving.value.id);
+  if (archiving.value) {
+    archiveProjectWithTasks(
+      store,
+      taskStore,
+      releaseStore,
+      knowledgeStore,
+      weeklyGoalStore,
+      archiving.value.id,
+    );
+  }
   archiving.value = null;
 }
 
-/** 删除策略一：归档并保留任务 */
+function confirmArchiveToInbox() {
+  if (archiving.value) {
+    archiveProjectWithTasks(
+      store,
+      taskStore,
+      releaseStore,
+      knowledgeStore,
+      weeklyGoalStore,
+      archiving.value.id,
+      {
+        moveToInbox: true,
+      },
+    );
+  }
+  archiving.value = null;
+}
+
+/** 删除策略一：归档并保留任务（走预检对话框） */
 function onArchiveFromDelete(project: ProjectDetail) {
   deleting.value = null;
-  store.archiveProject(project.id);
+  archiving.value = project;
 }
 
 /** 删除策略二：永久删除（进入二次确认） */
@@ -95,10 +153,40 @@ function onRequestPermanentDelete(project: ProjectDetail) {
 
 function confirmPermanentDelete() {
   if (permanentDeleting.value) {
-    taskStore.removeByProject(permanentDeleting.value.id);
-    store.deleteProject(permanentDeleting.value.id);
+    deleteProjectWithTasks(
+      store,
+      taskStore,
+      knowledgeStore,
+      weeklyGoalStore,
+      permanentDeleting.value.id,
+      'cascade',
+    );
   }
   permanentDeleting.value = null;
+}
+
+function confirmPermanentDeleteToInbox() {
+  if (permanentDeleting.value) {
+    deleteProjectWithTasks(
+      store,
+      taskStore,
+      knowledgeStore,
+      weeklyGoalStore,
+      permanentDeleting.value.id,
+      'to-inbox',
+    );
+  }
+  permanentDeleting.value = null;
+}
+
+function undoArchive() {
+  undoArchiveWithTasks(store, taskStore);
+}
+
+function todayStr(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 /** 快捷视图与状态筛选互斥 */
@@ -209,6 +297,25 @@ function confirmImport() {
           }
         "
       />
+    </div>
+
+    <!-- 执行仪表盘 -->
+    <ExecutionPanel />
+
+    <!-- 归档撤销提示 -->
+    <div
+      v-if="store.canUndoArchive()"
+      class="page-content-section mb-5 flex flex-wrap items-center justify-between gap-3"
+    >
+      <p class="text-surface-800/70 text-sm">已归档项目，可撤销一次恢复原状态与数据。</p>
+      <button
+        type="button"
+        class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
+        @click="undoArchive"
+      >
+        <RotateCcw class="size-4" />
+        撤销归档
+      </button>
     </div>
 
     <!-- 统计条 -->
@@ -394,13 +501,13 @@ function confirmImport() {
       @close="quickTaskProject = null"
     />
 
-    <!-- 归档确认 -->
-    <ConfirmDialog
+    <!-- 归档预检对话框 -->
+    <ArchiveDialog
       :open="!!archiving"
-      title="归档项目"
-      :message="`确定归档项目「${archiving?.name ?? ''}」吗？归档后任务保留，可在「归档」视图中恢复。`"
-      confirm-text="归档"
-      @confirm="confirmArchive"
+      :project="archiving"
+      :preview="archivePreviewData"
+      @archive="confirmArchive"
+      @archive-to-inbox="confirmArchiveToInbox"
       @cancel="archiving = null"
     />
 
@@ -411,6 +518,7 @@ function confirmImport() {
       :task-count="deleting ? taskStore.tasksByProject(deleting.id).length : 0"
       @archive="onArchiveFromDelete"
       @permanent-delete="onRequestPermanentDelete"
+      @permanent-delete-to-inbox="confirmPermanentDeleteToInbox"
       @cancel="deleting = null"
     />
 

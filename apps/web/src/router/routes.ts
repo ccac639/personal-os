@@ -12,6 +12,26 @@ export const routes: RouteRecordRaw[] = [
     name: 'chat',
     component: () => import('@/pages/chat/index.vue'),
     meta: { title: 'Chat' },
+    children: [
+      {
+        path: '',
+        name: 'chat-dialog',
+        component: () => import('@/pages/chat/dialog.vue'),
+        meta: { title: '对话' },
+      },
+      {
+        path: 'agents',
+        name: 'chat-agents',
+        component: () => import('@/pages/chat/agents.vue'),
+        meta: { title: '智能体' },
+      },
+      {
+        path: 'inspiration',
+        name: 'chat-inspiration',
+        component: () => import('@/pages/chat/inspiration.vue'),
+        meta: { title: '灵感广场' },
+      },
+    ],
   },
   {
     path: '/agents',
@@ -30,6 +50,12 @@ export const routes: RouteRecordRaw[] = [
     name: 'projects',
     component: () => import('@/pages/projects/index.vue'),
     meta: { title: '开发中' },
+  },
+  {
+    path: '/projects/inbox',
+    name: 'project-inbox',
+    component: () => import('@/pages/projects/inbox.vue'),
+    meta: { title: '任务收件箱' },
   },
   {
     path: '/projects/:id',

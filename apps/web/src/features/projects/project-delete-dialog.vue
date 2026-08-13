@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AlertTriangle, Archive, Trash2 } from '@lucide/vue';
+import { AlertTriangle, Archive, Inbox, Trash2 } from '@lucide/vue';
 
 import ModalShell from './modal-shell.vue';
 import type { ProjectDetail } from './types';
@@ -14,6 +14,8 @@ defineProps<{
 const emit = defineEmits<{
   archive: [project: ProjectDetail];
   'permanent-delete': [project: ProjectDetail];
+  /** 永久删除项目，任务转入收件箱 */
+  'permanent-delete-to-inbox': [project: ProjectDetail];
   cancel: [];
 }>();
 </script>
@@ -53,7 +55,7 @@ const emit = defineEmits<{
           </span>
         </button>
 
-        <!-- 策略二：永久删除 -->
+        <!-- 策略二：永久删除（任务级联删除） -->
         <button
           type="button"
           class="flex w-full items-start gap-3 rounded-xl border border-red-200 bg-red-500/5 p-3.5 text-left transition-colors hover:bg-red-50"
@@ -70,6 +72,27 @@ const emit = defineEmits<{
             >
             <span class="text-surface-800/60 mt-0.5 block text-xs leading-5">
               项目与全部关联任务、活动记录一并删除，不可恢复。
+            </span>
+          </span>
+        </button>
+
+        <!-- 策略三：永久删除，任务转入收件箱 -->
+        <button
+          type="button"
+          class="border-surface-100 bg-surface-0 flex w-full items-start gap-3 rounded-xl border p-3.5 text-left transition-colors hover:border-amber-500/40"
+          @click="emit('permanent-delete-to-inbox', project)"
+        >
+          <span
+            class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600"
+          >
+            <Inbox class="size-4" />
+          </span>
+          <span>
+            <span class="text-surface-900 block text-sm font-medium"
+              >永久删除（{{ taskCount }} 个任务转入收件箱）</span
+            >
+            <span class="text-surface-800/60 mt-0.5 block text-xs leading-5">
+              项目记录删除，全部任务移入收件箱继续处理，不丢失任务。
             </span>
           </span>
         </button>

@@ -46,6 +46,7 @@ import type {
   FocusItem,
   FocusPlanDay,
   FocusSession,
+  KanbanStatus,
   RunningFocus,
   TaskDateFilter,
   TaskEvent,
@@ -421,12 +422,93 @@ export const useTaskStore = defineStore('tasks', () => {
     }
   }
 
-  /** 删除项目时级联清理其全部任务 / 事件 / 今日聚焦 / 专注记录 / 运行中计时器 */
-  function removeByProject(projectId: string): void {
+  /** 删除项目：cascade=级联删除全部任务；to-inbox=任务转入收件箱（保留数据）
+   * 删除是永久操作，不设撤销；归档流程的「转入收件箱」见 moveProjectTasksToInbox。 */
+  function removeByProject(projectId: string, mode: 'cascade' | 'to-inbox' = 'cascade'): void {
     const idSet = new Set(tasks.value.filter((t) => t.projectId === projectId).map((t) => t.id));
+    if (mode === 'to-inbox') {
+      const now = new Date().toISOString();
+      for (const t of tasks.value) {
+        if (t.projectId !== projectId) continue;
+        t.projectId = undefined;
+        t.order = nextOrder('', t.status);
+        t.updatedAt = now;
+        recordEvent(t.id, 'updated', '项目删除，任务转入收件箱');
+      }
+      return;
+    }
     tasks.value = tasks.value.filter((t) => t.projectId !== projectId);
     events.value = events.value.filter((e) => !idSet.has(e.taskId));
     cleanupTaskRefs(idSet);
+  }
+
+  /** 归档流程：项目全部任务转入收件箱（可撤销一次；任务实体与专注记录保留） */
+  function moveProjectTasksToInbox(projectId: string): number {
+    const list = tasks.value.filter((t) => t.projectId === projectId);
+    if (!list.length) return 0;
+    takeUndo(`归档「转入收件箱」${list.length} 个任务`);
+    const now = new Date().toISOString();
+    for (const t of list) {
+      t.projectId = undefined;
+      t.order = nextOrder('', t.status);
+      t.updatedAt = now;
+      recordEvent(t.id, 'updated', '归档：任务转入收件箱');
+    }
+    return list.length;
+  }
+
+  // ── 收件箱（未归属项目任务） ──
+
+  /** 收件箱任务：projectId 为空（未归属任何项目） */
+  const inboxTasks = computed<TaskItem[]>(() =>
+    tasks.value.filter((t) => !t.projectId).sort((a, b) => compare(a, b)),
+  );
+
+  /** 收件箱按状态分组（todo / in-progress / done；cancelled 不显示） */
+  const inboxGrouped = computed<Record<KanbanStatus, TaskItem[]>>(() => {
+    const out: Record<KanbanStatus, TaskItem[]> = { todo: [], 'in-progress': [], done: [] };
+    for (const t of inboxTasks.value) {
+      if (t.status === 'cancelled') continue;
+      out[t.status as KanbanStatus].push(t);
+    }
+    return out;
+  });
+
+  /** 批量分配到项目（带撤销；分配后进入目标项目对应列末尾） */
+  function assignToProject(taskIds: string[], projectId: string): number {
+    const targets = taskIds.map((id) => taskById(id)).filter((t): t is TaskItem => t !== null);
+    const changed = targets.filter((t) => t.projectId !== projectId);
+    if (!changed.length) return 0;
+    takeUndo(`分配 ${changed.length} 个任务到项目`);
+    const now = new Date().toISOString();
+    const p = projectStore.projectById(projectId);
+    for (const t of changed) {
+      t.projectId = projectId;
+      t.order = nextOrder(projectId, t.status);
+      t.updatedAt = now;
+      recordEvent(t.id, 'updated', `分配到项目「${p?.name ?? projectId}」`);
+      projectStore.addActivity(projectId, 'task', '任务分配入项目', t.title);
+    }
+    return changed.length;
+  }
+
+  /** 收件箱任务转入今日计划（未在计划中才加入；focus 变化不做任务级撤销） */
+  function addInboxToFocus(taskIds: string[]): number {
+    const inFocus = new Set(focus.value.map((f) => f.taskId));
+    const changed = taskIds.filter(
+      (id) => !inFocus.has(id) && tasks.value.some((t) => t.id === id),
+    );
+    if (!changed.length) return 0;
+    focus.value = [...focus.value, ...changed.map((taskId) => ({ taskId, plannedMinutes: 25 }))];
+    const now = new Date().toISOString();
+    for (const id of changed) {
+      const t = taskById(id);
+      if (t) {
+        t.updatedAt = now;
+        recordEvent(id, 'focus', '加入今日计划');
+      }
+    }
+    return changed.length;
   }
 
   /** 批量导入任务（id 已由 parseTasksJson 重新生成，无冲突；追加到各自状态列末尾） */
@@ -884,6 +966,11 @@ export const useTaskStore = defineStore('tasks', () => {
     focusDone,
     focusHistory,
     customTemplates,
+    inboxTasks,
+    inboxGrouped,
+    assignToProject,
+    moveProjectTasksToInbox,
+    addInboxToFocus,
     sortBy,
     sortDir,
     dateFilter,

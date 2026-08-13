@@ -92,6 +92,7 @@ const MILESTONE_STATUSES = new Set<MilestoneStatus>(['planned', 'in-progress', '
 function isPlainObject(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x);
 }
+export { isPlainObject };
 
 function str(x: unknown): x is string {
   return typeof x === 'string';
@@ -388,7 +389,7 @@ type ReadOutcome<T> =
   | { status: 'corrupt'; reason: string }
   | { status: 'newer'; version: number };
 
-function readEnvelope<T>(
+export function readEnvelope<T>(
   key: string,
   current: number,
   normalize: (raw: unknown) => T | null,

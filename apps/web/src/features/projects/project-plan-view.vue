@@ -35,7 +35,11 @@ import type { TimelineScale } from './plan';
 import MilestoneForm from './milestone-form.vue';
 import ConfirmDialog from './confirm-dialog.vue';
 
-const props = defineProps<{ project: ProjectDetail }>();
+const props = defineProps<{
+  project: ProjectDetail;
+  /** 只读模式（归档项目）：禁止新建 / 编辑 / 拖拽里程碑 */
+  readonly?: boolean;
+}>();
 
 const store = useProjectStore();
 const taskStore = useTaskStore();
@@ -282,9 +286,9 @@ function confirmDelete() {
             <div
               v-for="b in msBars"
               :key="b.m.id"
-              class="absolute top-1/2 flex h-5 -translate-y-1/2 cursor-grab items-center rounded-md border px-1 text-[10px] font-medium shadow-sm active:cursor-grabbing"
-              :class="msBarClass(b.m)"
-              draggable="true"
+              class="absolute top-1/2 flex h-5 -translate-y-1/2 items-center rounded-md border px-1 text-[10px] font-medium shadow-sm"
+              :class="[msBarClass(b.m), props.readonly ? '' : 'cursor-grab active:cursor-grabbing']"
+              :draggable="!props.readonly"
               :title="`${b.m.title}（${b.m.dueDate ?? '未定截止'}）— 拖到目标日期调整截止`"
               :style="{ left: b.pos.left, width: b.pos.width }"
               @dragstart="onMsDragStart(b.m)"
@@ -369,7 +373,7 @@ function confirmDelete() {
             拖动左侧手柄排序
           </span>
           <button
-            v-if="project.status !== 'archived'"
+            v-if="project.status !== 'archived' && !props.readonly"
             type="button"
             class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
             @click="openCreate"
@@ -395,7 +399,7 @@ function confirmDelete() {
           :key="m.id"
           class="border-surface-100 hover:border-brand-500/40 group rounded-lg border p-3.5 transition-colors"
           :class="dropTargetId === m.id ? 'border-brand-500 ring-brand-500/20 ring-2' : ''"
-          draggable="true"
+          :draggable="!props.readonly"
           @dragstart="onMsDragStart(m)"
           @dragover.prevent="onMsDragOver(m)"
           @dragleave="dropTargetId = null"
@@ -442,7 +446,7 @@ function confirmDelete() {
               {{ RISK_META[m.risk].label }}
             </span>
             <div
-              v-if="project.status !== 'archived'"
+              v-if="project.status !== 'archived' && !props.readonly"
               class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
             >
               <button

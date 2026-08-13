@@ -9,6 +9,7 @@ import {
   Flag,
   Pencil,
   Plus,
+  Rocket,
   RotateCcw,
   Tag,
   Trash2,
@@ -21,17 +22,30 @@ import { useRoute, useRouter } from 'vue-router';
 import type { Component } from 'vue';
 
 import {
+  ArchiveDialog,
   ConfirmDialog,
+  ExecutionTab,
+  KnowledgePanel,
   ProjectContextBar,
   ProjectDeleteDialog,
   ProjectForm,
   ProjectPlanView,
   ProgressEditor,
+  ReleasePanel,
   RetroView,
   StorageWarningBanner,
   useProjectStore,
 } from '@/features/projects';
+import { useKnowledgeStore } from '@/features/projects/knowledge-store';
+import { useReleaseStore } from '@/features/projects/release-store';
+import { useWeeklyGoalStore } from '@/features/projects/weekly-goals-store';
 import { buildRiskRules } from '@/features/projects/health';
+import {
+  archivePreview,
+  archiveProjectWithTasks,
+  deleteProjectWithTasks,
+  undoArchiveWithTasks,
+} from '@/features/projects/archive';
 import { estimateInfo } from '@/features/projects/plan';
 import { effectiveProgress } from '@/features/projects/progress';
 import { PROJECT_STATUS_META } from '@/features/projects/types';
@@ -46,12 +60,16 @@ import { parseTasksJson, serializeTasks } from '@/features/tasks/transfer';
 import type { TasksImportResult } from '@/features/tasks/transfer';
 import type { TaskForm as TaskFormData } from '@/features/tasks/types';
 
-type TabKey = 'overview' | 'tasks' | 'plan' | 'retro' | 'activity';
+type TabKey =
+  'overview' | 'tasks' | 'plan' | 'execution' | 'release' | 'knowledge' | 'retro' | 'activity';
 
 const route = useRoute();
 const router = useRouter();
 const store = useProjectStore();
 const taskStore = useTaskStore();
+const releaseStore = useReleaseStore();
+const knowledgeStore = useKnowledgeStore();
+const weeklyGoalStore = useWeeklyGoalStore();
 
 const projectId = computed(() => String(route.params.id ?? ''));
 const project = computed(() => store.projectById(projectId.value));
@@ -68,11 +86,16 @@ const deleting = ref(false);
 const permanentDeleting = ref(false);
 /** 快速创建任务 */
 const quickTaskOpen = ref(false);
+/** 归档项目只读模式（任务 / 计划 / 路线图 / 知识禁止编辑） */
+const readonly = computed(() => project.value?.status === 'archived');
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: '概览' },
   { key: 'tasks', label: '任务' },
   { key: 'plan', label: '计划' },
+  { key: 'execution', label: '执行' },
+  { key: 'release', label: '发布' },
+  { key: 'knowledge', label: '知识' },
   { key: 'retro', label: '复盘' },
   { key: 'activity', label: '活动记录' },
 ];
@@ -87,6 +110,7 @@ const ACTIVITY_META: Record<ProjectActivityType, { label: string; icon: Componen
     task: { label: '任务', icon: ClipboardList, cls: 'bg-amber-500/10 text-amber-600' },
     milestone: { label: '里程碑', icon: Flag, cls: 'bg-indigo-500/10 text-indigo-600' },
     snapshot: { label: '快照', icon: Archive, cls: 'bg-surface-100 text-surface-800/60' },
+    release: { label: '发布', icon: Rocket, cls: 'bg-green-500/10 text-green-600' },
   };
 
 /** 里程碑进度（自动模式下与任务进度并列展示；定义 = 已完成里程碑数 / 总数） */
@@ -197,23 +221,84 @@ function onFormSubmit(form: ProjectFormType) {
   formOpen.value = false;
 }
 
-/** 删除策略一：归档并保留任务 */
+/** 删除策略一：归档并保留任务（走预检对话框） */
 function onArchiveFromDelete() {
   deleting.value = false;
-  store.archiveProject(projectId.value);
+  archiving.value = true;
 }
 
 /** 删除策略二：永久删除（二次确认后级联清理任务 / 今日聚焦 / 专注记录 / 里程碑 / 复盘 / 快照） */
 function confirmPermanentDelete() {
-  taskStore.removeByProject(projectId.value);
-  store.deleteProject(projectId.value);
+  deleteProjectWithTasks(
+    store,
+    taskStore,
+    knowledgeStore,
+    weeklyGoalStore,
+    projectId.value,
+    'cascade',
+  );
   permanentDeleting.value = false;
   router.push('/projects');
 }
 
+/** 删除策略三：永久删除，任务转入收件箱 */
+function confirmPermanentDeleteToInbox() {
+  deleteProjectWithTasks(
+    store,
+    taskStore,
+    knowledgeStore,
+    weeklyGoalStore,
+    projectId.value,
+    'to-inbox',
+  );
+  permanentDeleting.value = false;
+  router.push('/projects');
+}
+
+/** 归档预检摘要 */
+const archivePreviewData = computed(() =>
+  archiving.value && project.value
+    ? archivePreview(store, taskStore, releaseStore, knowledgeStore, projectId.value, todayStr())
+    : null,
+);
+
 function confirmArchive() {
-  store.archiveProject(projectId.value);
+  if (project.value) {
+    archiveProjectWithTasks(
+      store,
+      taskStore,
+      releaseStore,
+      knowledgeStore,
+      weeklyGoalStore,
+      projectId.value,
+    );
+  }
   archiving.value = false;
+}
+
+function confirmArchiveToInbox() {
+  if (project.value) {
+    archiveProjectWithTasks(
+      store,
+      taskStore,
+      releaseStore,
+      knowledgeStore,
+      weeklyGoalStore,
+      projectId.value,
+      { moveToInbox: true },
+    );
+  }
+  archiving.value = false;
+}
+
+function undoArchive() {
+  undoArchiveWithTasks(store, taskStore);
+}
+
+function todayStr(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 function onQuickTaskSubmit(form: TaskFormData) {
@@ -670,6 +755,13 @@ function onQuickTaskSubmit(form: TaskFormData) {
 
       <!-- 任务看板 -->
       <div v-else-if="tab === 'tasks'" class="mt-5">
+        <div
+          v-if="readonly"
+          class="bg-surface-100 text-surface-800/70 mb-3 flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs"
+        >
+          <Archive class="size-3.5" />
+          项目已归档（只读）：任务、计划、路线图与知识记录禁止编辑，可查看或恢复项目后继续操作。
+        </div>
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
           <p class="text-surface-800/50 text-xs">
             导出当前项目任务 JSON；导入时自动校验、清理无效依赖与循环依赖，预览后确认。
@@ -685,6 +777,7 @@ function onQuickTaskSubmit(form: TaskFormData) {
               导出任务
             </button>
             <label
+              v-if="!readonly"
               class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
             >
               <Upload class="size-3.5" />
@@ -698,12 +791,25 @@ function onQuickTaskSubmit(form: TaskFormData) {
             </label>
           </div>
         </div>
-        <TaskKanban :project-id="project.id" />
+        <TaskKanban :project-id="project.id" :readonly="readonly" />
       </div>
+
+      <!-- 执行：吞吐 / 周目标 / 里程碑风险 -->
+      <ExecutionTab v-else-if="tab === 'execution'" :project-id="project.id" />
+
+      <!-- 发布：检查单 / 模板 / 记录 -->
+      <ReleasePanel v-else-if="tab === 'release'" :project-id="project.id" :readonly="readonly" />
+
+      <!-- 知识：决策 / 问题 / 参考 -->
+      <KnowledgePanel
+        v-else-if="tab === 'knowledge'"
+        :project-id="project.id"
+        :readonly="readonly"
+      />
 
       <!-- 计划视图：目标 / 里程碑 / 时间轴 -->
       <div v-else-if="tab === 'plan'" class="mt-5">
-        <ProjectPlanView :project="project" />
+        <ProjectPlanView :project="project" :readonly="readonly" />
       </div>
 
       <!-- 复盘视图：健康统计 / 趋势 / 复盘笔记 / 归档快照 -->
@@ -771,6 +877,13 @@ function onQuickTaskSubmit(form: TaskFormData) {
             permanentDeleting = true;
           }
         "
+        @permanent-delete-to-inbox="
+          () => {
+            deleting = false;
+            permanentDeleting = true;
+            confirmPermanentDeleteToInbox();
+          }
+        "
         @cancel="deleting = false"
       />
 
@@ -785,15 +898,31 @@ function onQuickTaskSubmit(form: TaskFormData) {
         @cancel="permanentDeleting = false"
       />
 
-      <!-- 归档确认 -->
-      <ConfirmDialog
+      <!-- 归档预检对话框 -->
+      <ArchiveDialog
         :open="archiving"
-        title="归档项目"
-        :message="`确定归档项目「${project.name}」吗？归档后任务保留，可在「归档」视图中恢复。`"
-        confirm-text="归档"
-        @confirm="confirmArchive"
+        :project="project"
+        :preview="archivePreviewData"
+        @archive="confirmArchive"
+        @archive-to-inbox="confirmArchiveToInbox"
         @cancel="archiving = false"
       />
+
+      <!-- 撤销归档 -->
+      <div
+        v-if="store.canUndoArchive()"
+        class="border-brand-500/30 bg-brand-500/5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3"
+      >
+        <p class="text-brand-700 text-sm">已归档项目，可撤销一次恢复原状态与数据。</p>
+        <button
+          type="button"
+          class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+          @click="undoArchive"
+        >
+          <RotateCcw class="size-3.5" />
+          撤销归档
+        </button>
+      </div>
 
       <!-- 任务导入预览 -->
       <div

@@ -32,8 +32,9 @@ import type {
   TaskSortKey,
 } from './types';
 
-export const TASKS_VERSION = 3;
-export const TASKS_KEY = 'personal-os.tasks.v3';
+export const TASKS_VERSION = 4;
+export const TASKS_KEY = 'personal-os.tasks.v4';
+export const TASKS_V3_KEY = 'personal-os.tasks.v3';
 export const TASKS_V2_KEY = 'personal-os.tasks.v2';
 export const TASKS_LEGACY_KEY = 'personal-os.tasks.v1';
 export const TASKS_UI_KEY = 'personal-os.tasks.ui.v3';
@@ -473,7 +474,7 @@ function migrateV2State(): PersistedTaskState | null {
     if (!isPlainObject(parsed) || typeof parsed.version !== 'number' || !('data' in parsed)) {
       return null;
     }
-    if (parsed.version > 3) return null;
+    if (parsed.version > 4) return null;
     const base = normalizePersistedState(parsed.data);
     if (base === null) return null;
     return {
@@ -487,6 +488,28 @@ function migrateV2State(): PersistedTaskState | null {
       focusDone: [],
       focusHistory: [],
     };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * v3（旧信封）→ v4 结构。
+ * v3 信封已包含 focusDone / focusHistory / 估时等扩展字段，
+ * v4 在语义上支持「收件箱任务」（projectId 可空），结构不变，直接复用归一化。
+ */
+function migrateV3State(): PersistedTaskState | null {
+  try {
+    const raw = localStorage.getItem(TASKS_V3_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainObject(parsed) || typeof parsed.version !== 'number' || !('data' in parsed)) {
+      return null;
+    }
+    if (parsed.version > 4) return null;
+    const data = normalizePersistedState(parsed.data);
+    if (data === null) return null;
+    return data;
   } catch {
     return null;
   }
@@ -567,7 +590,17 @@ export function loadTaskState(
       report: emptyReport,
     };
   }
-  // v2 → v3，再 v1 → v3
+  // v3 → v4，再 v2 → v4，再 v1 → v4（旧 key 保留可回滚）
+  const fromV3 = migrateV3State();
+  if (fromV3) {
+    const cleaned = cleanupInvalidRefs(fromV3, validProjectIds);
+    writeEnvelope(TASKS_KEY, TASKS_VERSION, cleaned.state);
+    return {
+      data: cleaned.state,
+      notice: '本地任务数据已升级到 v4（含收件箱支持）',
+      report: cleaned.report,
+    };
+  }
   const fromV2 = migrateV2State();
   if (fromV2) {
     const cleaned = cleanupInvalidRefs(fromV2, validProjectIds);

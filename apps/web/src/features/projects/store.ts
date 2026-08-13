@@ -230,12 +230,38 @@ export const useProjectStore = defineStore('projects', () => {
     addActivity(id, 'updated', '更新项目信息', p.name);
   }
 
-  function archiveProject(id: string): void {
+  /** 归档撤销记录（仅最近一次；movedToInbox 表示归档时任务已转入收件箱） */
+  const archiveUndo = ref<{
+    projectId: string;
+    prevStatus: ProjectStatus;
+    movedToInbox: boolean;
+  } | null>(null);
+
+  function archiveProject(id: string, opts?: { movedToInbox?: boolean }): void {
     const p = projectById(id);
     if (!p || p.status === 'archived') return;
+    archiveUndo.value = { projectId: id, prevStatus: p.status, movedToInbox: !!opts?.movedToInbox };
     p.status = 'archived';
     p.updatedAt = new Date().toISOString();
     addActivity(id, 'archived', '归档项目', p.name);
+  }
+
+  /** 撤销最近一次归档（恢复原状态；任务转入收件箱的撤销由调用方调 taskStore.undo） */
+  function undoArchive(): boolean {
+    const rec = archiveUndo.value;
+    if (!rec) return false;
+    const p = projectById(rec.projectId);
+    if (p) {
+      p.status = rec.prevStatus;
+      p.updatedAt = new Date().toISOString();
+      addActivity(rec.projectId, 'restored', '撤销归档', p.name);
+    }
+    archiveUndo.value = null;
+    return true;
+  }
+
+  function canUndoArchive(): boolean {
+    return archiveUndo.value !== null;
   }
 
   function restoreProject(id: string): void {
@@ -244,6 +270,7 @@ export const useProjectStore = defineStore('projects', () => {
     p.status = 'active';
     p.updatedAt = new Date().toISOString();
     addActivity(id, 'restored', '恢复项目', p.name);
+    if (archiveUndo.value?.projectId === id) archiveUndo.value = null;
   }
 
   /** 永久删除项目：级联清理活动、里程碑、复盘笔记、归档快照
@@ -515,6 +542,9 @@ export const useProjectStore = defineStore('projects', () => {
     updateMilestoneDates,
     cleanupMilestoneRefs,
     importProjectBundle,
+    archiveUndo,
+    undoArchive,
+    canUndoArchive,
     retrospectiveOf,
     saveRetrospective,
     snapshotsOf,

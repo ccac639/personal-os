@@ -40,6 +40,8 @@ export {
   migrateUndone,
   mergePlanItems,
 } from './focus';
+export { parseQuickCapture, parseDateKeyword, extractPriority, extractTags } from './quick-capture';
+export type { QuickCaptureParse } from './quick-capture';
 export {
   BUILTIN_TEMPLATES,
   allTemplates,

@@ -32,7 +32,11 @@ import {
 } from './types';
 import type { KanbanStatus, TaskForm as TaskFormData, TaskItem } from './types';
 
-const props = defineProps<{ projectId: string }>();
+const props = defineProps<{
+  projectId: string;
+  /** 只读模式（归档项目）：禁止新建 / 编辑 / 拖拽 / 批量操作 */
+  readonly?: boolean;
+}>();
 
 const store = useTaskStore();
 
@@ -76,11 +80,13 @@ function tasksFor(status: KanbanStatus) {
 }
 
 function openCreate() {
+  if (props.readonly) return;
   editing.value = null;
   formOpen.value = true;
 }
 
 function openEdit(task: TaskItem) {
+  if (props.readonly) return;
   editing.value = task;
   activeTaskId.value = task.id;
   formOpen.value = true;
@@ -141,10 +147,12 @@ function onKeydown(e: KeyboardEvent) {
     return;
   }
   if (action === 'create') {
+    if (props.readonly) return;
     openCreate();
     return;
   }
   const target = activeTaskId.value ? store.taskById(activeTaskId.value) : null;
+  if (props.readonly) return;
   if (action === 'edit' && target) openEdit(target);
   if (action === 'delete' && target) deleting.value = target;
 }
@@ -168,6 +176,10 @@ watch(
 // ── 原生 HTML Drag and Drop ──
 
 function onDragStart(e: DragEvent, taskId: string) {
+  if (props.readonly) {
+    e.preventDefault();
+    return;
+  }
   draggedId.value = taskId;
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move';
@@ -193,12 +205,14 @@ function onCardDragOver(e: DragEvent, status: KanbanStatus, cardId: string) {
 
 function onColumnDrop(e: DragEvent, status: KanbanStatus) {
   e.preventDefault();
+  if (props.readonly) return;
   performDrop(status, null);
 }
 
 function onCardDrop(e: DragEvent, status: KanbanStatus, cardId: string) {
   e.preventDefault();
   e.stopPropagation();
+  if (props.readonly) return;
   performDrop(status, cardId);
 }
 
@@ -302,6 +316,7 @@ function performDrop(status: KanbanStatus, beforeId: string | null) {
         </button>
 
         <button
+          v-if="!props.readonly"
           type="button"
           class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
           title="新建任务（N）"
@@ -520,7 +535,10 @@ function performDrop(status: KanbanStatus, beforeId: string | null) {
     </p>
 
     <!-- 批量操作工具栏 -->
-    <BatchToolbar v-if="store.selectedTasks.length > 0" @delete="(ids) => (batchDeleting = ids)" />
+    <BatchToolbar
+      v-if="store.selectedTasks.length > 0 && !props.readonly"
+      @delete="(ids) => (batchDeleting = ids)"
+    />
 
     <!-- 撤销提示 -->
     <Transition

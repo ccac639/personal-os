@@ -6,6 +6,7 @@ import {
   Eye,
   FileJson,
   Pencil,
+  Rocket,
   Save,
   Trash2,
   Upload,
@@ -14,6 +15,8 @@ import { computed, ref } from 'vue';
 
 import { useProjectStore } from './store';
 import { useTaskStore } from '@/features/tasks/store';
+import { useReleaseStore } from './release-store';
+import { releaseSummaryForRetro } from './archive';
 import {
   buildHealthStats,
   buildRetroMarkdown,
@@ -32,6 +35,10 @@ const props = defineProps<{ project: ProjectDetail }>();
 
 const store = useProjectStore();
 const taskStore = useTaskStore();
+const releaseStore = useReleaseStore();
+
+/** 发布记录摘要（供复盘引用；不修改 Achievements 模块） */
+const releaseSummary = computed(() => releaseSummaryForRetro(releaseStore, props.project.id));
 
 const today = (() => {
   const d = new Date();
@@ -409,6 +416,45 @@ function formatHours(minutes: number): string {
       <p v-else class="text-surface-800/40 py-6 text-center text-sm">
         尚未撰写复盘笔记，点击「生成摘要」基于健康数据预填。
       </p>
+    </section>
+
+    <!-- 发布记录（复盘引用；不修改 Achievements 模块） -->
+    <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-surface-900 flex items-center gap-2 text-sm font-semibold">
+          <Rocket class="text-brand-600 size-4" />
+          发布记录
+        </h2>
+      </div>
+      <ul class="space-y-1.5">
+        <li
+          v-for="r in releaseSummary.records"
+          :key="r.id"
+          class="border-surface-100 bg-surface-50 flex items-center justify-between gap-2 rounded-lg border px-3 py-2"
+        >
+          <div class="min-w-0">
+            <p class="text-surface-800/80 truncate text-sm font-medium">
+              {{ r.version }} · {{ r.title }}
+            </p>
+            <p class="text-surface-800/50 text-xs">
+              {{ r.releaseDate }} · {{ r.taskIds.length }} 个任务 ·
+              {{ r.items.filter((i) => i.done).length }}/{{ r.items.length }} 项通过
+            </p>
+          </div>
+        </li>
+        <li
+          v-if="releaseSummary.checklists.length > 0"
+          class="rounded-lg border border-amber-200 bg-amber-500/5 px-3 py-2 text-xs text-amber-700"
+        >
+          还有 {{ releaseSummary.checklists.length }} 个未完成发布检查单
+        </li>
+        <li
+          v-if="releaseSummary.records.length === 0 && releaseSummary.checklists.length === 0"
+          class="text-surface-800/30 py-2 text-center text-xs"
+        >
+          暂无发布记录
+        </li>
+      </ul>
     </section>
 
     <!-- 归档快照 -->

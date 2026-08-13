@@ -113,7 +113,15 @@ export interface ProjectSnapshot {
 
 /** 活动记录类型 */
 export type ProjectActivityType =
-  'created' | 'updated' | 'archived' | 'restored' | 'deleted' | 'task' | 'milestone' | 'snapshot';
+  | 'created'
+  | 'updated'
+  | 'archived'
+  | 'restored'
+  | 'deleted'
+  | 'task'
+  | 'milestone'
+  | 'snapshot'
+  | 'release';
 
 /** 项目活动记录（详情页「活动记录」视图数据源） */
 export interface ProjectActivity {
