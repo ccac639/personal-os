@@ -5,6 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { LoggerModule } from 'nestjs-pino';
 
 import { configuration } from './config/configuration.js';
+import { ProjectsModule } from './modules/projects/projects.module.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { ApiKeyGuard } from './common/guards/api-key.guard.js';
 import { HealthModule } from './common/health/health.module.js';
@@ -58,6 +59,7 @@ import { createValidationPipe } from './common/validation.js';
     }),
     RedisModule,
     HealthModule,
+    ProjectsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ApiKeyGuard },
