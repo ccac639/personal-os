@@ -1,417 +1,236 @@
 /* ==========================================================================
-   Personal OS — 路由页面过渡系统（系统切换炫技层）
+   Personal OS — 页面过渡系统（克制 · 快速 · 有方向感）
    --------------------------------------------------------------------------
-   视觉节奏（整体 ≤ 900ms）：
-     ① 导航下划线 FLIP 滑动到目标项（motion-v layoutId，与路由同步）
-     ② 旧页面退场：轻微缩小 + 压暗 + 上移淡出（420ms，离场期间绝对定位防跳动）
-     ③ 中心系统层出现：网格 + 定位环 + 六边形 + 状态文本 + 视觉进度条（非真实加载）
-     ④ 能量扫描线从左到右扫过（520ms）
-     ⑤ 新页面「视口展开」：中央竖缝 clip-path 展开 + 淡入上移回正（480ms）
-     ⑥ 页面主要区块按层级 60/120/180ms 依次显现
-     ⑦ 遮罩延迟 200ms 后彻底销毁（v-if），无任何残留层
-   --------------------------------------------------------------------------
-   性能原则：
-   - 动画只用 transform / opacity / 有限 filter / 有限 clip-path，不触发布局；
-   - 遮罩 position: fixed + pointer-events: none + z-index 45（低于项目
-     modal/dialog/toast/popover 的 z-50+，高于页面内容 z-40），动画期间不阻塞、
-     不遮挡任何可操作弹窗；
-   - 无逐帧 JS、无持续 requestAnimationFrame、不修改 top/left/width/height；
-   - 噪点为静态贴图，禁止闪烁；光束/环/六边形均一次播放后随遮罩销毁。
-   颜色适配：低饱和蓝紫（#6366f1 / #8ea7ff）+ 极少量白，克制不刺眼。
+   原则：
+   - 默认动画时长 180-320ms；不播放营销风格动画；
+   - 离场：轻微降低透明度并向导航方向反向平移 8-12px；
+   - 入场：从导航方向平移 12-18px + 淡入（不使用大范围缩放）；
+   - 同级路由：靠后模块进入方向为右到左（forward），返回反向（backward）；
+     无法判定时淡入 + 轻微上移（unknown）；仅 query 变化时轻量淡入（query）；
+   - 动画只用 transform / opacity，不触发布局；
+   - 亮/暗主题自适应：过渡层背景用 --color-page / --color-surface-* 变量，
+     不依赖固定黑色遮罩；
+   - prefers-reduced-motion：禁止位移、缩放与持续 loading 动画，直接切换
+     （仅保留短暂透明度过渡）。
    ========================================================================== */
 
-/* ---------- 1. 页面整体过渡（Vue Transition name="page"） ---------- */
+/* ---------- 1. 页面内容离场 / 入场（由 transition-store 添加 class） ---------- */
 
-/* 旧页面：淡出 + 缩小上移 + 模糊压暗（brightness 降低亮度，营造「后退」感） */
-.page-leave-active {
-  position: absolute;
-  inset: 0;
-  transition:
-    opacity 420ms ease,
-    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 420ms ease;
+.pt-leave-forward {
+  animation: pt-leave-x 220ms ease both;
 }
 
-.page-leave-to {
-  opacity: 0;
-  transform: scale(0.975) translateY(-10px);
-  filter: blur(3px) brightness(0.82);
+.pt-leave-backward {
+  animation: pt-leave-xr 220ms ease both;
 }
 
-/* 新页面：中央竖缝「视口展开」+ 淡入上移回正。
-   clip-path 不支持的浏览器自动忽略该属性，仅执行 opacity/transform 淡入（降级路径） */
-.page-enter-active {
-  transition:
-    opacity 480ms ease,
-    transform 480ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 480ms ease,
-    clip-path 480ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: clip-path;
+.pt-leave-unknown {
+  animation: pt-leave-y 220ms ease both;
 }
 
-.page-enter-from {
-  opacity: 0;
-  transform: scale(1.02) translateY(20px);
-  filter: blur(4px);
-  clip-path: inset(0 46% 0 46%);
+.pt-enter-forward {
+  animation: pt-enter-x 240ms ease both;
 }
 
-.page-enter-to {
-  opacity: 1;
-  transform: scale(1) translateY(0);
-  filter: blur(0);
-  clip-path: inset(0 0 0 0);
+.pt-enter-backward {
+  animation: pt-enter-xr 240ms ease both;
 }
 
-/* ---------- 2. 全局过渡遮罩（仅路由切换期间显示，v-if 控制） ---------- */
-
-.page-transition-overlay {
-  position: fixed;
-  inset: 0;
-  /* 低于项目全部 modal/dialog/toast/popover（z-50 ~ z-[70]），
-     高于页面内容与 header（z-40）；配合 pointer-events: none 完全不遮挡操作 */
-  z-index: var(--page-transition-z, 45);
-  overflow: hidden;
-  pointer-events: none;
-  background: rgba(8, 10, 16, 0.08);
-  /* 独立合成层：遮罩出现 / 销毁不触发页面重排 */
-  contain: paint;
+.pt-enter-unknown {
+  animation: pt-enter-y 240ms ease both;
 }
 
-/* 淡网格：系统定位坐标背景（极低透明度，不干扰阅读） */
-.page-transition-grid {
-  position: absolute;
-  inset: 0;
-  opacity: 0.12;
-  background-size: 32px 32px;
-  background-image:
-    linear-gradient(rgba(142, 167, 255, 0.18) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(142, 167, 255, 0.18) 1px, transparent 1px);
-  animation: page-grid-in 420ms ease-out;
+.pt-enter-query {
+  animation: pt-enter-fade 140ms ease both;
 }
 
-/* 能量扫描线：从左侧高速扫过视口，两端渐隐 */
-.page-transition-scanline {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 2px;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    #8ea7ff 20%,
-    #ffffff 50%,
-    #8ea7ff 80%,
-    transparent
-  );
-  box-shadow:
-    0 0 12px #8ea7ff,
-    0 0 36px rgba(142, 167, 255, 0.8);
-  animation: page-scanline 520ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
-}
-
-/* 中心光束：新页面展开瞬间从视口中心向两侧扩散的垂直光带（一次播放，随遮罩销毁） */
-.page-transition-beam {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 48px;
-  transform: translateX(-50%);
-  background: linear-gradient(
-    to right,
-    transparent,
-    rgba(142, 167, 255, 0.24) 45%,
-    rgba(255, 255, 255, 0.42) 50%,
-    rgba(142, 167, 255, 0.24) 55%,
-    transparent
-  );
-  filter: blur(1px);
-  animation: page-beam-in 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  will-change: transform, opacity;
-}
-
-/* 中心定位环：两个同心细环，从中心向外扩散淡出（定位感） */
-.page-transition-rings {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 280px;
-  height: 280px;
-  transform: translate(-50%, -50%);
-}
-
-.page-transition-rings span {
-  position: absolute;
-  inset: 0;
-  border: 1px solid rgba(142, 167, 255, 0.35);
-  border-radius: 50%;
-  animation: page-ring-pulse 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.page-transition-rings span:nth-child(2) {
-  animation-delay: 90ms;
-  border-color: rgba(255, 255, 255, 0.22);
-}
-
-/* 细线六边形（坐标框）：中心两侧各一个，低透明度细边框，轻微入位 */
-.page-transition-hex {
-  position: absolute;
-  top: 50%;
-  width: 88px;
-  height: 102px;
-  background: rgba(142, 167, 255, 0.1);
-  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
-  animation: page-hex-in 640ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  transform: translateY(-50%) rotate(var(--hex-rotate, 0deg));
-}
-
-/* 内缩一层模拟细边框（clip-path 会裁掉 border，用 inset box-shadow 绘制） */
-.page-transition-hex::after {
-  content: '';
-  position: absolute;
-  inset: 1.5px;
-  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
-  box-shadow: inset 0 0 0 1px rgba(142, 167, 255, 0.5);
-}
-
-.page-transition-hex--left {
-  --hex-rotate: -8deg;
-  left: 18%;
-}
-
-.page-transition-hex--right {
-  --hex-rotate: 8deg;
-  right: 18%;
-  animation-delay: 60ms;
-}
-
-/* 状态文本：短暂显示「切换至 X」，仅视觉装饰，aria-hidden 由遮罩整体承担 */
-.page-transition-status {
-  position: absolute;
-  left: 50%;
-  top: calc(50% + 170px);
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  letter-spacing: 0.16em;
-  color: rgba(142, 167, 255, 0.9);
-  white-space: nowrap;
-  animation: page-status-in 420ms ease-out both;
-}
-
-.page-transition-status::before {
-  content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #8ea7ff;
-  box-shadow: 0 0 8px rgba(142, 167, 255, 0.9);
-  animation: page-status-dot 800ms ease-in-out infinite;
-}
-
-/* 视觉进度条：纯动画装饰，不代表真实网络加载百分比 */
-.page-transition-progress {
-  position: absolute;
-  left: 50%;
-  top: calc(50% + 196px);
-  width: 180px;
-  height: 2px;
-  transform: translateX(-50%);
-  border-radius: 999px;
-  background: rgba(142, 167, 255, 0.18);
-  overflow: hidden;
-}
-
-.page-transition-progress-bar {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #6366f1, #8ea7ff);
-  animation: page-progress-run 680ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-/* 细颗粒噪点：静态贴图，进一步压暗纯色块、增加质感（不参与动画，避免闪烁） */
-.page-transition-noise {
-  position: absolute;
-  inset: 0;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
-@keyframes page-scanline {
-  from {
-    transform: translateX(-10vw);
-    opacity: 0;
-  }
-
-  15% {
-    opacity: 1;
-  }
-
-  to {
-    transform: translateX(110vw);
-    opacity: 0;
-  }
-}
-
-@keyframes page-grid-in {
-  from {
-    opacity: 0;
-    transform: scale(1.04);
-  }
-
-  to {
-    opacity: 0.12;
-    transform: scale(1);
-  }
-}
-
-@keyframes page-beam-in {
-  0% {
-    opacity: 0;
-    transform: translateX(-50%) scaleY(0.4);
-  }
-
-  30% {
-    opacity: 1;
-  }
-
-  70% {
-    opacity: 0.9;
-    transform: translateX(-50%) scaleY(1);
-  }
-
-  100% {
-    opacity: 0;
-    transform: translateX(-50%) scaleY(1.15);
-  }
-}
-
-@keyframes page-ring-pulse {
-  from {
-    opacity: 0;
-    transform: scale(0.55);
-  }
-
-  25% {
-    opacity: 1;
-  }
-
+@keyframes pt-leave-x {
   to {
     opacity: 0;
-    transform: scale(1.18);
+    transform: translateX(-10px);
   }
 }
 
-@keyframes page-hex-in {
+@keyframes pt-leave-xr {
+  to {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+}
+
+@keyframes pt-leave-y {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes pt-enter-x {
   from {
     opacity: 0;
-    transform: translateY(-50%) rotate(var(--hex-rotate, 0deg)) scale(0.8);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(-50%) rotate(var(--hex-rotate, 0deg)) scale(1);
+    transform: translateX(14px);
   }
 }
 
-@keyframes page-status-in {
+@keyframes pt-enter-xr {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(4px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateX(-14px);
   }
 }
 
-@keyframes page-status-dot {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
-
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes page-progress-run {
-  from {
-    transform: translateX(-100%);
-    opacity: 0.4;
-  }
-
-  20% {
-    opacity: 1;
-  }
-
-  to {
-    transform: translateX(100%);
-    opacity: 0.9;
-  }
-}
-
-/* ---------- 3. 页面内容分层进入 ----------
-   仅用于页面主要区块（页面模板中显式添加 page-content-section 的元素）。
-   三层语义（按文档顺序依次延迟）：
-     第 1 层（60ms）：页面标题、筛选、顶部摘要
-     第 2 层（120ms）：主要内容面板
-     第 3 层（180ms）：辅助列表、统计和次级卡片
-   长列表容器请整体加类，不要给列表项逐个加动画；
-   页面未标记区块时不做任何强制，保持正常过渡。 */
-
-.page-content-section {
-  animation: section-reveal 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.page-content-section:nth-child(1) {
-  animation-delay: 60ms;
-}
-
-.page-content-section:nth-child(2) {
-  animation-delay: 120ms;
-}
-
-.page-content-section:nth-child(3) {
-  animation-delay: 180ms;
-}
-
-@keyframes section-reveal {
+@keyframes pt-enter-y {
   from {
     opacity: 0;
     transform: translateY(10px);
   }
+}
 
-  to {
-    opacity: 1;
-    transform: translateY(0);
+@keyframes pt-enter-fade {
+  from {
+    opacity: 0;
   }
 }
 
-/* ---------- 4. 无障碍：完全禁用复杂动效 ---------- */
+/* ---------- 2. 页面内容分层进入（兼容旧页面标记） ----------
+   业务页面已在区块上使用 page-content-section；新系统下保留为轻量淡入
+   （无位移），文档顺序轻微错峰，克制不喧宾夺主。 */
+
+.page-content-section {
+  animation: pt-section-fade 180ms ease both;
+}
+
+.page-content-section:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.page-content-section:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+@keyframes pt-section-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------- 3. 全局过渡层（loading / error） ---------- */
+
+.pt-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 45; /* 低于项目全部 modal/dialog/toast/popover（z-50+），高于页面内容 z-40 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--color-page, #f8fafc) 82%, transparent);
+  backdrop-filter: blur(2px);
+  animation: pt-layer-in 120ms ease both;
+}
+
+.pt-layer__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 48px));
+  padding: 20px 28px;
+  border-radius: var(--radius-card, 0.75rem);
+  background: var(--color-surface-0, #ffffff);
+  box-shadow: var(--shadow-float, 0 8px 24px -6px rgb(0 0 0 / 0.12));
+  color: var(--color-surface-900, #0f172a);
+  text-align: center;
+}
+
+.pt-layer__title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.pt-layer__hint {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--color-surface-900, #0f172a) 55%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.pt-layer__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.pt-btn {
+  border: 1px solid color-mix(in srgb, var(--color-surface-900, #0f172a) 18%, transparent);
+  border-radius: 0.5rem;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--color-surface-900, #0f172a);
+  background: var(--color-surface-50, #f8fafc);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.pt-btn:hover {
+  background: var(--color-surface-100, #f1f5f9);
+}
+
+.pt-btn:focus-visible {
+  outline: 2px solid var(--color-brand-500, #6366f1);
+  outline-offset: 2px;
+}
+
+.pt-btn--primary {
+  border-color: var(--color-brand-600, #4f46e5);
+  background: var(--color-brand-600, #4f46e5);
+  color: #ffffff;
+}
+
+.pt-btn--primary:hover {
+  background: var(--color-brand-700, #4338ca);
+}
+
+/* 小型进度指示：纯装饰，不代表真实百分比 */
+.pt-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--color-surface-100, #f1f5f9);
+  border-top-color: var(--color-brand-500, #6366f1);
+  animation: pt-spin 800ms linear infinite;
+}
+
+@keyframes pt-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pt-layer-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------- 4. 无障碍：减少动效 ---------- */
 
 @media (prefers-reduced-motion: reduce) {
-  .page-enter-active,
-  .page-leave-active,
-  .page-content-section,
-  .page-transition-scanline,
-  .page-transition-grid,
-  .page-transition-beam,
-  .page-transition-rings,
-  .page-transition-hex,
-  .page-transition-status,
-  .page-transition-progress,
-  .page-transition-noise {
+  .pt-leave-forward,
+  .pt-leave-backward,
+  .pt-leave-unknown,
+  .pt-enter-forward,
+  .pt-enter-backward,
+  .pt-enter-unknown,
+  .pt-enter-query,
+  .page-content-section {
     animation: none !important;
     transition: none !important;
   }
 
-  .page-transition-overlay {
-    display: none !important;
+  .pt-spinner,
+  .pt-layer {
+    animation: none !important;
   }
 }

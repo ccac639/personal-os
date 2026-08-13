@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { motion, AnimatePresence, LayoutGroup } from 'motion-v';
-import { useRoute } from 'vue-router';
-import { onBeforeUnmount, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import PagePet from '@/components/PagePet.vue';
-import PageTransitionOverlay from '@/components/PageTransitionOverlay.vue';
-import { forceHideTransitionOverlay } from '@/composables/use-page-transition';
+import { notifyPageMounted, prefetchRoute, registerContentEl } from '@/features/page-transition';
 
 const route = useRoute();
+const router = useRouter();
+
+/** 页面过渡动画目标：<main> 容器（离场/入场动画与焦点管理共用） */
+const mainEl = ref<HTMLElement | null>(null);
+
+onMounted(() => registerContentEl(mainEl.value));
+onBeforeUnmount(() => registerContentEl(null));
 
 interface Ripple {
   id: number;
@@ -55,18 +61,18 @@ function isActive(to: string): boolean {
   return route.path === to || route.path.startsWith(`${to}/`);
 }
 
+/** hover / focus 导航项时按需预取目标页面模块（不预加载所有大页面） */
+function prefetch(to: string) {
+  prefetchRoute(router, to);
+}
+
 const brandLetters = 'Personal OS'.split('');
 
 /**
  * 注：本项目刻意不使用 KeepAlive 缓存路由页面（见模板注释）。
  * 页面组件如需保持 name 以便未来接入缓存，可在此预留扩展点。
- * 页面切换由 router 的导航守卫驱动（遮罩 + 同步切换，见 router/index.ts）。
+ * 页面切换由 features/page-transition 状态机驱动（离场 → 就绪等待 → 入场）。
  */
-
-/** 布局卸载（应用退出）时兜底清理过渡层定时器 */
-onBeforeUnmount(() => {
-  forceHideTransitionOverlay();
-});
 </script>
 
 <template>
@@ -149,6 +155,8 @@ onBeforeUnmount(() => {
                     navigate(e);
                   }
                 "
+                @mouseenter="prefetch(item.to)"
+                @focusin="prefetch(item.to)"
               >
                 <!-- hover 光晕 pill：仅 transform/opacity，GPU 合成零布局开销 -->
                 <motion.span
@@ -212,16 +220,18 @@ onBeforeUnmount(() => {
 
     <!-- 页面切换：RouterView 直接渲染（key=fullPath 同步切换），无 Vue
          Transition 状态机（out-in + 懒加载在连续切换时 enter 丢失、页面空白）。
-         视觉过渡由全局遮罩承担：router 导航守卫显示遮罩 → 内容同步切换 →
-         延迟淡出（见 router/index.ts）。 -->
-    <main class="relative flex-1 overflow-x-hidden overflow-y-auto">
+         离场/入场动画由 features/page-transition 状态机驱动（给 main 添加
+         方向 class）；组件 mounted 时通知状态机（未接入就绪协议的旧页面
+         自动视为就绪）。 -->
+    <main
+      ref="mainEl"
+      tabindex="-1"
+      class="relative flex-1 overflow-x-hidden overflow-y-auto focus:outline-none"
+    >
       <RouterView v-slot="{ Component, route: viewRoute }">
-        <component :is="Component" :key="viewRoute.fullPath" />
+        <component :is="Component" :key="viewRoute.fullPath" @vue:mounted="notifyPageMounted" />
       </RouterView>
     </main>
-
-    <!-- 全局页面过渡遮罩：独立组件（状态更新只重渲染它自身，不干扰过渡子树） -->
-    <PageTransitionOverlay />
 
     <!-- 全局页面宠物：所有页面可见，点击换肤 -->
     <PagePet />

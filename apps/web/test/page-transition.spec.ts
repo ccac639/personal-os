@@ -3,14 +3,16 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * 页面过渡层状态管理器单测。
+ * 页面过渡状态机单测（features/page-transition/transition-store.ts）。
  *
  * 模块级单例状态跨用例共享，因此每个用例前 vi.resetModules() + 动态 import，
- * 保证状态隔离；遮罩生命周期全部由定时器驱动，统一使用 fake timers。
+ * 保证状态隔离；过渡全部由定时器驱动，统一使用 fake timers。
  */
-async function loadComposable() {
+async function loadStore() {
   vi.resetModules();
-  return await import('@/composables/use-page-transition');
+  const store = await import('@/features/page-transition/transition-store');
+  const directions = await import('@/features/page-transition/route-transition');
+  return { ...store, ...directions };
 }
 
 /** 读取过渡样式源文件，做 CSS 契约断言（防未来回归）；vitest cwd = apps/web */
@@ -18,200 +20,393 @@ function readTransitionsCss(): string {
   return readFileSync(resolve(process.cwd(), 'src/assets/transitions.css'), 'utf-8');
 }
 
-describe('use-page-transition 过渡层状态', () => {
+function makeContentEl(): HTMLElement {
+  const el = document.createElement('main');
+  document.body.appendChild(el);
+  return el;
+}
+
+/** 构造最小导航对象（getDirection 只读 path/name/matched/fullPath） */
+function route(path: string, name?: string) {
+  return {
+    path,
+    name,
+    fullPath: path,
+    matched: [{ path }],
+    meta: {},
+  } as never;
+}
+
+describe('transition-store 状态机', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    document.body.innerHTML = '';
+    vi.unstubAllGlobals();
   });
 
-  it('show 后进入过渡中状态，hide(0) 立即销毁', async () => {
-    const { showTransitionOverlay, hideTransitionOverlay, usePageTransition } =
-      await loadComposable();
-    const { isTransitioning } = usePageTransition();
+  it('导航流程：leaving → loading → entering → idle，动画 class 正确应用并清理', async () => {
+    const store = await loadStore();
+    const el = makeContentEl();
+    store.registerContentEl(el);
 
-    showTransitionOverlay();
-    expect(isTransitioning.value).toBe(true);
+    const token = store.beginNavigation({
+      direction: 'forward',
+      toTitle: '工作流',
+      fromTitle: '首页',
+      targetPath: '/workflows',
+      fromPath: '/',
+    });
+    expect(store.transitionState.phase).toBe('leaving');
+    expect(el.classList.contains('pt-leave-forward')).toBe(true);
 
-    hideTransitionOverlay(0);
-    vi.advanceTimersByTime(0);
-    expect(isTransitioning.value).toBe(false);
-  });
+    const leave = store.waitForLeave(token);
+    vi.advanceTimersByTime(400);
+    expect(await leave).toBe(true);
+    expect(store.transitionState.phase).toBe('loading');
+    expect(el.classList.contains('pt-leave-forward')).toBe(false);
+    expect(store.transitionState.toTitle).toBe('工作流');
 
-  it('hide 支持延迟隐藏（留出扫描线收尾窗口）', async () => {
-    const { showTransitionOverlay, hideTransitionOverlay, PAGE_TRANSITION, usePageTransition } =
-      await loadComposable();
-    const { isTransitioning } = usePageTransition();
+    store.notifyPageMounted(); // 未认领 → 自动就绪
+    expect(store.transitionState.phase).toBe('entering');
+    expect(el.classList.contains('pt-enter-forward')).toBe(true);
 
-    showTransitionOverlay();
-    hideTransitionOverlay(PAGE_TRANSITION.HIDE_DELAY_MS);
-
-    vi.advanceTimersByTime(PAGE_TRANSITION.HIDE_DELAY_MS - 1);
-    expect(isTransitioning.value).toBe(true);
-
-    vi.advanceTimersByTime(1);
-    expect(isTransitioning.value).toBe(false);
-  });
-
-  it('安全计时兜底：异常路径（无 hide 调用）下遮罩最长存活 SAFETY_MS', async () => {
-    const { showTransitionOverlay, PAGE_TRANSITION, usePageTransition } = await loadComposable();
-    const { isTransitioning } = usePageTransition();
-
-    showTransitionOverlay();
-    vi.advanceTimersByTime(PAGE_TRANSITION.SAFETY_MS - 1);
-    expect(isTransitioning.value).toBe(true);
-
-    vi.advanceTimersByTime(1);
-    expect(isTransitioning.value).toBe(false);
-  });
-
-  it('快速连续导航：show 幂等并清除旧隐藏计时，只保留最后一次导航结果', async () => {
-    const { showTransitionOverlay, hideTransitionOverlay, PAGE_TRANSITION, usePageTransition } =
-      await loadComposable();
-    const { isTransitioning } = usePageTransition();
-
-    // 第一次导航：旧页离场完成 → show，入场完成 → 延迟隐藏
-    showTransitionOverlay();
-    hideTransitionOverlay(PAGE_TRANSITION.HIDE_DELAY_MS);
-
-    // 隐藏触发前发生第二次导航 → 再次 show（若旧 hide 未清除，遮罩会被错误销毁）
-    vi.advanceTimersByTime(PAGE_TRANSITION.HIDE_DELAY_MS - 1);
-    showTransitionOverlay();
-    vi.advanceTimersByTime(1);
-    expect(isTransitioning.value).toBe(true);
-
-    // 第二次导航入场完成 → 隐藏
-    hideTransitionOverlay(0);
-    vi.advanceTimersByTime(0);
-    expect(isTransitioning.value).toBe(false);
-  });
-
-  it('forceHide 立即清理（路由失败 / 页面卸载路径）且不残留定时器', async () => {
-    const { showTransitionOverlay, forceHideTransitionOverlay, usePageTransition } =
-      await loadComposable();
-    const { isTransitioning } = usePageTransition();
-
-    showTransitionOverlay();
-    expect(isTransitioning.value).toBe(true);
-    expect(vi.getTimerCount()).toBe(1); // safety timer
-
-    forceHideTransitionOverlay();
-    expect(isTransitioning.value).toBe(false);
+    vi.advanceTimersByTime(400);
+    expect(store.transitionState.phase).toBe('idle');
+    expect(el.classList.contains('pt-enter-forward')).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('show 携带 meta：状态文本（来源/目标页标题）随遮罩暴露', async () => {
-    const { showTransitionOverlay, usePageTransition } = await loadComposable();
-    const { transitionMeta } = usePageTransition();
+  it('markPageReady() 立即进入入场；多任务只有全部完成才进入入场', async () => {
+    const store = await loadStore();
+    const el = makeContentEl();
+    store.registerContentEl(el);
 
-    expect(transitionMeta.value).toEqual({});
-    showTransitionOverlay({ fromTitle: '首页', toTitle: '工作流' });
-    expect(transitionMeta.value).toEqual({ fromTitle: '首页', toTitle: '工作流' });
+    const token = store.beginNavigation({
+      direction: 'unknown',
+      targetPath: '/chat',
+      fromPath: '/',
+    });
+    store.waitForLeave(token);
+    vi.advanceTimersByTime(400);
+    expect(store.transitionState.phase).toBe('loading');
+
+    // 认领 + 注册两个任务
+    store.claimPage(token);
+    let resolve1!: () => void;
+    let resolve2!: () => void;
+    store.registerTask(token, new Promise<void>((r) => (resolve1 = r)));
+    store.registerTask(token, new Promise<void>((r) => (resolve2 = r)));
+
+    resolve1();
+    await Promise.resolve();
+    expect(store.transitionState.phase).toBe('loading'); // 任务 1 完成，任务 2 未完成
+
+    resolve2();
+    await Promise.resolve();
+    expect(store.transitionState.phase).toBe('entering'); // 全部完成 → 入场
+    expect(store.transitionState.taskCount).toBe(0);
   });
 
-  it('hide / forceHide / 安全兜底后 meta 清空，不留脏状态', async () => {
-    const {
-      showTransitionOverlay,
-      hideTransitionOverlay,
-      forceHideTransitionOverlay,
-      PAGE_TRANSITION,
-      usePageTransition,
-    } = await loadComposable();
-    const { transitionMeta } = usePageTransition();
+  it('任务失败视为完成（记录警告），不阻塞页面', async () => {
+    const store = await loadStore();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    showTransitionOverlay({ toTitle: 'Chat' });
-    hideTransitionOverlay(0);
-    vi.advanceTimersByTime(0);
-    expect(transitionMeta.value).toEqual({});
+    const token = store.beginNavigation({ direction: 'unknown', targetPath: '/x', fromPath: '/' });
+    store.waitForLeave(token);
+    vi.advanceTimersByTime(400);
 
-    showTransitionOverlay({ toTitle: 'Chat' });
-    forceHideTransitionOverlay();
-    expect(transitionMeta.value).toEqual({});
-
-    showTransitionOverlay({ toTitle: 'Chat' });
-    vi.advanceTimersByTime(PAGE_TRANSITION.SAFETY_MS);
-    expect(transitionMeta.value).toEqual({});
+    store.claimPage(token);
+    store.registerTask(token, Promise.reject(new Error('boom')));
+    await Promise.resolve();
+    expect(store.transitionState.phase).toBe('entering');
+    expect(warn).toHaveBeenCalled();
   });
 
-  it('快速连续切换后 hide 完成时不残留任何定时器', async () => {
-    const { showTransitionOverlay, hideTransitionOverlay, usePageTransition } =
-      await loadComposable();
-    const { isTransitioning } = usePageTransition();
+  it('未接入就绪协议的旧页面：mounted 后自动就绪（兼容降级）', async () => {
+    const store = await loadStore();
+    const token = store.beginNavigation({ direction: 'unknown', targetPath: '/x', fromPath: '/' });
+    store.waitForLeave(token);
+    vi.advanceTimersByTime(400);
+    expect(store.transitionState.phase).toBe('loading');
 
-    showTransitionOverlay();
-    showTransitionOverlay(); // 幂等
-    hideTransitionOverlay(50);
-    showTransitionOverlay(); // 清除旧 hide
-    hideTransitionOverlay(0);
-    vi.advanceTimersByTime(0);
+    store.notifyPageMounted();
+    expect(store.transitionState.phase).toBe('entering');
+  });
 
-    expect(isTransitioning.value).toBe(false);
+  it('快速连续切换：新导航取消旧离场，旧 ready 回调不影响新页面', async () => {
+    const store = await loadStore();
+    const el = makeContentEl();
+    store.registerContentEl(el);
+
+    // 导航 A → 工作流
+    const tokenA = store.beginNavigation({
+      direction: 'forward',
+      targetPath: '/workflows',
+      fromPath: '/',
+    });
+    const leaveA = store.waitForLeave(tokenA);
+
+    // 导航 B 接管（用户快速点 Chat）
+    const tokenB = store.beginNavigation({
+      direction: 'backward',
+      targetPath: '/chat',
+      fromPath: '/workflows',
+    });
+    expect(await leaveA).toBe(false); // A 被取消
+
+    // 旧 token 的回调全部被忽略
+    store.markPageReady(tokenA);
+    store.registerTask(tokenA, Promise.resolve());
+    await Promise.resolve();
+    expect(store.transitionState.phase).toBe('leaving');
+
+    const leaveB = store.waitForLeave(tokenB);
+    vi.advanceTimersByTime(400);
+    expect(await leaveB).toBe(true);
+
+    // B 完成后，旧的 markPageReady(tokenA) 不能把 B 变成 entering 的错状态
+    store.notifyPageMounted();
+    expect(store.transitionState.phase).toBe('entering');
+    expect(store.transitionState.direction).toBe('backward');
+    expect(el.classList.contains('pt-enter-backward')).toBe(true);
+  });
+
+  it('query-only 轻量过渡：无离场阶段，直接等待就绪，入场用轻量 class', async () => {
+    const store = await loadStore();
+    const el = makeContentEl();
+    store.registerContentEl(el);
+
+    const token = store.beginNavigation({
+      direction: 'query',
+      targetPath: '/?tab=2',
+      fromPath: '/',
+    });
+    expect(store.transitionState.phase).toBe('loading'); // 跳过 leaving
+
+    const leave = store.waitForLeave(token); // 不应挂起
+    expect(await leave).toBe(true);
+    store.notifyPageMounted();
+    expect(store.transitionState.phase).toBe('entering');
+    expect(el.classList.contains('pt-enter-query')).toBe(true);
+  });
+
+  it('软超时后 softElapsed=true（loading 层提示 + 显示取消）；硬超时强制就绪并降级', async () => {
+    const store = await loadStore();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const token = store.beginNavigation({
+      direction: 'unknown',
+      targetPath: '/slow',
+      fromPath: '/',
+    });
+    store.waitForLeave(token);
+    vi.advanceTimersByTime(400);
+    expect(store.transitionState.softElapsed).toBe(false);
+
+    vi.advanceTimersByTime(1200 - 1);
+    expect(store.transitionState.softElapsed).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(store.transitionState.softElapsed).toBe(true);
+    expect(store.transitionState.phase).toBe('loading'); // 软超时不强制就绪
+
+    vi.advanceTimersByTime(5000 - 1200);
+    expect(store.transitionState.phase).toBe('entering'); // 硬超时降级
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it('硬超时后遮罩/过渡不会永久存在：进入 idle 且无残留定时器', async () => {
+    const store = await loadStore();
+    const token = store.beginNavigation({
+      direction: 'unknown',
+      targetPath: '/stuck',
+      fromPath: '/',
+    });
+    store.waitForLeave(token);
+    vi.advanceTimersByTime(400); // loading
+    vi.advanceTimersByTime(5000); // 硬超时 → entering
+    expect(store.transitionState.phase).toBe('entering');
+    vi.advanceTimersByTime(400); // 入场结束
+    expect(store.transitionState.phase).toBe('idle');
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('getRouteTransition：前进 / 后退 / 同层切换统一使用同一过渡名 page', async () => {
-    const { getRouteTransition } = await loadComposable();
-    // 模拟不同方向导航的路由对象，返回值必须一致（后退/前进使用相同过渡状态）
-    const forward = { path: '/chat', meta: { title: 'Chat' } };
-    const backward = { path: '/', meta: { title: '首页' } };
-    const detail = { path: '/projects/123', meta: { title: '项目详情' } };
+  it('路由组件加载失败：进入 error 层，提供重试/返回回调；当前页面保持可见', async () => {
+    const store = await loadStore();
+    const retry = vi.fn();
+    const goBack = vi.fn();
+    store.setNavCallbacks({ retry, goBack });
 
-    expect(getRouteTransition(forward)).toBe('page');
-    expect(getRouteTransition(backward)).toBe('page');
-    expect(getRouteTransition(detail)).toBe('page');
-    expect(getRouteTransition()).toBe('page');
+    const el = makeContentEl();
+    store.registerContentEl(el);
+    const token = store.beginNavigation({
+      direction: 'forward',
+      targetPath: '/broken',
+      fromPath: '/',
+    });
+    store.waitForLeave(token);
+    vi.advanceTimersByTime(400);
+    expect(el.classList.contains('pt-leave-forward')).toBe(false); // 离场 class 已清理
+
+    store.failNavigation(new Error('chunk load failed'));
+    expect(store.transitionState.phase).toBe('error');
+    expect(store.transitionState.errorMessage).toBe('chunk load failed');
+    expect(el.classList.contains('pt-leave-forward')).toBe(false); // 当前页面恢复可见
+
+    store.retryNavigation();
+    expect(retry).toHaveBeenCalled();
+    store.goBack();
+    expect(goBack).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('Escape：leaving 阶段取消导航（URL 未变），loading 阶段回退上一页', async () => {
+    const store = await loadStore();
+    const goBack = vi.fn();
+    store.setNavCallbacks({ retry: vi.fn(), goBack });
+
+    // leaving 阶段取消
+    const token = store.beginNavigation({ direction: 'forward', targetPath: '/x', fromPath: '/' });
+    const leave = store.waitForLeave(token);
+    store.handleEscape();
+    expect(await leave).toBe(false);
+    expect(store.transitionState.phase).toBe('idle');
+    expect(goBack).not.toHaveBeenCalled();
+
+    // loading 阶段取消 → 回退
+    store.beginNavigation({ direction: 'forward', targetPath: '/y', fromPath: '/' });
+    store.waitForLeave(store.getCurrentToken());
+    vi.advanceTimersByTime(400);
+    expect(store.transitionState.phase).toBe('loading');
+    store.handleEscape();
+    expect(store.transitionState.phase).toBe('idle');
+    expect(goBack).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('prefers-reduced-motion：跳过离场等待与位移动画，直接放行', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi
+        .fn()
+        .mockReturnValue({
+          matches: true,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        }),
+    );
+    const store = await loadStore();
+    const el = makeContentEl();
+    store.registerContentEl(el);
+
+    const token = store.beginNavigation({ direction: 'forward', targetPath: '/x', fromPath: '/' });
+    expect(store.transitionState.phase).toBe('leaving');
+    expect(el.classList.contains('pt-leave-forward')).toBe(false); // 无位移 class
+
+    const leave = store.waitForLeave(token);
+    expect(await leave).toBe(true); // 立即放行，不等 400ms
+    expect(store.transitionState.phase).toBe('loading');
   });
 });
 
-describe('transitions.css 契约（炫技层安全边界）', () => {
-  it('遮罩 pointer-events: none，不阻塞任何用户操作', () => {
-    const css = readTransitionsCss();
-    expect(css).toMatch(/\.page-transition-overlay\s*{[^}]*pointer-events:\s*none/);
+describe('route-transition 方向判定', () => {
+  it('同层前进为 forward，返回为 backward', async () => {
+    const { getDirection } = await loadStore();
+    expect(getDirection(route('/'), route('/chat'))).toBe('forward');
+    expect(getDirection(route('/chat'), route('/'))).toBe('backward');
+    expect(getDirection(route('/projects'), route('/achievements'))).toBe('forward');
+    expect(getDirection(route('/admin'), route('/settings'))).toBe('forward');
   });
 
-  it('遮罩 z-index 低于项目既有 modal/toast（z-50+），不遮挡弹窗', () => {
-    const css = readTransitionsCss();
-    const match = css.match(/--page-transition-z,\s*(\d+)/);
-    expect(match).not.toBeNull();
-    const z = Number(match![1]);
-    expect(z).toBeGreaterThan(40); // 高于页面 header
-    expect(z).toBeLessThan(50); // 低于最低弹窗 z-50
+  it('进入更深子页为 forward，返回父级为 backward', async () => {
+    const { getDirection } = await loadStore();
+    expect(getDirection(route('/projects'), route('/projects/123'))).toBe('forward');
+    expect(getDirection(route('/projects/123'), route('/projects'))).toBe('backward');
+    expect(getDirection(route('/chat'), route('/chat/agents', 'chat-agents'))).toBe('forward');
   });
 
-  it('reduced-motion 完全禁用复杂动画，遮罩不渲染', () => {
+  it('无法判定方向（同层不同参数/未知路由）→ unknown', async () => {
+    const { getDirection } = await loadStore();
+    expect(getDirection(route('/projects/a'), route('/projects/b'))).toBe('unknown');
+    expect(getDirection(route('/agents'), route('/weird'))).toBe('unknown');
+  });
+
+  it('同一 path 仅 query 变化 → query（轻量过渡）', async () => {
+    const { getDirection } = await loadStore();
+    const from = {
+      path: '/projects',
+      fullPath: '/projects',
+      name: undefined,
+      matched: [],
+      meta: {},
+    } as never;
+    const to = {
+      path: '/projects',
+      fullPath: '/projects?tab=done',
+      name: undefined,
+      matched: [],
+      meta: {},
+    } as never;
+    expect(getDirection(from, to)).toBe('query');
+  });
+
+  it('首航判定：START_LOCATION（matched 为空）为 true', async () => {
+    const { isInitialNavigation } = await loadStore();
+    expect(isInitialNavigation({ matched: [] } as never)).toBe(true);
+    expect(isInitialNavigation({ matched: [{ path: '/' }] } as never)).toBe(false);
+  });
+});
+
+describe('transitions.css 契约（克制 · 方向感 · 无障碍）', () => {
+  it('离场/入场动画时长控制在 180-320ms（query 轻量过渡单独更短）', () => {
     const css = readTransitionsCss();
-    const block = css.match(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*{([\s\S]*?)\n}/);
-    expect(block).not.toBeNull();
-    expect(block![1]).toMatch(/\.page-transition-overlay\s*{[^}]*display:\s*none\s*!important/);
-    // 扫描线 / 网格 / 光束 / 环 / 六边形 / 分层全部纳入禁用清单
-    for (const sel of [
-      '.page-enter-active',
-      '.page-leave-active',
-      '.page-content-section',
-      '.page-transition-scanline',
-      '.page-transition-beam',
-      '.page-transition-rings',
-      '.page-transition-hex',
-      '.page-transition-status',
-      '.page-transition-progress',
-    ]) {
-      expect(block![1]).toContain(sel);
+    // 只统计 pt-leave-* / pt-enter-* 内容动画（排除 pt-layer-in / pt-spin）
+    const durations = [...css.matchAll(/animation:\s*pt-(?:leave|enter)-[\w-]+\s+(\d+)ms/g)].map(
+      (m) => Number(m[1]),
+    );
+    expect(durations.length).toBeGreaterThanOrEqual(7);
+    const queryMs = Number(
+      css.match(/\.pt-enter-query\s*{[^}]*animation:\s*pt-enter-fade\s+(\d+)ms/)?.[1],
+    );
+    expect(queryMs).toBeGreaterThanOrEqual(100);
+    expect(queryMs).toBeLessThan(180);
+    for (const d of durations) {
+      if (d === queryMs) continue;
+      expect(d).toBeGreaterThanOrEqual(180);
+      expect(d).toBeLessThanOrEqual(320);
     }
   });
 
-  it('新页面入场含 clip-path 展开且保留 opacity 淡入降级路径', () => {
+  it('四种方向均有对应 class：forward / backward / unknown / query', () => {
     const css = readTransitionsCss();
-    expect(css).toMatch(/\.page-enter-from\s*{[^}]*clip-path:\s*inset\(0\s*46%/);
-    expect(css).toMatch(/\.page-enter-from\s*{[^}]*opacity:\s*0/);
-    expect(css).toMatch(/\.page-enter-active\s*{[^}]*transition:[\s\S]*?clip-path/);
+    for (const cls of [
+      'pt-leave-forward',
+      'pt-leave-backward',
+      'pt-leave-unknown',
+      'pt-enter-forward',
+      'pt-enter-backward',
+      'pt-enter-unknown',
+      'pt-enter-query',
+    ]) {
+      expect(css).toContain(`.${cls}`);
+    }
+  });
+
+  it('过渡层 z-index 低于弹窗（z-50+），背景使用主题变量（亮/暗自适应）', () => {
+    const css = readTransitionsCss();
+    const layer = css.match(/\.pt-layer\s*{[^}]*}/)?.[0] ?? '';
+    expect(layer).toMatch(/z-index:\s*45/);
+    expect(layer).toMatch(/var\(--color-page/);
+    expect(layer).not.toMatch(/pointer-events:\s*none/); // 过渡层需可交互（取消/重试按钮）
   });
 
   it('关键帧只用 transform/opacity，不修改 top/left/width/height 制造动画', () => {
     const css = readTransitionsCss();
-    const keyframes = css.match(/@keyframes\s+page-[\w-]+\s*{[\s\S]*?}/g) ?? [];
-    expect(keyframes.length).toBeGreaterThan(5);
+    const keyframes = css.match(/@keyframes\s+pt-[\w-]+\s*{[\s\S]*?}/g) ?? [];
+    expect(keyframes.length).toBeGreaterThanOrEqual(7);
     for (const kf of keyframes) {
       expect(kf).not.toMatch(/\btop\s*:/);
       expect(kf).not.toMatch(/\bleft\s*:/);
@@ -220,10 +415,29 @@ describe('transitions.css 契约（炫技层安全边界）', () => {
     }
   });
 
-  it('分层延迟上限为 60 / 120 / 180ms', () => {
+  it('reduced-motion：禁止位移/缩放/持续 loading 动画', () => {
     const css = readTransitionsCss();
-    expect(css).toMatch(/\.page-content-section:nth-child\(1\)\s*{[^}]*animation-delay:\s*60ms/);
-    expect(css).toMatch(/\.page-content-section:nth-child\(2\)\s*{[^}]*animation-delay:\s*120ms/);
-    expect(css).toMatch(/\.page-content-section:nth-child\(3\)\s*{[^}]*animation-delay:\s*180ms/);
+    const block = css.match(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*{([\s\S]*?)\n}/);
+    expect(block).not.toBeNull();
+    for (const sel of [
+      '.pt-leave-forward',
+      '.pt-leave-backward',
+      '.pt-leave-unknown',
+      '.pt-enter-forward',
+      '.pt-enter-backward',
+      '.pt-enter-unknown',
+      '.pt-enter-query',
+      '.page-content-section',
+      '.pt-spinner',
+    ]) {
+      expect(block![1]).toContain(sel);
+    }
+    expect(block![1]).toMatch(/animation:\s*none\s*!important/);
+  });
+
+  it('旧页面标记 page-content-section 保留轻量淡入（兼容业务页面）', () => {
+    const css = readTransitionsCss();
+    expect(css).toContain('.page-content-section');
+    expect(css).toMatch(/\.page-content-section\s*{[^}]*animation:\s*pt-section-fade\s+\d+ms/);
   });
 });
