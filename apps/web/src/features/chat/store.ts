@@ -54,6 +54,8 @@ export const useChatStore = defineStore('chat', () => {
   const editingId = ref<string | null>(null);
   /** 引用回复目标（发送时附着到用户消息）；null 表示非引用态 */
   const quoteTarget = ref<ChatQuote | null>(null);
+  /** Composer 草稿（智能体启动 / 灵感创作预填；仅内存，不持久化） */
+  const composerDraft = ref('');
 
   const prefsResult = loadPreferences();
   const prefs = ref<ChatPreferences>(prefsResult.prefs);
@@ -444,6 +446,7 @@ export const useChatStore = defineStore('chat', () => {
     streamingMessageId.value = assistantId;
     const session = activeSession.value;
     const modelId = session?.model ?? prefs.value.currentModel;
+    const presetId = session?.systemPrompt?.presetId;
     void getChatReplyService()
       .generateReply(prompt, {
         mode: prefs.value.outputMode,
@@ -453,6 +456,8 @@ export const useChatStore = defineStore('chat', () => {
         presetName: session?.systemPrompt
           ? promptPresetName(session.systemPrompt.presetId)
           : undefined,
+        agentId: presetId?.startsWith('agent:') ? presetId.slice('agent:'.length) : undefined,
+        agentName: session?.agentName,
       })
       .then((full) => streamInto(assistantId, full))
       .catch(() => markError(assistantId));
@@ -576,6 +581,37 @@ export const useChatStore = defineStore('chat', () => {
     runExchange(msg.id, prompt);
   }
 
+  /* ---------- 智能体 / 灵感 → 会话联动 ---------- */
+
+  /** 预填 Composer 草稿（不自动发送） */
+  function setComposerDraft(text: string) {
+    composerDraft.value = text;
+  }
+
+  /**
+   * 从智能体启动创建新会话：应用系统提示词 / 推荐模型 / 输出模式 / 草稿。
+   * 初始内容绝不自动发送；返回新会话。
+   */
+  function launchAgentSession(input: {
+    agentId: string;
+    agentName: string;
+    systemPrompt: string;
+    modelId: string;
+    mode: ChatOutputMode;
+    draft: string;
+  }): ChatSession {
+    stopStreaming();
+    const session = createSession(input.modelId);
+    const text = input.systemPrompt.trim();
+    if (text) {
+      session.systemPrompt = { presetId: `agent:${input.agentId}`, text };
+    }
+    session.agentName = input.agentName;
+    prefs.value.outputMode = input.mode;
+    composerDraft.value = input.draft;
+    return session;
+  }
+
   /* ---------- 导出 ---------- */
 
   /** 单条消息导出 Markdown（当前会话内查找） */
@@ -614,6 +650,7 @@ export const useChatStore = defineStore('chat', () => {
     streamingMessageId,
     editingId,
     quoteTarget,
+    composerDraft,
     prefs,
     prefsRecovered,
     currentModel,
@@ -630,6 +667,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionTimeFilter,
     sessionBookmarkFilter,
     sessionSystemPrompt,
+    findMessage,
     createSession,
     selectSession,
     deleteSession,
@@ -657,6 +695,8 @@ export const useChatStore = defineStore('chat', () => {
     setSessionCustomPrompt,
     clearSessionSystemPrompt,
     restoreDefaultSystemPrompt,
+    setComposerDraft,
+    launchAgentSession,
     toggleBookmark,
     beginQuote,
     clearQuote,

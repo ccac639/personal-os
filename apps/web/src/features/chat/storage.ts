@@ -52,6 +52,7 @@ const chatSessionSchema = z.object({
   updatedAt: z.number(),
   pinned: z.boolean().optional(),
   archived: z.boolean().optional(),
+  agentName: z.string().optional(),
   systemPrompt: z
     .object({
       presetId: z.string(),

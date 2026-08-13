@@ -22,7 +22,14 @@ const FEEDBACK: Record<ChatActionKind, string> = {
   'add-task': '已生成任务草稿（本地演示）',
   'save-artifact': '已保存为成果草稿（本地演示）',
   'workflow-draft': '已生成工作流草稿（本地演示）',
+  'save-inspiration': '已打开灵感保存表单',
+  'create-agent-variant': '已打开智能体变体表单',
 };
+
+/** 无注入回调时的默认反馈文本（视图层组合 handler 兜底用） */
+export function defaultActionFeedback(kind: ChatActionKind): string {
+  return FEEDBACK[kind];
+}
 
 /** 分发结果操作：有注入回调则调用，否则本地 toast 演示 */
 export function dispatchChatAction(action: ChatResultAction): void {

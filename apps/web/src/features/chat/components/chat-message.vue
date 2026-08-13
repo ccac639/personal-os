@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import {
   Bookmark,
+  Bot,
   Check,
   ClipboardList,
   Copy,
   Download,
   FileDown,
   GitBranch,
+  Lightbulb,
   Pencil,
   Quote,
   RefreshCw,
@@ -291,6 +293,24 @@ function handleAction(kind: ChatActionKind) {
           >
             <GitBranch class="size-3" />
             转工作流草稿
+          </button>
+          <button
+            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2"
+            aria-label="保存为灵感"
+            title="把这段回复保存到灵感广场"
+            @click="handleAction('save-inspiration')"
+          >
+            <Lightbulb class="size-3" />
+            保存为灵感
+          </button>
+          <button
+            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2"
+            aria-label="创建智能体变体"
+            title="基于这条回复创建个人智能体"
+            @click="handleAction('create-agent-variant')"
+          >
+            <Bot class="size-3" />
+            创建智能体变体
           </button>
         </div>
       </div>

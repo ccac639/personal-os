@@ -87,9 +87,10 @@ export function removeCustomPreset(id: string): void {
   saveCustomPresets(presets.filter((p) => p.id !== id));
 }
 
-/** 预设展示名：'custom' → 自定义；未知 id → 自定义；未设置 → 无 */
+/** 预设展示名：'custom' → 自定义；agent: 前缀 → 智能体；未知 id → 自定义；未设置 → 无 */
 export function promptPresetName(presetId: string | undefined): string {
   if (!presetId) return '无';
   if (presetId === 'custom') return '自定义';
+  if (presetId.startsWith('agent:')) return '智能体';
   return systemPromptPresetById(presetId)?.name ?? '自定义';
 }

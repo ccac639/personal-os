@@ -1,103 +1,59 @@
 <script setup lang="ts">
-import { Menu, PanelRight } from '@lucide/vue';
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+/**
+ * Chat 工作台壳页面：内部二级导航（对话 / 智能体 / 灵感广场）+ 子视图渲染。
+ * 桌面紧凑三段式布局由各子视图内部实现（侧栏 + 主区 + 详情抽屉）。
+ */
+import { Bot, Lightbulb, MessageSquare } from '@lucide/vue';
+import { onBeforeUnmount } from 'vue';
 
-import {
-  ChatComposer,
-  ChatMessageList,
-  ChatPanel,
-  ChatSidebar,
-  ChatToast,
-  useChatStore,
-} from '@/features/chat';
-import { pushToast } from '@/features/chat/toast';
+import { useChatStore } from '@/features/chat';
 
 const store = useChatStore();
-
-/** 移动端抽屉开关（透传给侧边栏 v-model） */
-const mobileSidebarOpen = ref(false);
-/** 右侧信息面板开关（默认收起，保持内容区宽阔） */
-const panelOpen = ref(false);
-
-/** 偏好数据损坏回退时，非阻塞提示一次 */
-onMounted(() => {
-  if (store.prefsRecovered) {
-    pushToast('本地偏好设置已重置为默认值', 'warning');
-  }
-});
-
-/** 移动端：打开会话后自动收起抽屉 */
-watch(
-  () => store.activeId,
-  () => {
-    mobileSidebarOpen.value = false;
-  },
-);
 
 /** 离开页面时停止流式输出，避免后台空转 */
 onBeforeUnmount(() => {
   store.stopStreaming();
 });
+
+const tabs = [
+  { to: '/chat', label: '对话', icon: MessageSquare, exact: true },
+  { to: '/chat/agents', label: '智能体', icon: Bot, exact: false },
+  { to: '/chat/inspiration', label: '灵感广场', icon: Lightbulb, exact: false },
+];
 </script>
 
 <template>
-  <div class="bg-page chat-workspace absolute inset-0 flex overflow-hidden">
-    <!-- 左侧：模型与会话工作区（桌面固定 / 移动端抽屉） -->
-    <ChatSidebar v-model:mobile-open="mobileSidebarOpen" />
+  <div class="bg-page absolute inset-0 flex flex-col overflow-hidden">
+    <!-- 二级导航 -->
+    <nav
+      class="flex h-10 shrink-0 items-center gap-1 border-b border-surface-100 px-2"
+      aria-label="Chat 工作台视图"
+    >
+      <router-link
+        v-for="tab in tabs"
+        :key="tab.to"
+        :to="tab.to"
+        class="text-surface-800/60 hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2"
+        :exact-active-class="tab.exact ? 'router-link-active-chat' : ''"
+        :active-class="tab.exact ? '' : 'router-link-active-chat'"
+      >
+        <component :is="tab.icon" class="size-3.5" />
+        {{ tab.label }}
+      </router-link>
 
-    <!-- 主区 -->
-    <main class="page-content-section flex min-w-0 flex-1 flex-col">
-      <!-- 顶栏：移动端菜单 + 当前模型摘要 + 面板开关 -->
-      <header class="flex h-11 shrink-0 items-center gap-2 border-b border-surface-100 px-3">
-        <button
-          class="text-surface-800/60 hover:bg-surface-100 hover:text-surface-900 flex size-8 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 md:hidden"
-          aria-label="打开会话列表"
-          title="打开会话列表"
-          @click="mobileSidebarOpen = true"
-        >
-          <Menu class="size-4.5" />
-        </button>
+      <span class="text-surface-800/30 ml-auto pr-1 text-[10px]">个人 AI 创作工作台</span>
+    </nav>
 
-        <div class="min-w-0 flex-1">
-          <p class="text-surface-900 truncate text-sm font-medium">
-            {{ store.activeSession?.title ?? '新对话' }}
-          </p>
-          <p class="text-surface-800/40 truncate text-[10px]">
-            {{ store.currentModelInfo?.label ?? '个人 AI 工作区' }}
-            <template v-if="store.currentModelInfo">
-              · {{ store.currentModelInfo.context }}
-            </template>
-          </p>
-        </div>
-
-        <button
-          class="text-surface-800/60 hover:bg-surface-100 hover:text-surface-900 hidden size-8 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 lg:flex"
-          :class="{ 'bg-surface-100 text-surface-900': panelOpen }"
-          aria-label="切换会话信息面板"
-          title="切换会话信息面板"
-          @click="panelOpen = !panelOpen"
-        >
-          <PanelRight class="size-4" />
-        </button>
-      </header>
-
-      <!-- 消息流 / 空态 -->
-      <ChatMessageList />
-
-      <!-- 底部创作控制台 -->
-      <ChatComposer />
-    </main>
-
-    <!-- 右侧：会话信息面板（lg+ 可见） -->
-    <ChatPanel v-if="panelOpen" @close="panelOpen = false" />
-
-    <!-- 本地 toast -->
-    <ChatToast />
+    <!-- 子视图 -->
+    <div class="relative min-h-0 flex-1">
+      <router-view v-slot="{ Component }">
+        <component :is="Component" />
+      </router-view>
+    </div>
   </div>
 </template>
 
 <style>
-/* Chat 工作区语义色（模型类别）：亮/暗主题下均清晰，非营销渐变 */
 .chat-workspace {
   --chat-cyan: #0891b2;
   --chat-teal: #0d9488;

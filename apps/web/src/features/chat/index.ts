@@ -9,11 +9,57 @@ export { default as ChatPanel } from './components/chat-panel.vue';
 export { default as ChatToast } from './components/chat-toast.vue';
 
 export { useChatStore } from './store';
+export { useAgentsStore } from './agent-store';
+export { useInspirationStore } from './inspiration-store';
 export { MockChatReplyService, getChatReplyService, setChatReplyService } from './service';
 export type { ChatReplyService, GenerateReplyOptions } from './service';
-export { dispatchChatAction, setChatActionHandler } from './actions';
+export { dispatchChatAction, setChatActionHandler, defaultActionFeedback } from './actions';
 export type { ChatActionHandler } from './actions';
 export { pushToast } from './toast';
+export {
+  AGENT_CATEGORIES,
+  AGENT_ICON_KEYS,
+  BUILTIN_AGENTS,
+  agentCategoryLabel,
+  agentIcon,
+  buildAgentLaunchPrompt,
+  deriveAgentVariant,
+  filterAgents,
+  initialAgentInputs,
+  sortAgents,
+  validateAgentForm,
+} from './agents';
+export {
+  AGENT_STORAGE_KEY,
+  loadAgentLibrary,
+  saveAgentLibrary,
+} from './agent-storage';
+export {
+  INSPIRATION_CATEGORIES,
+  INSPIRATION_SOURCES,
+  VISUAL_PRESETS,
+  activeFilterCount,
+  applyQuickView,
+  collectTags,
+  createInspirationDraft,
+  draftFromAgent,
+  draftFromMessage,
+  duplicateInspiration,
+  filterInspirations,
+  inspirationCategoryLabel,
+  inspirationLibraryJson,
+  inspirationSourceLabel,
+  parseInspirationImport,
+  resolveInspirationImport,
+  sortInspirations,
+  visualPresetClass,
+  visualPresetLabel,
+} from './inspiration';
+export {
+  INSPIRATION_STORAGE_KEY,
+  loadInspirationLibrary,
+  saveInspirationLibrary,
+} from './inspiration-storage';
 export {
   CHAT_MODELS,
   MODEL_CATEGORIES,
@@ -58,6 +104,30 @@ export {
   validateDraftFiles,
 } from './draft';
 export { normalizeTitle } from './utils';
+export type {
+  AgentCategory,
+  AgentFilters,
+  AgentInputField,
+  AgentInputType,
+  AgentLaunchInputs,
+  AgentSortKey,
+  ChatAgent,
+} from './agent-types';
+export type {
+  ChatInspiration,
+  InspirationCategory,
+  InspirationDraftInput,
+  InspirationFilters,
+  InspirationImportPreview,
+  InspirationImportResult,
+  InspirationImportStrategy,
+  InspirationQuickView,
+  InspirationSortKey,
+  InspirationSource,
+  InspirationUiState,
+  InspirationView,
+  InspirationVisualPreset,
+} from './inspiration-types';
 export type {
   ChatActionKind,
   ChatAttachmentDraft,

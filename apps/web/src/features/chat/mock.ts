@@ -278,6 +278,9 @@ export interface MockReplyContext {
   /** 会话级系统提示词（透传 preset 名称与文本，仅影响署名注释） */
   systemPrompt?: string;
   presetName?: string;
+  /** 智能体上下文（启动智能体后的会话） */
+  agentId?: string;
+  agentName?: string;
 }
 
 /** 根据用户输入生成一条模拟回复（含 Markdown 结构，用于展示渲染效果） */
@@ -319,7 +322,8 @@ export function mockReply(input: string, ctx: MockReplyContext = {}): string {
     ctx.systemPrompt && ctx.systemPrompt.trim()
       ? ` · 已应用提示词（${ctx.presetName ?? '自定义'}）`
       : '';
-  return result + `\n\n---\n\n*由 ${modelName}（${modeNote}）生成 · 本地演示${promptNote}*`;
+  const agentNote = ctx.agentName ? ` · 智能体「${ctx.agentName}」` : '';
+  return result + `\n\n---\n\n*由 ${modelName}（${modeNote}）生成 · 本地演示${promptNote}${agentNote}*`;
 }
 
 export type { ChatModelOption };

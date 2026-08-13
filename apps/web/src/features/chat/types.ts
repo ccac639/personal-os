@@ -43,6 +43,8 @@ export interface ChatSession {
   archived?: boolean;
   /** 会话级系统提示词（预设 id + 解析后的文本，导出自包含） */
   systemPrompt?: ChatSessionSystemPrompt;
+  /** 来源智能体名称（自包含，导出不依赖目录） */
+  agentName?: string;
 }
 
 /** 引用消息快照 */
@@ -169,7 +171,12 @@ export interface ChatSessionStats {
 }
 
 /** 生成结果操作（本地 action payload，未来可注入真实模块回调） */
-export type ChatActionKind = 'add-task' | 'save-artifact' | 'workflow-draft';
+export type ChatActionKind =
+  | 'add-task'
+  | 'save-artifact'
+  | 'workflow-draft'
+  | 'save-inspiration'
+  | 'create-agent-variant';
 
 export interface ChatResultAction {
   kind: ChatActionKind;

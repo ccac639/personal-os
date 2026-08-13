@@ -27,6 +27,9 @@ export interface GenerateReplyOptions {
   systemPrompt?: string;
   /** 提示词预设展示名 */
   presetName?: string;
+  /** 智能体上下文（启动智能体的会话） */
+  agentId?: string;
+  agentName?: string;
 }
 
 /** 聊天回复服务：输入用户消息，返回完整助手回复文本 */
@@ -44,6 +47,8 @@ export class MockChatReplyService implements ChatReplyService {
         replyLength: options?.replyLength,
         systemPrompt: options?.systemPrompt,
         presetName: options?.presetName,
+        agentId: options?.agentId,
+        agentName: options?.agentName,
       }),
     );
   }
