@@ -31,6 +31,12 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/chat/inspiration.vue'),
         meta: { title: '灵感广场' },
       },
+      {
+        path: '3d',
+        name: 'chat-3d',
+        component: () => import('@/pages/chat/three-d.vue'),
+        meta: { title: '3D 工作台' },
+      },
     ],
   },
   {

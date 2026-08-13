@@ -25,17 +25,18 @@ describe('Chat 工作台子路由', () => {
     await router.isReady();
   });
 
-  it('路由表包含 Chat 三个子路由', () => {
+  it('路由表包含 Chat 四个子路由', () => {
     const chat = routes.find((r) => r.path === '/chat');
     expect(chat).toBeDefined();
     const children = chat?.children ?? [];
-    expect(children.map((c) => c.path)).toEqual(['', 'agents', 'inspiration']);
+    expect(children.map((c) => c.path)).toEqual(['', 'agents', 'inspiration', '3d']);
     expect(children[0]?.name).toBe('chat-dialog');
     expect(children[1]?.name).toBe('chat-agents');
     expect(children[2]?.name).toBe('chat-inspiration');
+    expect(children[3]?.name).toBe('chat-3d');
   });
 
-  it('导航到 /chat/agents 与 /chat/inspiration 且 URL 同步', async () => {
+  it('导航到 /chat/agents、/chat/inspiration 与 /chat/3d 且 URL 同步', async () => {
     await router.push('/chat/agents');
     expect(router.currentRoute.value.path).toBe('/chat/agents');
     expect(router.currentRoute.value.name).toBe('chat-agents');
@@ -43,6 +44,10 @@ describe('Chat 工作台子路由', () => {
     await router.push('/chat/inspiration');
     expect(router.currentRoute.value.path).toBe('/chat/inspiration');
     expect(router.currentRoute.value.name).toBe('chat-inspiration');
+
+    await router.push('/chat/3d');
+    expect(router.currentRoute.value.path).toBe('/chat/3d');
+    expect(router.currentRoute.value.name).toBe('chat-3d');
   });
 
   it('浏览器后退 / 前进恢复正确视图', async () => {

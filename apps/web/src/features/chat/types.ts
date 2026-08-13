@@ -176,7 +176,8 @@ export type ChatActionKind =
   | 'save-artifact'
   | 'workflow-draft'
   | 'save-inspiration'
-  | 'create-agent-variant';
+  | 'create-agent-variant'
+  | 'create-3d-draft';
 
 export interface ChatResultAction {
   kind: ChatActionKind;

@@ -2,6 +2,7 @@
 import {
   Bookmark,
   Bot,
+  Box,
   Check,
   ClipboardList,
   Copy,
@@ -77,9 +78,7 @@ const canAct = computed(
 );
 
 /** 书签：任意已结束消息（非流式、非错误态）可标记 */
-const canBookmark = computed(
-  () => !props.message.streaming && !hasError.value,
-);
+const canBookmark = computed(() => !props.message.streaming && !hasError.value);
 
 const time = computed(() => {
   const d = new Date(props.message.createdAt);
@@ -179,15 +178,9 @@ function handleAction(kind: ChatActionKind) {
       {{ model?.label.slice(0, 1) ?? 'AI' }}
     </div>
 
-    <div
-      class="min-w-0"
-      :class="message.role === 'user' ? 'max-w-[85%]' : 'max-w-full flex-1'"
-    >
+    <div class="min-w-0" :class="message.role === 'user' ? 'max-w-[85%]' : 'max-w-full flex-1'">
       <!-- 助手消息头部：模型名 + 类别 + 生成状态 -->
-      <div
-        v-if="message.role === 'assistant'"
-        class="mb-1 flex items-center gap-1.5"
-      >
+      <div v-if="message.role === 'assistant'" class="mb-1 flex items-center gap-1.5">
         <span class="text-surface-900 text-xs font-medium">
           {{ model?.label ?? '助手' }}
         </span>
@@ -195,7 +188,8 @@ function handleAction(kind: ChatActionKind) {
           class="rounded px-1 py-px text-[9px] font-medium"
           :style="{
             color: model?.color ?? 'var(--chat-mono)',
-            background: 'color-mix(in srgb, ' + (model?.color ?? 'var(--chat-mono)') + ' 12%, transparent)',
+            background:
+              'color-mix(in srgb, ' + (model?.color ?? 'var(--chat-mono)') + ' 12%, transparent)',
           }"
         >
           {{ categoryLabel(model?.id ?? '') }}
@@ -207,22 +201,17 @@ function handleAction(kind: ChatActionKind) {
           <span class="size-1.5 animate-pulse rounded-full bg-emerald-500" />
           生成中
         </span>
-        <span
-          v-else-if="hasError"
-          class="text-red-500 text-[10px]"
-        >
-          生成失败
-        </span>
+        <span v-else-if="hasError" class="text-[10px] text-red-500"> 生成失败 </span>
       </div>
 
       <!-- 用户消息：克制样式（次级块底、深色文字）；含引用时先展示引用块 -->
       <div
         v-if="message.role === 'user'"
-        class="bg-surface-100 text-surface-900 inline-block max-w-full rounded-2xl rounded-br-md px-4 py-2.5 text-[0.925rem] leading-relaxed whitespace-pre-wrap break-words"
+        class="bg-surface-100 text-surface-900 inline-block max-w-full rounded-2xl rounded-br-md px-4 py-2.5 text-[0.925rem] leading-relaxed break-words whitespace-pre-wrap"
       >
         <div
           v-if="message.quote"
-          class="border-surface-200 bg-surface-50 text-surface-800/70 mb-1.5 max-w-full rounded-lg border-l-2 border-l-brand-400 px-2 py-1 text-xs"
+          class="border-surface-200 bg-surface-50 text-surface-800/70 border-l-brand-400 mb-1.5 max-w-full rounded-lg border-l-2 px-2 py-1 text-xs"
         >
           <p class="text-surface-800/50 font-medium">
             引用{{ message.quote.role === 'user' ? '用户' : '助手' }}
@@ -247,11 +236,11 @@ function handleAction(kind: ChatActionKind) {
         <!-- 生成失败：错误提示 + 重试 -->
         <div
           v-if="hasError"
-          class="border-red-200 bg-red-50 text-red-600 mt-1 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs"
+          class="mt-1 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600"
         >
           <span>回复生成失败，请重试</span>
           <button
-            class="hover:bg-red-100 flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium transition-colors"
+            class="flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium transition-colors hover:bg-red-100"
             aria-label="重试生成"
             title="重试"
             @click="handleRegenerate"
@@ -268,7 +257,7 @@ function handleAction(kind: ChatActionKind) {
           :class="{ 'opacity-100': message.streaming || hasError }"
         >
           <button
-            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2"
+            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none"
             aria-label="加入任务"
             title="把生成结果加入任务"
             @click="handleAction('add-task')"
@@ -277,7 +266,7 @@ function handleAction(kind: ChatActionKind) {
             加入任务
           </button>
           <button
-            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2"
+            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none"
             aria-label="保存为成果"
             title="把生成结果保存为成果"
             @click="handleAction('save-artifact')"
@@ -286,7 +275,7 @@ function handleAction(kind: ChatActionKind) {
             保存为成果
           </button>
           <button
-            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2"
+            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none"
             aria-label="转为工作流草稿"
             title="把生成结果转为工作流草稿"
             @click="handleAction('workflow-draft')"
@@ -295,7 +284,7 @@ function handleAction(kind: ChatActionKind) {
             转工作流草稿
           </button>
           <button
-            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2"
+            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none"
             aria-label="保存为灵感"
             title="把这段回复保存到灵感广场"
             @click="handleAction('save-inspiration')"
@@ -304,7 +293,16 @@ function handleAction(kind: ChatActionKind) {
             保存为灵感
           </button>
           <button
-            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2"
+            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none"
+            aria-label="创建 3D 项目草稿"
+            title="基于这条回复创建 3D 工作台项目草稿（仅结构化文本）"
+            @click="handleAction('create-3d-draft')"
+          >
+            <Box class="size-3" />
+            创建 3D 项目草稿
+          </button>
+          <button
+            class="hover:bg-surface-100 text-surface-800/55 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none"
             aria-label="创建智能体变体"
             title="基于这条回复创建个人智能体"
             @click="handleAction('create-agent-variant')"
@@ -327,7 +325,7 @@ function handleAction(kind: ChatActionKind) {
 
         <button
           v-if="canBookmark"
-          class="hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-6 items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-2"
+          class="hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-6 items-center justify-center rounded transition-colors focus-visible:ring-2 focus-visible:outline-none"
           :class="message.bookmarked ? 'text-amber-500' : ''"
           :aria-pressed="message.bookmarked"
           :aria-label="message.bookmarked ? '取消书签' : '添加书签'"
@@ -338,7 +336,7 @@ function handleAction(kind: ChatActionKind) {
         </button>
 
         <button
-          class="hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-6 items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-2"
+          class="hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-6 items-center justify-center rounded transition-colors focus-visible:ring-2 focus-visible:outline-none"
           :aria-label="message.role === 'user' ? '引用回复此消息' : '引用回复此回复'"
           :title="message.role === 'user' ? '引用回复' : '引用回复'"
           @click="handleQuoteReply"
@@ -347,7 +345,7 @@ function handleAction(kind: ChatActionKind) {
         </button>
 
         <button
-          class="hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-6 items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-2"
+          class="hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-6 items-center justify-center rounded transition-colors focus-visible:ring-2 focus-visible:outline-none"
           :aria-label="message.role === 'user' ? '复制消息' : '复制回复'"
           :title="copyFailed ? '复制失败' : copied ? '已复制' : '复制'"
           @click="copyContent"
@@ -357,7 +355,7 @@ function handleAction(kind: ChatActionKind) {
         </button>
 
         <button
-          class="hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-6 items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-2"
+          class="hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-6 items-center justify-center rounded transition-colors focus-visible:ring-2 focus-visible:outline-none"
           aria-label="导出消息 Markdown"
           title="导出消息 Markdown"
           @click="handleExport"
@@ -367,7 +365,7 @@ function handleAction(kind: ChatActionKind) {
 
         <button
           v-if="canEdit"
-          class="hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-6 items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-2"
+          class="hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-6 items-center justify-center rounded transition-colors focus-visible:ring-2 focus-visible:outline-none"
           aria-label="编辑并重新发送"
           title="编辑并重新发送"
           @click="handleEdit"
@@ -377,7 +375,7 @@ function handleAction(kind: ChatActionKind) {
 
         <button
           v-if="canRegenerate"
-          class="hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-6 items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-2"
+          class="hover:bg-surface-100 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-6 items-center justify-center rounded transition-colors focus-visible:ring-2 focus-visible:outline-none"
           :aria-label="hasError ? '重试生成' : '重新生成'"
           :title="hasError ? '重试' : '重新生成'"
           @click="handleRegenerate"
@@ -478,8 +476,7 @@ function handleAction(kind: ChatActionKind) {
   border-radius: 0.35rem;
   padding: 0.12rem 0.4rem;
   font-size: 0.85em;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas,
-    monospace;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 /* 代码块 */
@@ -538,8 +535,7 @@ function handleAction(kind: ChatActionKind) {
 }
 
 .markdown-body :deep(pre code.hljs) {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas,
-    monospace;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   background: transparent;
   padding: 0;
 }

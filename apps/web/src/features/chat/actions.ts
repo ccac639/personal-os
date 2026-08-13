@@ -24,6 +24,7 @@ const FEEDBACK: Record<ChatActionKind, string> = {
   'workflow-draft': '已生成工作流草稿（本地演示）',
   'save-inspiration': '已打开灵感保存表单',
   'create-agent-variant': '已打开智能体变体表单',
+  'create-3d-draft': '已打开 3D 项目草稿表单',
 };
 
 /** 无注入回调时的默认反馈文本（视图层组合 handler 兜底用） */
