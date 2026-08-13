@@ -136,7 +136,7 @@ function toggle() {
     <Transition name="pop">
       <div
         v-if="open"
-        class="border-surface-100 bg-surface-0 absolute right-0 w-[26rem] rounded-xl border shadow-xl"
+        class="border-surface-100 bg-surface-0 absolute right-0 w-[26rem] rounded-xl border shadow-(--shadow-float)"
         :class="panelBelow ? 'top-24' : 'bottom-20'"
       >
         <!-- 头部 -->
@@ -233,11 +233,11 @@ function toggle() {
         拖动我，点我换皮肤 🎨
       </span>
 
-      <!-- 小猫宠物 -->
+      <!-- 小猫宠物（无 drop-shadow 滤镜：避免常驻滤镜与动画叠加的合成开销） -->
       <span class="block size-16" :class="{ 'pet-float': !dragging }">
         <svg
           viewBox="0 0 120 120"
-          class="size-full drop-shadow-lg transition-transform duration-200"
+          class="size-full transition-transform duration-200"
           :class="dragging ? 'scale-110' : 'group-hover:scale-105 group-hover:-rotate-6'"
         >
           <defs>
@@ -387,6 +387,12 @@ function toggle() {
   cursor: grabbing;
 }
 
+/* 静态投影（替代原 SVG drop-shadow 滤镜：常驻滤镜与动画叠加开销大） */
+.pet-button {
+  box-shadow: var(--app-shadow-float, 0 8px 24px -6px rgb(0 0 0 / 0.12));
+  border-radius: 9999px;
+}
+
 /* 眨眼 */
 .pet-eye {
   animation: pet-blink 4.5s ease-in-out infinite;
@@ -412,5 +418,17 @@ function toggle() {
 /* 悬停轻微摇摆 */
 .pet-button:hover .pet-float {
   animation-duration: 2.5s;
+}
+
+/* 减少动效：关闭常驻动画（浮动 / 弹跳 / 眨眼 / 面板过渡），仅保留必要反馈 */
+@media (prefers-reduced-motion: reduce) {
+  .pop-enter-active,
+  .pop-leave-active,
+  .pet-float,
+  .pet-bounce,
+  .pet-eye {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 </style>

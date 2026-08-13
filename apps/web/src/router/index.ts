@@ -11,7 +11,17 @@ import {
   waitForLeave,
 } from '@/features/page-transition';
 
+import { beginTransition, markRouteLoad } from '@/app/perf';
+
 import { routes } from './routes';
+
+/** 当前时间（ms；jsdom / 无 performance 时回退 Date.now） */
+function now(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+/** beforeEach 记录的导航起点（afterEach 计算路由加载耗时，仅开发态使用） */
+let navStart = 0;
 
 const router = createRouter({
   history: createWebHistory(),
@@ -68,6 +78,10 @@ setNavCallbacks({
 });
 
 router.beforeEach(async (to, from) => {
+  // 性能标记：路由加载耗时起点（仅开发态生效）
+  navStart = now();
+  beginTransition();
+
   // 重复导航（含初始导航 from=START_LOCATION 到当前 URL）：直接放行
   if (to.fullPath === from.fullPath) return true;
 
@@ -92,6 +106,7 @@ router.beforeEach(async (to, from) => {
 router.afterEach((to, from) => {
   if (to.fullPath !== from.fullPath) {
     confirmNavigation();
+    markRouteLoad(to.fullPath, now() - navStart);
   }
   const title = typeof to.meta.title === 'string' ? to.meta.title : undefined;
   document.title = title ? `${title} · Personal OS` : 'Personal OS';

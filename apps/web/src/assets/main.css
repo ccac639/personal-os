@@ -13,4 +13,63 @@
   *::-webkit-scrollbar {
     display: none; /* Chrome/Safari */
   }
+
+  /* ------------------------------------------------------------------
+     语义令牌层（app 壳层统一词汇表）
+     - 全部引用 Tailwind @theme 令牌（--color-* / --shadow-*），运行时
+       主题换肤（stores/theme.ts 覆盖 :root 变量）自动联动；
+     - 壳层组件（layouts / components/app-*）只使用这一套语义令牌，
+       不写死固定色值 / 阴影 / 时长；
+     - 动效令牌统一缓动与时长，避免各处节奏不一致。
+     ------------------------------------------------------------------ */
+  :root {
+    /* 表面 */
+    --app-bg: var(--color-page, #f8fafc);
+    --app-surface: var(--color-surface-0, #ffffff);
+    --app-surface-subtle: var(--color-surface-50, #f8fafc);
+    --app-surface-100: var(--color-surface-100, #f1f5f9);
+    --app-border: var(--color-surface-100, #f1f5f9);
+    /* 文字 */
+    --app-text: var(--color-surface-900, #0f172a);
+    --app-text-secondary: var(--color-surface-800, #1e293b);
+    /* 品牌强调 */
+    --app-accent: var(--color-brand-500, #6366f1);
+    --app-accent-strong: var(--color-brand-600, #4f46e5);
+    /* 阴影 */
+    --app-shadow-card: var(--shadow-card, 0 1px 3px 0 rgb(0 0 0 / 0.08));
+    --app-shadow-float: var(--shadow-float, 0 8px 24px -6px rgb(0 0 0 / 0.12));
+    /* 动效 */
+    --app-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --app-duration-fast: 120ms;
+    --app-duration-base: 200ms;
+
+    color-scheme: light;
+  }
+
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+  }
+
+  /* 统一页面容器：业务页面可选的公共外层（壳层路由兜底页使用） */
+  .app-page {
+    width: 100%;
+    max-width: 80rem;
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+    min-height: 100%;
+  }
+}
+
+/* 全局减少动效兜底：仅作用于壳层声明的动画类，不影响业务模块 */
+@media (prefers-reduced-motion: reduce) {
+  .app-page *,
+  .app-skip-link,
+  .app-menu-btn,
+  .app-drawer *,
+  .app-toast-host *,
+  .confirm-dialog * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

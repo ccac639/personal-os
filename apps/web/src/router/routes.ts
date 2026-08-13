@@ -87,4 +87,11 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/settings/index.vue'),
     meta: { title: '设置' },
   },
+  // 兜底 404：可恢复页面（返回首页 / 上一页），避免未知路径白屏
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: () => import('@/pages/not-found.vue'),
+    meta: { title: '页面不存在' },
+  },
 ];

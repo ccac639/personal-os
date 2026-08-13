@@ -289,6 +289,19 @@ function loadFont(): string {
   return FONT_PRESETS[0]!.value;
 }
 
+/** 用户是否开启系统级减少动效（jsdom / 不支持时返回 false） */
+function prefersReducedMotion(): boolean {
+  try {
+    return (
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const useThemeStore = defineStore('theme', () => {
   const background = ref(loadBackground());
   const font = ref(loadFont());
@@ -310,9 +323,14 @@ export const useThemeStore = defineStore('theme', () => {
     set('--color-brand-600', p.brand600);
     set('--color-brand-700', p.brand700);
     root.dataset.theme = p.dark ? 'dark' : 'light';
+    // 原生控件 / 滚动条跟随主题，避免亮暗混合闪烁
+    root.style.colorScheme = p.dark ? 'dark' : 'light';
     document.body.style.backgroundColor = p.page;
     document.body.style.fontFamily = font.value;
-    document.body.style.transition = 'background-color 0.3s ease, color 0.3s ease';
+    // 主题切换过渡：prefers-reduced-motion 下关闭，避免非必要动画
+    document.body.style.transition = prefersReducedMotion()
+      ? 'none'
+      : 'background-color 0.3s ease, color 0.3s ease';
   }
 
   function setBackground(value: string) {
