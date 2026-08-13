@@ -9,11 +9,13 @@
 import {
   Box,
   Camera,
+  Clapperboard,
   ClipboardCopy,
   FileCode2,
   FileDown,
   FileText,
   Lightbulb,
+  Map,
   RotateCcw,
   Sparkles,
   Undo2,
@@ -23,6 +25,7 @@ import { computed, ref } from 'vue';
 import { cameraPresetLabel } from '../service';
 import { useThreeDWorkspaceStore } from '../store';
 import type { HistoryOpKind } from '../types';
+import ThreeDStoryboardPanel from './three-d-storyboard-panel.vue';
 
 const store = useThreeDWorkspaceStore();
 
@@ -30,7 +33,7 @@ const textarea = ref<HTMLTextAreaElement | null>(null);
 
 const tab = computed({
   get: () => store.ui.bottomTab,
-  set: (v: 'history' | 'brief') => {
+  set: (v: 'history' | 'brief' | 'storyboard') => {
     store.ui.bottomTab = v;
   },
 });
@@ -54,6 +57,15 @@ const KIND_ICONS: Record<HistoryOpKind, typeof Box> = {
   brief: FileText,
   undo: Undo2,
   redo: RotateCcw,
+  group: Box,
+  light: Lightbulb,
+  region: Map,
+  shot: Camera,
+  material: Box,
+  environment: Box,
+  pose: Box,
+  template: Box,
+  preset: Box,
 };
 
 function kindIcon(kind: HistoryOpKind) {
@@ -90,7 +102,22 @@ const generating = computed(() => store.generating);
         <Lightbulb class="size-3" />
         生成简报
       </button>
+      <button
+        class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
+        :class="tab === 'storyboard' ? 'bg-surface-100 text-surface-900' : ''"
+        :aria-pressed="tab === 'storyboard'"
+        @click="tab = 'storyboard'"
+      >
+        <Clapperboard class="size-3" />
+        分镜板
+        <span class="text-surface-800/35 text-[10px]">{{
+          store.activeProject?.shots.length ?? 0
+        }}</span>
+      </button>
     </div>
+
+    <!-- 分镜板 -->
+    <ThreeDStoryboardPanel v-if="tab === 'storyboard'" />
 
     <!-- 时间线 -->
     <div v-if="tab === 'history'" class="min-h-0 flex-1 overflow-y-auto px-3 py-2">
@@ -224,6 +251,35 @@ const generating = computed(() => store.generating);
           <p class="text-surface-800/60 text-[10px]">
             {{ cameraPresetLabel(draft.suggestedCamera.preset) }}：{{ draft.suggestedCamera.note }}
           </p>
+          <template v-if="draft.suggestedRegions && draft.suggestedRegions.length > 0">
+            <p class="text-surface-800/50 mt-2 mb-1 text-[10px] font-semibold">建议区域</p>
+            <ul class="mb-2 space-y-0.5">
+              <li
+                v-for="(r, i) in draft.suggestedRegions"
+                :key="i"
+                class="text-surface-800/60 flex items-center gap-1 text-[10px]"
+              >
+                <span
+                  class="size-2 shrink-0 rounded-sm"
+                  :style="{ background: r.color }"
+                  aria-hidden="true"
+                />
+                {{ r.name }}（危险 {{ r.dangerLevel }}/5）：{{ r.purpose }}
+              </li>
+            </ul>
+          </template>
+          <template v-if="draft.suggestedShots && draft.suggestedShots.length > 0">
+            <p class="text-surface-800/50 mt-2 mb-1 text-[10px] font-semibold">建议镜头列表</p>
+            <ul class="space-y-0.5">
+              <li
+                v-for="(s, i) in draft.suggestedShots"
+                :key="i"
+                class="text-surface-800/60 text-[10px]"
+              >
+                {{ s.name }}（{{ cameraPresetLabel(s.preset) }}）：{{ s.note }}
+              </li>
+            </ul>
+          </template>
         </template>
         <p v-else class="text-surface-800/40 py-3 text-center text-[10px]">
           点击「生成简报」获取结构化生成计划（本地 mock）

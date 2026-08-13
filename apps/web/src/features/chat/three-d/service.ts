@@ -28,9 +28,10 @@ const PLAN_BY_TYPE: Record<
   ],
   world: (input) => [
     `解析世界简报：${input.briefText.slice(0, 120)}${input.briefText.length > 120 ? '…' : ''}`,
-    '生成地面网格与区域块布局（占位）',
-    '放置建筑 / 植被 / 路径占位物',
+    '按时代/风格与地点生成地面网格与区域块布局（占位）',
+    '放置建筑 / 植被 / 路径占位物，按危险等级标记区域',
     `按时间 ${input.tags.includes('夜晚') ? '夜晚' : '白昼'} 设置环境光与主光`,
+    `规划镜头：${input.shots.length > 0 ? `复用现有 ${input.shots.length} 个镜头` : '生成街道 / 鸟瞰镜头'}（未来接入真实服务）`,
     '输出鸟瞰 / 街道相机预设（未来接入真实服务）',
   ],
   prop: (input) => [
@@ -67,6 +68,8 @@ export class DeterministicMockGenerationService implements ThreeDGenerationServi
       suggestedAssets,
       suggestedLights,
       suggestedCamera: { preset, note: CAMERA_NOTE[preset] ?? '建议镜头' },
+      suggestedRegions: input.projectType === 'world' ? this.suggestRegions(input) : undefined,
+      suggestedShots: this.suggestShots(input),
       createdAt: NOW(),
       note: GENERATION_SERVICE_NOTE,
     };
@@ -121,6 +124,67 @@ export class DeterministicMockGenerationService implements ThreeDGenerationServi
       return 'birdseye';
     }
     return 'perspective';
+  }
+
+  /** 世界项目：按简报返回建议区域（本地模拟建议，不落盘） */
+  private suggestRegions(
+    input: ThreeDGenerationRequest,
+  ): NonNullable<ThreeDGenerationDraft['suggestedRegions']> {
+    const base: NonNullable<ThreeDGenerationDraft['suggestedRegions']> = [
+      {
+        name: '入口区',
+        purpose: '玩家进入世界的起点，安全区',
+        style: '开阔广场',
+        dangerLevel: 0,
+        color: '#22c55e',
+      },
+      {
+        name: '中心市集',
+        purpose: '主要交互区域，NPC 聚集',
+        style: '热闹街市',
+        dangerLevel: 1,
+        color: '#f59e0b',
+      },
+      {
+        name: '废弃边缘',
+        purpose: '探索 / 战斗区域',
+        style: '破败废墟',
+        dangerLevel: 3,
+        color: '#ef4444',
+      },
+    ];
+    if (input.regions.length > 0)
+      return input.regions.slice(0, 4).map((r) => ({
+        name: r.name,
+        purpose: r.purpose || '既有区域',
+        style: r.style || '未设定风格',
+        dangerLevel: r.dangerLevel,
+        color: r.color,
+      }));
+    return base;
+  }
+
+  /** 建议镜头列表（角色全身/半身/面部/背面/三视图；世界街道/鸟瞰） */
+  private suggestShots(
+    input: ThreeDGenerationRequest,
+  ): NonNullable<ThreeDGenerationDraft['suggestedShots']> {
+    if (input.projectType === 'character') {
+      return [
+        { name: '全身镜头', preset: 'fullbody', note: '检查整体比例' },
+        { name: '半身镜头', preset: 'halfbody', note: '强调上半身细节' },
+        { name: '肖像镜头', preset: 'face', note: '面部特写' },
+        { name: '背面镜头', preset: 'back', note: '检查背面轮廓' },
+        { name: '三视图镜头', preset: 'threeview', note: '多角度轮廓' },
+      ];
+    }
+    if (input.projectType === 'world') {
+      return [
+        { name: '街道镜头', preset: 'street', note: '感受步行氛围' },
+        { name: '鸟瞰镜头', preset: 'birdseye', note: '检查整体布局' },
+        { name: '建筑镜头', preset: 'building', note: '地标建筑视角' },
+      ];
+    }
+    return [{ name: '产品镜头', preset: 'perspective', note: '45° 展示' }];
   }
 }
 

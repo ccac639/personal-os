@@ -2,25 +2,33 @@
 /**
  * Chat 功能域 —— 3D 工作台主页面
  *
- * 顶部工具栏（项目 / 模式 / 相机 / 工具 / 撤销重做 / 保存状态 / 面板开关 /
- * 导入导出 / 返回 Chat）+ 左侧资产面板 + 全宽 Three.js 画布 + 右侧检查器
- * + 底部时间线/简报。窄屏下左右面板变为抽屉，画布始终为主区域。
+ * 顶部工具栏（项目 / 模式 / 相机 / 工具 / 编辑辅助 / 撤销重做 / 保存状态 /
+ * 面板开关 / 导入导出 / 模板 / 返回 Chat）+ 左侧资产面板（资产树 / 预设库 / 区域）
+ * + 全宽 Three.js 画布 + 右侧检查器 / 角色设计板 + 底部时间线 / 简报 / 分镜板。
+ * 窄屏下左右面板与设计板变为抽屉，画布始终为主区域。
  * 快捷键：W/E/R 工具、V 选择、Delete 删除、Escape 取消选择、方向键微调、
- * Ctrl/Cmd+Z 撤销、Ctrl/Cmd+Shift+Z 重做。
+ * Ctrl/Cmd+Z 撤销、Ctrl/Cmd+Shift+Z 重做（输入框内不劫持）。
  */
 import {
   Box,
   Boxes,
   ChevronDown,
   ChevronUp,
+  Eye,
+  EyeOff,
   FileDown,
   FileUp,
+  Focus,
+  Frame,
+  Magnet,
   MessageSquare,
   PanelLeft,
   PanelRight,
   Plus,
   Redo2,
   RotateCcw,
+  Save,
+  Shirt,
   Trash2,
   Undo2,
   X,
@@ -31,10 +39,11 @@ import { useRouter } from 'vue-router';
 import { CAMERA_PRESETS, TOOL_MODES } from '../constants';
 import { cameraPresetLabel } from '../service';
 import { useThreeDWorkspaceStore } from '../store';
-import type { CameraPresetId, ThreeDProjectType, ToolMode } from '../types';
+import type { CameraPresetId, ThreeDCameraState, ThreeDProjectType, ToolMode } from '../types';
 import ThreeDAssetPanel from './three-d-asset-panel.vue';
 import ThreeDBriefPanel from './three-d-brief-panel.vue';
 import ThreeDCanvas from './three-d-canvas.vue';
+import ThreeDCharacterBoard from './three-d-character-board.vue';
 import ThreeDImportDialog from './three-d-import-dialog.vue';
 import ThreeDInspector from './three-d-inspector.vue';
 import ThreeDNewDialog from './three-d-new-dialog.vue';
@@ -46,12 +55,26 @@ const newOpen = ref(false);
 const importOpen = ref(false);
 const mobileLeft = ref(false);
 const mobileRight = ref(false);
+const mobileDesignBoard = ref(false);
 const webglFailed = ref(false);
 const webglRetryKey = ref(0);
 const deleteArmed = ref(false);
+const templateName = ref('');
+const templateSaveOpen = ref(false);
+const focusRequest = ref<{ id: string | null; seq: number }>({ id: null, seq: 0 });
+const rightTab = ref<'inspector' | 'design'>('inspector');
 let deleteArmTimer: ReturnType<typeof setTimeout> | null = null;
 
 const project = computed(() => store.activeProject);
+const selectedIds = computed(() => {
+  const p = project.value;
+  if (!p) return [];
+  return p.selectedAssetIds.length > 0
+    ? p.selectedAssetIds
+    : p.activeAssetId
+      ? [p.activeAssetId]
+      : [];
+});
 
 const saveLabel = computed(() => {
   if (store.saveStatus === 'error') return '保存失败';
@@ -76,7 +99,10 @@ const cameraLabel = computed(() =>
 );
 
 const noticesVisible = computed(
-  () => (store.recovered || store.tooNew) && !store.ui.noticeDismissed && project.value !== null,
+  () =>
+    (store.recovered || store.tooNew || store.migrated) &&
+    !store.ui.noticeDismissed &&
+    project.value !== null,
 );
 
 function selectProject(id: string) {
@@ -87,8 +113,20 @@ function setTool(tool: ToolMode) {
   store.ui.tool = tool;
 }
 
-function onCanvasSelect(assetId: string | null) {
-  store.selectAsset(assetId);
+function onCanvasSelect(assetId: string | null, opts?: { additive?: boolean }) {
+  store.selectAsset(assetId, opts ?? {});
+}
+
+function onCanvasSelectMany(ids: string[], opts?: { additive?: boolean }) {
+  store.selectMany(ids, opts ?? {});
+}
+
+function onCameraChange(state: ThreeDCameraState) {
+  store.setLastCamera(state);
+}
+
+function onShotExit() {
+  store.exitShotMode();
 }
 
 function onWebglFailed() {
@@ -98,6 +136,13 @@ function onWebglFailed() {
 function retryWebgl() {
   webglRetryKey.value += 1;
   webglFailed.value = false;
+}
+
+function requestFocus() {
+  focusRequest.value = {
+    id: project.value?.activeAssetId ?? null,
+    seq: focusRequest.value.seq + 1,
+  };
 }
 
 function armDelete() {
@@ -117,6 +162,17 @@ function confirmDelete() {
 function backToChat() {
   const created = store.createChatDraft();
   if (created) void router.push('/chat');
+}
+
+function confirmSaveTemplate() {
+  store.saveCurrentAsTemplate(templateName.value);
+  templateName.value = '';
+  templateSaveOpen.value = false;
+}
+
+function toggleDesignBoard() {
+  store.ui.designBoardOpen = !store.ui.designBoardOpen;
+  rightTab.value = 'design';
 }
 
 /** 快捷键处理（输入框内不劫持） */
@@ -161,7 +217,9 @@ function onKeydown(e: KeyboardEvent) {
     case 'delete':
     case 'backspace':
       e.preventDefault();
-      if (store.activeProject?.activeAssetId) {
+      if (store.activeProject?.selectedAssetIds.length) {
+        store.batchDeleteSelected();
+      } else if (store.activeProject?.activeAssetId) {
         const id = store.activeProject.activeAssetId;
         const asset = store.activeProject.assets.find((a) => a.id === id);
         if (asset && !asset.locked) store.removeAsset(id);
@@ -224,7 +282,7 @@ const modeOptions: Array<{ key: ThreeDProjectType; label: string }> = [
       <div class="flex min-w-0 items-center gap-1">
         <Boxes class="text-surface-800/50 size-4 shrink-0" />
         <select
-          class="border-surface-100 bg-surface-50 focus:border-brand-500 text-surface-900 max-w-40 rounded-lg border px-2 py-1 text-[11px] font-medium outline-none"
+          class="border-surface-100 bg-surface-50 focus:border-brand-500 text-surface-900 max-w-36 rounded-lg border px-2 py-1 text-[11px] font-medium outline-none"
           :value="store.activeProjectId ?? ''"
           aria-label="选择 3D 项目"
           @change="selectProject(($event.target as HTMLSelectElement).value)"
@@ -290,9 +348,6 @@ const modeOptions: Array<{ key: ThreeDProjectType; label: string }> = [
           :aria-pressed="project.type === opt.key"
           @click="store.switchProjectType(opt.key)"
         >
-          <Box v-if="opt.key === 'character'" class="size-3" />
-          <Boxes v-else-if="opt.key === 'world'" class="size-3" />
-          <Boxes v-else class="size-3" />
           {{ opt.label }}
         </button>
       </div>
@@ -335,6 +390,83 @@ const modeOptions: Array<{ key: ThreeDProjectType; label: string }> = [
         </button>
       </div>
 
+      <!-- 编辑辅助（吸附 / 坐标 / 焦点 / 孤立 / 边界框 / 材质预览） -->
+      <div
+        v-if="project"
+        class="flex shrink-0 items-center gap-0.5"
+        role="group"
+        aria-label="编辑辅助"
+      >
+        <button
+          class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-7 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          :class="{ 'bg-surface-100 text-surface-900': store.ui.snap.grid }"
+          :aria-label="store.ui.snap.grid ? '网格吸附：开' : '网格吸附：关'"
+          :aria-pressed="store.ui.snap.grid"
+          title="网格吸附（方向键微调对齐网格）"
+          @click="store.ui.snap.grid = !store.ui.snap.grid"
+        >
+          <Magnet class="size-3.5" />
+        </button>
+        <button
+          class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-7 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          :class="{ 'bg-surface-100 text-surface-900': store.ui.snap.angle }"
+          :aria-label="store.ui.snap.angle ? '角度吸附：开' : '角度吸附：关'"
+          :aria-pressed="store.ui.snap.angle"
+          title="角度吸附（旋转对齐 15°）"
+          @click="store.ui.snap.angle = !store.ui.snap.angle"
+        >
+          <RotateCcw class="size-3.5" />
+        </button>
+        <button
+          class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-7 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          :class="{ 'bg-surface-100 text-surface-900': store.ui.coordSpace === 'local' }"
+          :aria-label="store.ui.coordSpace === 'local' ? '本地坐标系：开' : '世界坐标系'"
+          :aria-pressed="store.ui.coordSpace === 'local'"
+          :title="store.ui.coordSpace === 'local' ? '本地坐标系（显示本地轴）' : '世界坐标系'"
+          @click="store.ui.coordSpace = store.ui.coordSpace === 'local' ? 'world' : 'local'"
+        >
+          <Frame class="size-3.5" />
+        </button>
+        <button
+          class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-7 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          :class="{ 'bg-surface-100 text-surface-900': store.ui.showBoundingBox }"
+          :aria-label="store.ui.showBoundingBox ? '显示边界框：开' : '显示边界框：关'"
+          :aria-pressed="store.ui.showBoundingBox"
+          title="显示选中资产边界框"
+          @click="store.ui.showBoundingBox = !store.ui.showBoundingBox"
+        >
+          <Box class="size-3.5" />
+        </button>
+        <button
+          class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-7 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          :class="{ 'bg-surface-100 text-surface-900': store.ui.isolation }"
+          :aria-label="store.ui.isolation ? '孤立显示选中项：开' : '孤立显示选中项：关'"
+          :aria-pressed="store.ui.isolation"
+          title="孤立显示选中项（其余隐藏）"
+          @click="store.ui.isolation = !store.ui.isolation"
+        >
+          <EyeOff class="size-3.5" />
+        </button>
+        <button
+          class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-7 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          aria-label="聚焦选中资产"
+          title="聚焦（相机对准选中资产）"
+          @click="requestFocus"
+        >
+          <Focus class="size-3.5" />
+        </button>
+        <button
+          class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-7 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          :class="{ 'bg-surface-100 text-surface-900': store.ui.materialPreview }"
+          :aria-label="store.ui.materialPreview ? '材质参数预览：开' : '材质参数预览：关'"
+          :aria-pressed="store.ui.materialPreview"
+          title="材质受控参数预览"
+          @click="store.ui.materialPreview = !store.ui.materialPreview"
+        >
+          <Eye class="size-3.5" />
+        </button>
+      </div>
+
       <!-- 撤销 / 重做 -->
       <div class="flex shrink-0 items-center gap-0.5">
         <button
@@ -357,11 +489,68 @@ const modeOptions: Array<{ key: ThreeDProjectType; label: string }> = [
         </button>
       </div>
 
+      <!-- 角色设计板（character） -->
+      <button
+        v-if="project?.type === 'character'"
+        class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+        :class="{ 'bg-surface-100 text-surface-900': store.ui.designBoardOpen }"
+        :aria-label="store.ui.designBoardOpen ? '收起角色设计板' : '展开角色设计板'"
+        title="角色设计板"
+        @click="toggleDesignBoard"
+      >
+        <Shirt class="size-3.5" />
+      </button>
+
+      <!-- 保存为模板 -->
+      <div class="relative">
+        <button
+          v-if="project"
+          class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          aria-label="将当前项目保存为个人模板"
+          title="保存为个人模板"
+          @click="templateSaveOpen = !templateSaveOpen"
+        >
+          <Save class="size-3.5" />
+        </button>
+        <div
+          v-if="templateSaveOpen"
+          class="bg-surface-0 shadow-float border-surface-100 absolute top-9 right-0 z-30 w-60 rounded-lg border p-2"
+          role="dialog"
+          aria-label="保存为个人模板"
+        >
+          <label class="text-surface-800/60 mb-1 block text-[10px]">模板名称</label>
+          <input
+            v-model="templateName"
+            class="border-surface-100 bg-surface-50 focus:border-brand-500 text-surface-900 mb-2 w-full rounded-md border px-2 py-1 text-[11px] outline-none"
+            aria-label="模板名称"
+            :placeholder="`${project?.name ?? ''} 模板`"
+          />
+          <div class="flex justify-end gap-1.5">
+            <button
+              class="hover:bg-surface-100 text-surface-800/70 rounded-md px-2 py-1 text-[10px]"
+              @click="templateSaveOpen = false"
+            >
+              取消
+            </button>
+            <button
+              class="hover:bg-brand-600 bg-brand-500 rounded-md px-2 py-1 text-[10px] text-white"
+              aria-label="确认保存模板"
+              @click="confirmSaveTemplate"
+            >
+              保存
+            </button>
+          </div>
+          <p class="text-surface-800/35 mt-1 text-[9px]">
+            快照包含资产 / 区域 / 镜头 / 设定（不共享引用）
+          </p>
+        </div>
+      </div>
+
       <!-- 底部面板开关 -->
       <button
         class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
         :class="{ 'bg-surface-100 text-surface-900': store.ui.bottomOpen }"
-        :aria-label="store.ui.bottomOpen ? '收起时间线/简报面板' : '展开时间线/简报面板'"
+        :aria-label="store.ui.bottomOpen ? '收起底部面板' : '展开底部面板'"
         :title="store.ui.bottomOpen ? '收起底部面板' : '展开底部面板'"
         @click="store.ui.bottomOpen = !store.ui.bottomOpen"
       >
@@ -410,8 +599,8 @@ const modeOptions: Array<{ key: ThreeDProjectType; label: string }> = [
       <!-- 导入导出 -->
       <button
         class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
-        aria-label="导入 3D 项目"
-        title="导入项目 JSON"
+        aria-label="导入 3D 项目或模板"
+        title="导入项目 / 模板 JSON"
         @click="importOpen = true"
       >
         <FileUp class="size-3.5" />
@@ -421,15 +610,6 @@ const modeOptions: Array<{ key: ThreeDProjectType; label: string }> = [
         aria-label="导出全部 3D 项目"
         title="导出全部项目 JSON"
         @click="store.exportAllProjects()"
-      >
-        <FileDown class="size-3.5" />
-      </button>
-      <button
-        v-if="project"
-        class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:ring-2 focus-visible:outline-none"
-        :aria-label="`导出项目 ${project.name}`"
-        title="导出当前项目 JSON"
-        @click="store.exportSingleProject(project.id)"
       >
         <FileDown class="size-3.5" />
       </button>
@@ -456,6 +636,7 @@ const modeOptions: Array<{ key: ThreeDProjectType; label: string }> = [
       <span class="min-w-0 flex-1">
         {{ store.recovered ? '本地数据损坏，已恢复为默认工作区。' : '' }}
         {{ store.tooNew ? '本地数据版本过新，当前按默认工作区展示（原数据未改动）。' : '' }}
+        {{ store.migrated ? '已从 v1 自动迁移到 v2（新功能已启用，原数据保留）。' : '' }}
       </span>
       <button
         class="flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium transition-colors hover:bg-amber-100 dark:hover:bg-amber-500/20"
@@ -488,8 +669,16 @@ const modeOptions: Array<{ key: ThreeDProjectType; label: string }> = [
           :key="`${project.id}-${webglRetryKey}`"
           :project="project"
           :tool="store.ui.tool"
+          :isolation="store.ui.isolation"
+          :show-bounding-box="store.ui.showBoundingBox"
+          :coord-space="store.ui.coordSpace"
+          :selected-ids="selectedIds"
+          :focus-request="focusRequest"
           @select="onCanvasSelect"
+          @select-many="onCanvasSelectMany"
           @webgl-failed="onWebglFailed"
+          @camera-change="onCameraChange"
+          @shot-exit="onShotExit"
         />
 
         <!-- WebGL 降级提示条（画布内仍有重试 UI） -->
@@ -526,9 +715,44 @@ const modeOptions: Array<{ key: ThreeDProjectType; label: string }> = [
         </div>
       </main>
 
-      <!-- 右侧检查器（桌面） -->
+      <!-- 右侧检查器 / 角色设计板（桌面） -->
       <div v-if="store.ui.rightPanelOpen" class="hidden h-full lg:block">
-        <ThreeDInspector />
+        <div v-if="project?.type === 'character'" class="flex h-full flex-col">
+          <div
+            class="border-surface-100 bg-surface-50 flex h-9 shrink-0 items-center gap-0.5 border-b px-1.5"
+          >
+            <button
+              class="flex flex-1 items-center justify-center rounded-md py-1 text-[10px] font-medium transition-colors"
+              :class="
+                rightTab === 'inspector'
+                  ? 'bg-surface-0 text-surface-900 shadow-sm'
+                  : 'text-surface-800/50 hover:text-surface-900'
+              "
+              :aria-pressed="rightTab === 'inspector'"
+              @click="rightTab = 'inspector'"
+            >
+              检查器
+            </button>
+            <button
+              class="flex flex-1 items-center justify-center gap-1 rounded-md py-1 text-[10px] font-medium transition-colors"
+              :class="
+                rightTab === 'design'
+                  ? 'bg-surface-0 text-surface-900 shadow-sm'
+                  : 'text-surface-800/50 hover:text-surface-900'
+              "
+              :aria-pressed="rightTab === 'design'"
+              @click="rightTab = 'design'"
+            >
+              <Shirt class="size-3" />
+              设计板
+            </button>
+          </div>
+          <div class="min-h-0 flex-1">
+            <ThreeDCharacterBoard v-if="rightTab === 'design'" />
+            <ThreeDInspector v-else />
+          </div>
+        </div>
+        <ThreeDInspector v-else />
       </div>
 
       <!-- 移动端抽屉：资产面板 -->
@@ -560,9 +784,28 @@ const modeOptions: Array<{ key: ThreeDProjectType; label: string }> = [
           </button>
         </div>
       </div>
+
+      <!-- 移动端抽屉：角色设计板 -->
+      <div v-if="mobileDesignBoard" class="fixed inset-0 z-40 lg:hidden">
+        <div
+          class="absolute inset-0 bg-black/30"
+          aria-hidden="true"
+          @click="mobileDesignBoard = false"
+        />
+        <div class="absolute top-0 right-0 h-full">
+          <ThreeDCharacterBoard />
+          <button
+            class="bg-surface-0 shadow-float absolute top-2 -left-9 flex size-8 items-center justify-center rounded-lg"
+            aria-label="关闭角色设计板"
+            @click="mobileDesignBoard = false"
+          >
+            <X class="size-4" />
+          </button>
+        </div>
+      </div>
     </div>
 
-    <!-- ============ 底部时间线 / 简报 ============ -->
+    <!-- ============ 底部面板（时间线 / 简报 / 分镜） ============ -->
     <div v-if="store.ui.bottomOpen" class="shrink-0">
       <ThreeDBriefPanel />
     </div>

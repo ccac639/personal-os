@@ -5,30 +5,49 @@
  */
 import type {
   CameraPresetId,
+  EnvironmentPresetId,
+  LightKind,
+  LightSettings,
+  MaterialParams,
   MaterialPresetId,
+  PoseKey,
   PrimitiveKind,
+  ShotStatus,
   ThreeDAsset,
   ThreeDProject,
   ThreeDProjectType,
+  ThreeDRegion,
+  ThreeDShot,
   ThreeDUiState,
   ThumbnailPresetId,
   ToolMode,
   Vec3Tuple,
 } from './types';
 
-/** localStorage 键与版本 */
-export const THREE_D_STORAGE_KEY = 'personal-os.chat.3d.v1';
-export const THREE_D_STORAGE_VERSION = 1;
+/** localStorage 键与版本（v2：新增 group 层级、材质、灯光、角色、区域、镜头、模板） */
+export const THREE_D_STORAGE_KEY = 'personal-os.chat.3d.v2';
+export const THREE_D_STORAGE_VERSION = 2;
+/** v1 存储键（迁移读取源） */
+export const THREE_D_STORAGE_KEY_V1 = 'personal-os.chat.3d.v1';
 
 /** 导出文件版本（交换格式，与存储版本独立） */
 export const THREE_D_EXPORT_VERSION = 1;
 
-/** 合理上限：避免 localStorage 无限增长 */
+/** 合理上限：避免 localStorage 无限增长与性能失控 */
 export const MAX_PROJECTS = 40;
 export const MAX_ASSETS_PER_PROJECT = 150;
 export const MAX_HISTORY_PER_PROJECT = 50;
 export const MAX_UNDO_STEPS = 50;
 export const MAX_TAGS_PER_PROJECT = 12;
+export const MAX_LIGHTS = 12;
+export const MAX_REGIONS = 24;
+export const MAX_SHOTS = 48;
+export const MAX_SELECTION = 60;
+export const MAX_PERSONAL_POSES = 20;
+export const MAX_ASSET_PRESETS = 40;
+export const MAX_TEMPLATES = 24;
+export const MAX_PRESET_ASSETS = 40;
+export const MAX_SHADOW_LIGHTS = 2;
 
 export const DEFAULT_PROJECT_TYPE: ThreeDProjectType = 'character';
 
@@ -66,11 +85,71 @@ export const ASSET_TYPE_LABELS: Record<ThreeDAsset['type'], string> = {
 export const MATERIAL_PRESETS: ReadonlyArray<{ key: MaterialPresetId; label: string }> = [
   { key: 'standard', label: '标准' },
   { key: 'matte', label: '哑光' },
+  { key: 'metal', label: '金属' },
+  { key: 'plastic', label: '塑料' },
+  { key: 'glass', label: '玻璃' },
   { key: 'glossy', label: '光泽' },
   { key: 'emissive', label: '自发光' },
   { key: 'wireframe', label: '线框' },
   { key: 'translucent', label: '半透明' },
+  { key: 'terrain', label: '地形' },
 ];
+
+/** 每种材质预设的受控参数默认值（全部归一化） */
+export const MATERIAL_PRESET_PARAMS: Record<MaterialPresetId, MaterialParams> = {
+  standard: { roughness: 0.6, metalness: 0.12, opacity: 1, emissiveIntensity: 0 },
+  matte: { roughness: 0.96, metalness: 0.02, opacity: 1, emissiveIntensity: 0 },
+  metal: { roughness: 0.35, metalness: 0.9, opacity: 1, emissiveIntensity: 0 },
+  plastic: { roughness: 0.35, metalness: 0.05, opacity: 1, emissiveIntensity: 0 },
+  glass: { roughness: 0.1, metalness: 0, opacity: 0.35, emissiveIntensity: 0 },
+  glossy: { roughness: 0.16, metalness: 0.55, opacity: 1, emissiveIntensity: 0 },
+  emissive: { roughness: 0.5, metalness: 0.1, opacity: 1, emissiveIntensity: 0.75 },
+  wireframe: { roughness: 0.6, metalness: 0.1, opacity: 1, emissiveIntensity: 0 },
+  translucent: { roughness: 0.4, metalness: 0.05, opacity: 0.45, emissiveIntensity: 0 },
+  terrain: { roughness: 1, metalness: 0, opacity: 1, emissiveIntensity: 0 },
+};
+
+/** 材质参数归一化：范围校验 + 规范化 */
+export function normalizeMaterialParams(p: Partial<MaterialParams> | undefined): MaterialParams {
+  const base = MATERIAL_PRESET_PARAMS.standard;
+  const clamp01 = (v: unknown, d: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.min(Math.max(v, 0), 1) : d;
+  const clamp05 = (v: unknown, d: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.min(Math.max(v, 0), 5) : d;
+  return {
+    roughness: clamp01(p?.roughness, base.roughness),
+    metalness: clamp01(p?.metalness, base.metalness),
+    opacity: clamp01(p?.opacity, base.opacity),
+    emissiveIntensity: clamp05(p?.emissiveIntensity, base.emissiveIntensity),
+  };
+}
+
+/** 灯光种类 */
+export const LIGHT_KINDS: ReadonlyArray<{ key: LightKind; label: string; hint: string }> = [
+  { key: 'ambient', label: '环境光', hint: '均匀照亮整体' },
+  { key: 'directional', label: '方向光', hint: '平行光，模拟太阳' },
+  { key: 'point', label: '点光', hint: '向四周扩散' },
+  { key: 'spot', label: '聚光灯', hint: '锥形光束' },
+];
+
+export function defaultLightSettings(kind: LightKind = 'point'): LightSettings {
+  return {
+    kind,
+    enabled: true,
+    intensity: kind === 'ambient' ? 0.6 : 1.5,
+    color: kind === 'ambient' ? '#cbd5e1' : '#ffffff',
+    temperature: null,
+    shadowEnabled: false,
+    range: kind === 'point' ? 12 : kind === 'spot' ? 18 : 0,
+    angle: kind === 'spot' ? 45 : 0,
+    target: [0, 0, 0],
+  };
+}
+
+/** 灯光数量上限（含 sceneSettings 环境基线之外的资产灯光） */
+export function lightLimitReached(assets: ThreeDAsset[]): boolean {
+  return assets.filter((a) => a.type === 'light').length >= MAX_LIGHTS;
+}
 
 export const TOOL_MODES: ReadonlyArray<{ key: ToolMode; label: string; shortcut: string }> = [
   { key: 'select', label: '选择', shortcut: 'V' },
@@ -141,24 +220,41 @@ export function defaultSceneSettings(): ThreeDProject['sceneSettings'] {
 
 export function defaultCharacterSettings(): NonNullable<ThreeDProject['character']> {
   return {
-    bodyProportions: 'average',
-    pose: 'stand',
-    palette: ['#475569', '#94a3b8', '#e2e8f0'],
-    equipment: [],
+    // 档案
+    codename: '',
     role: '',
+    ageGroup: '',
+    bodyType: '',
+    style: '',
+    personalityKeywords: '',
     appearanceKeywords: '',
     clothingKeywords: '',
+    equipmentKeywords: '',
+    // 外观
+    bodyProportions: 'average',
+    headRatio: 1,
+    shoulderWidth: 1,
+    legLength: 1,
+    primaryColor: '#475569',
+    secondaryColor: '#94a3b8',
+    palette: ['#475569', '#94a3b8', '#e2e8f0'],
+    equipment: [],
+    // 姿态
+    pose: 'stand',
+    personalPoses: [],
   };
 }
 
 export function defaultWorldSettings(): NonNullable<ThreeDProject['world']> {
   return {
     eraStyle: '',
+    location: '',
     regionNotes: '',
     atmosphere: '',
     timeOfDay: 'day',
     weather: 'clear',
     scale: 1,
+    shotLanguage: '',
   };
 }
 
@@ -189,6 +285,24 @@ export function defaultUiState(): ThreeDUiState {
     assetQuery: '',
     briefText: '',
     noticeDismissed: false,
+    snap: {
+      grid: false,
+      gridStep: 0.5,
+      angle: false,
+      angleStep: 15,
+      scale: false,
+      scaleStep: 0.25,
+    },
+    coordSpace: 'world',
+    showBoundingBox: false,
+    isolation: false,
+    materialPreview: true,
+    assetPanelTab: 'tree',
+    regionFilter: null,
+    assetLibraryQuery: '',
+    assetLibraryCategory: 'all',
+    designBoardOpen: false,
+    storyboardOpen: false,
   };
 }
 
@@ -196,17 +310,21 @@ export function defaultUiState(): ThreeDUiState {
 export function makeAsset(
   over: Partial<ThreeDAsset> & { name: string; type: ThreeDAsset['type'] },
 ): ThreeDAsset {
-  return {
+  const merged: ThreeDAsset = {
     id: IDENTITY(),
     visible: true,
     locked: false,
     transform: defaultTransform(),
     color: '#64748b',
     materialPreset: 'standard',
+    materialParams: { ...MATERIAL_PRESET_PARAMS.standard },
     tags: [],
     notes: '',
     ...over,
   };
+  // 材质参数归一化（受控字段恒为合法范围）
+  merged.materialParams = normalizeMaterialParams(merged.materialParams ?? over.materialParams);
+  return merged;
 }
 
 /* ---------- 角色 / 世界 / 道具占位几何体 ---------- */
@@ -421,9 +539,15 @@ function baseProject(
     sceneSettings: defaultSceneSettings(),
     assets,
     activeAssetId: null,
+    selectedAssetIds: [],
     cameraPreset: 'perspective',
     thumbnailPreset: 'grid',
     generationBrief: defaultGenerationBrief(),
+    regions: [],
+    shots: [],
+    activeShotId: null,
+    environmentPreset: 'custom',
+    environmentCustomName: '',
     history: [],
     ...(over.type === 'character' ? { character: defaultCharacterSettings() } : {}),
     ...(over.type === 'world' ? { world: defaultWorldSettings() } : {}),
@@ -513,11 +637,39 @@ export const WEATHER_OPTIONS: ReadonlyArray<{ key: string; label: string }> = [
   { key: 'snow', label: '雪天' },
 ];
 
-export const POSE_OPTIONS: ReadonlyArray<{ key: string; label: string }> = [
-  { key: 'stand', label: '站立' },
-  { key: 'walk', label: '行走' },
-  { key: 'idle', label: '待机' },
-  { key: 'action', label: '动态' },
+export const POSE_OPTIONS: ReadonlyArray<{ key: PoseKey; label: string; hint: string }> = [
+  { key: 'stand', label: '站立', hint: '标准站姿' },
+  { key: 'walk', label: '行走', hint: '双脚交替' },
+  { key: 'run', label: '奔跑', hint: '前倾跨步' },
+  { key: 'alert', label: '警戒', hint: '戒备姿态' },
+  { key: 'sit', label: '坐姿', hint: '屈腿坐姿' },
+  { key: 'combat', label: '战斗', hint: '格斗架势' },
+];
+
+export const POSE_KEYS: readonly PoseKey[] = ['stand', 'walk', 'run', 'alert', 'sit', 'combat'];
+
+export const AGE_GROUP_OPTIONS: ReadonlyArray<{ key: string; label: string }> = [
+  { key: '', label: '未设定' },
+  { key: 'child', label: '孩童' },
+  { key: 'teen', label: '少年' },
+  { key: 'young', label: '青年' },
+  { key: 'middle', label: '中年' },
+  { key: 'elder', label: '老年' },
+];
+
+export const BODY_TYPE_OPTIONS: ReadonlyArray<{ key: string; label: string }> = [
+  { key: '', label: '未设定' },
+  { key: 'slim', label: '纤细' },
+  { key: 'average', label: '匀称' },
+  { key: 'muscular', label: '健壮' },
+  { key: 'heavy', label: '魁梧' },
+];
+
+export const SHOT_STATUS_OPTIONS: ReadonlyArray<{ key: ShotStatus; label: string }> = [
+  { key: 'draft', label: '草稿' },
+  { key: 'planned', label: '已规划' },
+  { key: 'ready', label: '就绪' },
+  { key: 'final', label: '定稿' },
 ];
 
 /** 数值输入合法性检查（有限、合理范围） */
@@ -535,4 +687,174 @@ export function isVec3(v: unknown): v is Vec3Tuple {
     v.length === 3 &&
     v.every((n) => isFiniteNumber(n) && Math.abs(n as number) < 1e6)
   );
+}
+
+/* ---------- 世界环境预设（本地程序化，无外链资源） ---------- */
+
+export interface EnvironmentPresetDef {
+  id: EnvironmentPresetId;
+  name: string;
+  description: string;
+  /** 预设应用后写入的完整场景设置 */
+  settings: ThreeDProject['sceneSettings'];
+}
+
+export const ENVIRONMENT_PRESETS: readonly EnvironmentPresetDef[] = [
+  {
+    id: 'studio-day',
+    name: '日间工作室',
+    description: '明亮中性背景，适合角色与道具展示',
+    settings: {
+      background: '#e2e8f0',
+      groundColor: '#d6d3d1',
+      groundVisible: true,
+      gridVisible: true,
+      axesVisible: false,
+      ambientLight: { enabled: true, color: '#e8e4dc', intensity: 0.65 },
+      mainLight: {
+        enabled: true,
+        color: '#ffffff',
+        intensity: 1.9,
+        position: [4, 8, 6],
+      },
+      fog: { enabled: false, color: '#e2e8f0', near: 24, far: 60 },
+      cameraPreset: 'perspective',
+    },
+  },
+  {
+    id: 'night-city',
+    name: '夜间城市',
+    description: '深蓝夜空与冷色环境光，适合世界夜景',
+    settings: {
+      background: '#0b1120',
+      groundColor: '#1e293b',
+      groundVisible: true,
+      gridVisible: true,
+      axesVisible: false,
+      ambientLight: { enabled: true, color: '#334155', intensity: 0.45 },
+      mainLight: {
+        enabled: true,
+        color: '#93c5fd',
+        intensity: 0.9,
+        position: [-6, 10, -4],
+      },
+      fog: { enabled: true, color: '#0b1120', near: 18, far: 70 },
+      cameraPreset: 'birdseye',
+    },
+  },
+  {
+    id: 'foggy-forest',
+    name: '薄雾森林',
+    description: '绿色基调与浓雾，适合自然场景',
+    settings: {
+      background: '#3f4a3a',
+      groundColor: '#365314',
+      groundVisible: true,
+      gridVisible: false,
+      axesVisible: false,
+      ambientLight: { enabled: true, color: '#a3e635', intensity: 0.35 },
+      mainLight: {
+        enabled: true,
+        color: '#d9f99d',
+        intensity: 0.8,
+        position: [5, 6, 5],
+      },
+      fog: { enabled: true, color: '#4a5a43', near: 6, far: 34 },
+      cameraPreset: 'ground',
+    },
+  },
+  {
+    id: 'desert-dusk',
+    name: '沙地黄昏',
+    description: '暖橙色调与长阴影，适合荒漠氛围',
+    settings: {
+      background: '#7c2d12',
+      groundColor: '#c2703d',
+      groundVisible: true,
+      gridVisible: false,
+      axesVisible: false,
+      ambientLight: { enabled: true, color: '#fdba74', intensity: 0.5 },
+      mainLight: {
+        enabled: true,
+        color: '#fed7aa',
+        intensity: 1.2,
+        position: [-8, 4, 2],
+      },
+      fog: { enabled: false, color: '#7c2d12', near: 24, far: 60 },
+      cameraPreset: 'perspective',
+    },
+  },
+  {
+    id: 'showcase',
+    name: '纯色展示台',
+    description: '无网格无雾的干净展示环境',
+    settings: {
+      background: '#f8fafc',
+      groundColor: '#e2e8f0',
+      groundVisible: true,
+      gridVisible: false,
+      axesVisible: false,
+      ambientLight: { enabled: true, color: '#ffffff', intensity: 0.7 },
+      mainLight: {
+        enabled: true,
+        color: '#ffffff',
+        intensity: 2.1,
+        position: [3, 6, 5],
+      },
+      fog: { enabled: false, color: '#f8fafc', near: 24, far: 60 },
+      cameraPreset: 'perspective',
+    },
+  },
+];
+
+export function environmentPresetById(
+  id: EnvironmentPresetId | 'custom' | undefined,
+): EnvironmentPresetDef | undefined {
+  if (!id || id === 'custom') return undefined;
+  return ENVIRONMENT_PRESETS.find((e) => e.id === id);
+}
+
+/* ---------- 区域 / 镜头默认值 ---------- */
+
+export function defaultRegion(over: Partial<ThreeDRegion> = {}): ThreeDRegion {
+  return {
+    id: IDENTITY(),
+    name: '新区域',
+    purpose: '',
+    style: '',
+    dangerLevel: 0,
+    description: '',
+    color: '#3b82f6',
+    assetIds: [],
+    center: [0, 0.5, 0],
+    size: [4, 1, 4],
+    ...over,
+  };
+}
+
+export function defaultShot(over: Partial<ThreeDShot> = {}): ThreeDShot {
+  return {
+    id: IDENTITY(),
+    name: '新镜头',
+    position: [4.5, 3.5, 6],
+    target: [0, 0.6, 0],
+    fov: 50,
+    regionId: null,
+    notes: '',
+    status: 'draft',
+    favorite: false,
+    at: NOW(),
+    ...over,
+  };
+}
+
+/* ---------- 姿态标签 ---------- */
+
+export function poseLabel(pose: PoseKey): string {
+  return POSE_OPTIONS.find((p) => p.key === pose)?.label ?? pose;
+}
+
+/** 是否合法姿态键 */
+export function isPoseKey(v: unknown): v is PoseKey {
+  return typeof v === 'string' && (POSE_KEYS as readonly string[]).includes(v);
 }

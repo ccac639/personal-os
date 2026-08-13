@@ -4,12 +4,21 @@
  * 从结构化项目数据构建场景图：只使用基础几何体与程序化材质，
  * 不使用外链模型 / 贴图 / 图片。提供完整的资源清理（几何体 / 材质 / 纹理）。
  * 本模块只被 canvas 组件引用；领域层与 store 不依赖 three。
+ *
+ * v2 新增：
+ * - 材质预设扩展（金属/塑料/玻璃/地形）+ 受控参数（粗糙度/金属度/透明度/发光强度）
+ * - light 资产渲染为真实灯光（环境光/方向光/点光/聚光灯）+ 编辑辅助标记
+ * - 世界区域半透明区块与边界线（不遮挡主编辑、不参与拾取）
+ * - 角色姿态偏移（确定性旋转/位移，无需骨骼）
+ * - 多选高亮 / 材质预览
  */
 import * as THREE from 'three';
 
+import { applyPoseToTransform, poseOffsets } from '../poses';
 import type {
   CameraPresetId,
   MaterialPresetId,
+  PoseKey,
   ThreeDAsset,
   ThreeDProject,
   ThreeDSceneSettings,
@@ -20,11 +29,29 @@ export const ASSET_ID_KEY = 'assetId';
 export const ASSET_NAME_KEY = 'assetName';
 /** 选中高亮（克制：不闪烁，仅提高 emissive） */
 const HIGHLIGHT_COLOR = new THREE.Color('#f59e0b');
+/** 阴影灯上限（性能） */
+const MAX_SHADOW_LIGHTS = 2;
+
+/** 计算允许投射阴影的灯光资产 id 集合（前 N 盏启用的阴影灯） */
+export function shadowLightIds(project: ThreeDProject): Set<string> {
+  const ids = new Set<string>();
+  let count = 0;
+  for (const a of project.assets) {
+    if (a.type === 'light' && a.light?.enabled && a.light.shadowEnabled) {
+      if (count >= MAX_SHADOW_LIGHTS) continue;
+      ids.add(a.id);
+      count += 1;
+    }
+  }
+  return ids;
+}
 
 export interface BuiltScene {
   scene: THREE.Scene;
   /** 顶层资产 group（key=资产 id） */
   groups: Map<string, THREE.Group>;
+  /** 灯光资产 → 真实灯光对象 */
+  lightObjects: Map<string, THREE.Light>;
   /** 主光（方向光） */
   mainLight: THREE.DirectionalLight;
   ambientLight: THREE.AmbientLight;
@@ -39,8 +66,10 @@ export function buildScene(project: ThreeDProject): BuiltScene {
   const groups = new Map<string, THREE.Group>();
   const disposables: Array<{ dispose: () => void }> = [];
   const materials: THREE.Material[] = [];
+  const lightObjects = new Map<string, THREE.Light>();
 
   const settings = project.sceneSettings;
+  const pose = (project.type === 'character' ? project.character?.pose : undefined) ?? 'stand';
 
   // 背景与雾
   scene.background = new THREE.Color(settings.background);
@@ -108,15 +137,57 @@ export function buildScene(project: ThreeDProject): BuiltScene {
     scene.add(axes);
   }
 
+  // 世界区域：半透明区块 + 边界线（不遮挡主编辑）
+  for (const region of project.regions) {
+    const boxMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(region.color),
+      transparent: true,
+      opacity: 0.14,
+      depthWrite: false,
+    });
+    materials.push(boxMat);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), boxMat);
+    box.position.set(region.center[0], region.center[1], region.center[2]);
+    box.scale.set(region.size[0], region.size[1], region.size[2]);
+    box.renderOrder = 5;
+    box.userData.regionId = region.id;
+    // 区域不参与拾取
+    box.raycast = () => {};
+    disposables.push(box.geometry);
+    scene.add(box);
+
+    const edgeMat = new THREE.LineBasicMaterial({
+      color: new THREE.Color(region.color),
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+    });
+    materials.push(edgeMat);
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+      edgeMat,
+    );
+    edges.position.copy(box.position);
+    edges.scale.copy(box.scale);
+    edges.renderOrder = 6;
+    edges.userData.regionId = region.id;
+    edges.raycast = () => {};
+    disposables.push(edges.geometry);
+    scene.add(edges);
+  }
+
   // 资产 → 场景图
   const childrenOf = (parentId: string | null) =>
     project.assets.filter((a) => (a.parentId ?? null) === parentId);
 
   function buildAsset(asset: ThreeDAsset): THREE.Object3D {
-    const node = buildNode(asset, materials, disposables);
+    const node = buildNode(asset, materials, disposables, lightObjects);
     node.userData[ASSET_ID_KEY] = asset.id;
     node.userData[ASSET_NAME_KEY] = asset.name;
     applyTransform(node, asset);
+    if (asset.type === 'character-placeholder') {
+      applyPoseOffset(node, asset, pose);
+    }
     node.visible = asset.visible;
     return node;
   }
@@ -138,9 +209,16 @@ export function buildScene(project: ThreeDProject): BuiltScene {
     groups.set(id, node as THREE.Group);
   }
 
+  // 阴影上限：仅前 N 盏启用的阴影灯投射（性能保护）
+  const shadowIds = shadowLightIds(project);
+  for (const [id, light] of lightObjects) {
+    if (light.castShadow !== undefined) light.castShadow = shadowIds.has(id);
+  }
+
   return {
     scene,
     groups,
+    lightObjects,
     mainLight,
     ambientLight,
     grid,
@@ -161,18 +239,13 @@ function buildNode(
   asset: ThreeDAsset,
   materials: THREE.Material[],
   disposables: Array<{ dispose: () => void }>,
+  lightObjects: Map<string, THREE.Light>,
 ): THREE.Object3D {
   if (asset.type === 'group') {
     return new THREE.Group();
   }
   if (asset.type === 'light') {
-    // 灯光标记：不自发光照（场景灯光由 sceneSettings 控制），仅视觉占位
-    const marker = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.18),
-      makeMaterial(asset, materials),
-    );
-    disposables.push(marker.geometry);
-    return marker;
+    return buildLightNode(asset, materials, disposables, lightObjects);
   }
   if (asset.type === 'camera-marker') {
     const marker = new THREE.Mesh(
@@ -198,6 +271,86 @@ function buildNode(
     return buildWorldPart(asset, materials, disposables);
   }
   return new THREE.Group();
+}
+
+/** 灯光资产：真实灯光 + 编辑辅助标记（方向光/聚光灯带方向指示） */
+function buildLightNode(
+  asset: ThreeDAsset,
+  materials: THREE.Material[],
+  disposables: Array<{ dispose: () => void }>,
+  lightObjects: Map<string, THREE.Light>,
+): THREE.Object3D {
+  const light = asset.light ?? {
+    kind: 'point',
+    enabled: true,
+    intensity: 1,
+    color: '#ffffff',
+    temperature: null,
+    shadowEnabled: false,
+    range: 12,
+    angle: 45,
+    target: [0, 0, 0],
+  };
+  const group = new THREE.Group();
+  let threeLight: THREE.Light;
+  if (light.kind === 'ambient') {
+    threeLight = new THREE.AmbientLight(new THREE.Color(light.color), light.intensity);
+  } else if (light.kind === 'directional') {
+    const dir = new THREE.DirectionalLight(new THREE.Color(light.color), light.intensity);
+    dir.target.position.set(light.target[0], light.target[1], light.target[2]);
+    dir.castShadow = light.shadowEnabled;
+    group.add(dir.target);
+    threeLight = dir;
+  } else if (light.kind === 'spot') {
+    const spot = new THREE.SpotLight(new THREE.Color(light.color), light.intensity);
+    spot.angle = (light.angle * Math.PI) / 180;
+    spot.distance = light.range > 0 ? light.range : 0;
+    spot.target.position.set(light.target[0], light.target[1], light.target[2]);
+    spot.castShadow = light.shadowEnabled;
+    group.add(spot.target);
+    threeLight = spot;
+  } else {
+    const point = new THREE.PointLight(new THREE.Color(light.color), light.intensity);
+    point.distance = light.range > 0 ? light.range : 0;
+    point.castShadow = light.shadowEnabled;
+    threeLight = point;
+  }
+  threeLight.visible = light.enabled;
+  lightObjects.set(asset.id, threeLight);
+  group.userData.lightObject = threeLight;
+  group.add(threeLight);
+
+  // 标记：八面体（灯光种类颜色）+ 方向指示线
+  const markerMat = makeMaterial({ ...asset, materialPreset: 'emissive' }, materials);
+  const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.16), markerMat);
+  group.add(marker);
+  disposables.push(marker.geometry);
+
+  if (light.kind === 'directional' || light.kind === 'spot') {
+    const lineMat = new THREE.LineBasicMaterial({
+      color: new THREE.Color(light.color),
+      transparent: true,
+      opacity: 0.7,
+      depthWrite: false,
+    });
+    materials.push(lineMat);
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(
+        light.target[0] - asset.transform.position[0],
+        light.target[1] - asset.transform.position[1],
+        light.target[2] - asset.transform.position[2],
+      )
+        .normalize()
+        .multiplyScalar(0.9),
+    ]);
+    const line = new THREE.Line(lineGeo, lineMat);
+    line.userData[ASSET_ID_KEY] = asset.id;
+    line.raycast = () => {};
+    disposables.push(lineGeo);
+    group.add(line);
+  }
+  return group;
 }
 
 /** 角色占位部件：按名称启发式选择基础形体 */
@@ -269,43 +422,86 @@ function primitiveGeometry(kind: NonNullable<ThreeDAsset['primitiveKind']>): THR
   }
 }
 
-/** 材质预设 → 程序化材质（每个资产独立实例，便于高亮与销毁） */
+/** 材质预设 → 程序化材质（每个资产独立实例，便于高亮与销毁；受控参数来自 materialParams） */
 function makeMaterial(asset: ThreeDAsset, materials: THREE.Material[]): THREE.Material {
   const color = new THREE.Color(asset.color);
+  const p = asset.materialParams ?? {
+    roughness: 0.6,
+    metalness: 0.12,
+    opacity: 1,
+    emissiveIntensity: 0,
+  };
+  const opts = {
+    color,
+    roughness: clamp01(p.roughness),
+    metalness: clamp01(p.metalness),
+    transparent: p.opacity < 1,
+    opacity: clamp01(p.opacity),
+  };
   let material: THREE.Material;
   switch (asset.materialPreset) {
     case 'matte':
-      material = new THREE.MeshStandardMaterial({ color, roughness: 0.96, metalness: 0.02 });
+      material = new THREE.MeshStandardMaterial({ ...opts, roughness: 0.96, metalness: 0.02 });
+      break;
+    case 'metal':
+      material = new THREE.MeshStandardMaterial({ ...opts, roughness: 0.35, metalness: 0.9 });
+      break;
+    case 'plastic':
+      material = new THREE.MeshStandardMaterial({ ...opts, roughness: 0.35, metalness: 0.05 });
+      break;
+    case 'glass':
+      material = new THREE.MeshStandardMaterial({
+        ...opts,
+        roughness: 0.1,
+        metalness: 0,
+        transparent: true,
+        opacity: clamp01(p.opacity) === 1 ? 0.35 : clamp01(p.opacity),
+      });
       break;
     case 'glossy':
-      material = new THREE.MeshStandardMaterial({ color, roughness: 0.16, metalness: 0.55 });
+      material = new THREE.MeshStandardMaterial({ ...opts, roughness: 0.16, metalness: 0.55 });
       break;
     case 'emissive':
       material = new THREE.MeshStandardMaterial({
-        color,
+        ...opts,
         roughness: 0.5,
         metalness: 0.1,
         emissive: color,
-        emissiveIntensity: 0.75,
+        emissiveIntensity: clamp05(p.emissiveIntensity) > 0 ? clamp05(p.emissiveIntensity) : 0.75,
       });
       break;
     case 'wireframe':
-      material = new THREE.MeshBasicMaterial({ color, wireframe: true });
+      material = new THREE.MeshBasicMaterial({
+        color,
+        wireframe: true,
+        transparent: true,
+        opacity: clamp01(p.opacity),
+      });
       break;
     case 'translucent':
       material = new THREE.MeshStandardMaterial({
-        color,
+        ...opts,
         roughness: 0.4,
         metalness: 0.05,
         transparent: true,
-        opacity: 0.45,
+        opacity: clamp01(p.opacity) === 1 ? 0.45 : clamp01(p.opacity),
       });
       break;
+    case 'terrain':
+      material = new THREE.MeshStandardMaterial({ ...opts, roughness: 1, metalness: 0 });
+      break;
     default:
-      material = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.12 });
+      material = new THREE.MeshStandardMaterial({ ...opts, roughness: 0.6, metalness: 0.12 });
   }
   materials.push(material);
   return material;
+}
+
+function clamp01(v: number): number {
+  return Math.min(Math.max(v, 0), 1);
+}
+function clamp05(v: number): number {
+  return Math.min(Math.max(v, 0), 5);
 }
 
 function applyTransform(node: THREE.Object3D, asset: ThreeDAsset) {
@@ -322,10 +518,40 @@ function applyTransform(node: THREE.Object3D, asset: ThreeDAsset) {
   node.scale.set(asset.transform.scale[0], asset.transform.scale[1], asset.transform.scale[2]);
 }
 
-/** 同步单资产到场景节点（变换 / 可见性 / 材质 / 选中态） */
-export function syncAssetNode(node: THREE.Object3D, asset: ThreeDAsset, selected: boolean) {
+/** 角色部位叠加姿态偏移（确定性旋转 / 位移） */
+function applyPoseOffset(node: THREE.Object3D, asset: ThreeDAsset, pose: PoseKey) {
+  const off = poseOffsets(pose, asset.name);
+  if (
+    off.position[0] === 0 &&
+    off.position[1] === 0 &&
+    off.position[2] === 0 &&
+    off.rotation[0] === 0 &&
+    off.rotation[1] === 0 &&
+    off.rotation[2] === 0
+  ) {
+    return;
+  }
+  node.position.add(new THREE.Vector3(off.position[0], off.position[1], off.position[2]));
+  node.rotation.x += (off.rotation[0] * Math.PI) / 180;
+  node.rotation.y += (off.rotation[1] * Math.PI) / 180;
+  node.rotation.z += (off.rotation[2] * Math.PI) / 180;
+}
+
+/** 同步单资产到场景节点（变换 / 可见性 / 材质 / 灯光 / 姿态 / 选中态） */
+export function syncAssetNode(
+  node: THREE.Object3D,
+  asset: ThreeDAsset,
+  selected: boolean,
+  pose: PoseKey = 'stand',
+) {
   applyTransform(node, asset);
+  if (asset.type === 'character-placeholder') {
+    applyPoseOffset(node, asset, pose);
+  }
   node.visible = asset.visible;
+  if (asset.type === 'light' && node.userData.lightObject instanceof THREE.Light) {
+    syncLightObject(node.userData.lightObject, asset);
+  }
   node.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!mesh.isMesh || !mesh.material) return;
@@ -333,12 +559,22 @@ export function syncAssetNode(node: THREE.Object3D, asset: ThreeDAsset, selected
     if (!material) return;
     if (material instanceof THREE.MeshStandardMaterial) {
       material.color.set(asset.color);
+      const p = asset.materialParams;
+      if (p) {
+        material.roughness = clamp01(p.roughness);
+        material.metalness = clamp01(p.metalness);
+        material.transparent =
+          p.opacity < 1 ||
+          asset.materialPreset === 'glass' ||
+          asset.materialPreset === 'translucent';
+        material.opacity = clamp01(p.opacity);
+      }
       if (selected) {
         material.emissive.copy(HIGHLIGHT_COLOR);
         material.emissiveIntensity = 0.32;
       } else if (asset.materialPreset === 'emissive') {
         material.emissive.copy(new THREE.Color(asset.color));
-        material.emissiveIntensity = 0.75;
+        material.emissiveIntensity = clamp05(asset.materialParams?.emissiveIntensity ?? 0.75);
       } else {
         material.emissive.setHex(0x000000);
         material.emissiveIntensity = 1;
@@ -349,7 +585,29 @@ export function syncAssetNode(node: THREE.Object3D, asset: ThreeDAsset, selected
   });
 }
 
-/** 选中高亮应用到整个资产子树 */
+/** 灯光对象参数同步（颜色 / 强度 / 范围 / 角度 / 启用） */
+function syncLightObject(light: THREE.Light, asset: ThreeDAsset) {
+  const cfg = asset.light;
+  if (!cfg) return;
+  light.visible = cfg.enabled;
+  light.color.set(cfg.color);
+  if (light instanceof THREE.AmbientLight) {
+    light.intensity = cfg.intensity;
+    return;
+  }
+  light.intensity = cfg.intensity;
+  if (light instanceof THREE.PointLight) {
+    light.distance = cfg.range > 0 ? cfg.range : 0;
+  } else if (light instanceof THREE.SpotLight) {
+    light.angle = (cfg.angle * Math.PI) / 180;
+    light.distance = cfg.range > 0 ? cfg.range : 0;
+    light.target.position.set(cfg.target[0], cfg.target[1], cfg.target[2]);
+  } else if (light instanceof THREE.DirectionalLight) {
+    light.target.position.set(cfg.target[0], cfg.target[1], cfg.target[2]);
+  }
+}
+
+/** 选中高亮应用到整个资产子树（多选：selected 集合包含即高亮） */
 export function applySelection(node: THREE.Object3D, selected: boolean, baseAsset: ThreeDAsset) {
   syncAssetNode(node, baseAsset, selected);
 }
@@ -440,6 +698,9 @@ function shade(hex: string, factor: number): string {
   c.multiplyScalar(factor);
   return `#${c.getHexString()}`;
 }
+
+/** 供测试 / 工具使用：姿态偏移叠加 */
+export { applyPoseToTransform, poseOffsets };
 
 /** 构建时使用的材质预设（类型引用，便于测试断言） */
 export type { MaterialPresetId };
