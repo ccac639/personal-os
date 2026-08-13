@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { BookOpen, Download, FileText, Lightbulb, Plus, Save, Search, Trash2 } from '@lucide/vue';
+import {
+  BookOpen,
+  Download,
+  Ellipsis,
+  FileText,
+  Lightbulb,
+  Plus,
+  Save,
+  Search,
+  Trash2,
+} from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 
 import { useProjectStore } from './store';
@@ -185,6 +195,9 @@ function toggleOpen(id: string) {
   opened.value = s;
 }
 
+/** 更多菜单（导出等低频操作收纳） */
+const moreOpen = ref(false);
+
 const typeBtnMeta = {
   decision: { label: '决策', cls: 'bg-violet-500/10 text-violet-600' },
   issue: { label: '问题', cls: 'bg-amber-500/10 text-amber-700' },
@@ -225,22 +238,44 @@ watch(
           <button
             v-if="!props.readonly"
             type="button"
-            class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
-            :disabled="knowledgeStore.entriesOf(projectId).length === 0"
-            @click="exportMd"
-          >
-            <Download class="size-3.5" />
-            导出 Markdown
-          </button>
-          <button
-            v-if="!props.readonly"
-            type="button"
             class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
             @click="openNew()"
           >
             <Plus class="size-3.5" />
             新建
           </button>
+          <div class="relative">
+            <button
+              type="button"
+              class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors"
+              aria-label="知识更多操作"
+              title="更多操作"
+              @click="moreOpen = !moreOpen"
+            >
+              <Ellipsis class="size-4" />
+            </button>
+            <div
+              v-if="moreOpen"
+              class="border-surface-100 bg-surface-0 shadow-float absolute top-10 right-0 z-20 w-40 overflow-hidden rounded-xl border py-1"
+              role="menu"
+              aria-label="知识更多操作"
+            >
+              <button
+                v-if="!props.readonly"
+                type="button"
+                role="menuitem"
+                class="text-surface-800/80 hover:bg-surface-50 flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
+                :disabled="knowledgeStore.entriesOf(projectId).length === 0"
+                @click="
+                  exportMd();
+                  moreOpen = false;
+                "
+              >
+                <Download class="size-3.5" />
+                导出 Markdown
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 

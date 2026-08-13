@@ -158,9 +158,9 @@ function addToFocus() {
 <template>
   <Transition
     enter-active-class="transition duration-200 ease-out"
-    enter-from-class="translate-x-full opacity-0"
+    enter-from-class="translate-y-full opacity-0 md:translate-x-full md:translate-y-0"
     leave-active-class="transition duration-150 ease-in"
-    leave-to-class="translate-x-full opacity-0"
+    leave-to-class="translate-y-full opacity-0 md:translate-x-full md:translate-y-0"
   >
     <div
       v-if="open"
@@ -171,7 +171,7 @@ function addToFocus() {
     >
       <div class="bg-surface-900/30 absolute inset-0 backdrop-blur-[1px]" @click="emit('close')" />
       <aside
-        class="border-surface-100 bg-surface-0 shadow-float absolute top-0 right-0 flex h-full w-full max-w-md flex-col border-l"
+        class="border-surface-100 bg-surface-0 shadow-float absolute inset-x-0 bottom-0 flex max-h-[85vh] w-full flex-col rounded-t-2xl border md:inset-y-0 md:right-0 md:h-full md:max-h-none md:max-w-md md:rounded-none md:border-l"
       >
         <!-- 空态：任务不存在 -->
         <div v-if="!task" class="flex flex-1 flex-col items-center justify-center p-8 text-center">

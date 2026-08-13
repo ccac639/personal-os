@@ -25,6 +25,7 @@ import type {
   RunningFocus,
   SubTask,
   TaskDateFilter,
+  TaskDensity,
   TaskEvent,
   TaskEventType,
   TaskItem,
@@ -45,12 +46,15 @@ export const TASK_UI_DEFAULTS = {
   /** 看板 / 日期视图 */
   viewMode: 'kanban' as 'kanban' | 'date',
   quickFilter: 'all' as TaskQuickFilter,
+  /** 卡片密度：dense=高密度（默认，隐藏低频字段）；comfortable=常规 */
+  density: 'dense' as TaskDensity,
 };
 
 export interface TaskUiPrefs {
   dateFilter: TaskDateFilter;
   viewMode: 'kanban' | 'date';
   quickFilter: TaskQuickFilter;
+  density: TaskDensity;
 }
 
 /** 任务 v3 信封数据（v3 内向后兼容扩展：估时 / DoD / 每日计划） */
@@ -354,6 +358,7 @@ export function normalizeUiPrefs(raw: unknown): TaskUiPrefs {
     quickFilter: str(raw.quickFilter)
       ? (raw.quickFilter as TaskQuickFilter)
       : TASK_UI_DEFAULTS.quickFilter,
+    density: raw.density === 'comfortable' ? 'comfortable' : TASK_UI_DEFAULTS.density,
   };
 }
 

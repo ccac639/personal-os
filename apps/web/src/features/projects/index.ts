@@ -70,8 +70,18 @@ export {
   buildRetroTemplate,
   buildRetroMarkdown,
   buildSnapshot,
+  projectHealthTone,
+  PROJECT_HEALTH_META,
+  buildProjectCardMetrics,
 } from './health';
-export type { HealthRange, RiskRule, RiskLevel, RiskRuleInput } from './health';
+export type {
+  HealthRange,
+  RiskRule,
+  RiskLevel,
+  RiskRuleInput,
+  ProjectCardMetrics,
+  ProjectCardMetricsInput,
+} from './health';
 export {
   buildThroughput,
   buildPriorities,

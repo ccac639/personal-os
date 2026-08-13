@@ -14,6 +14,8 @@ const props = defineProps<{
   selected?: boolean;
   /** 启用多选勾选（批量模式） */
   selectable?: boolean;
+  /** 高密度模式（默认）：隐藏描述 / 标签 / 专注时长 / 子任务进度等低频字段 */
+  dense?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -84,13 +86,16 @@ const focusMinutes = computed(() => store.taskFocusMinutes(props.task.id));
       </div>
     </div>
 
-    <p v-if="task.description" class="text-surface-800/55 mt-1 line-clamp-2 text-xs leading-5">
+    <p
+      v-if="!dense && task.description"
+      class="text-surface-800/55 mt-1 line-clamp-2 text-xs leading-5"
+    >
       {{ task.description }}
     </p>
 
-    <!-- 子任务进度（不改变父任务所属列） -->
+    <!-- 子任务进度（不改变父任务所属列；高密度下隐藏） -->
     <div
-      v-if="sub.total > 0"
+      v-if="!dense && sub.total > 0"
       class="mt-2 flex items-center gap-1.5"
       :title="`子任务 ${sub.done}/${sub.total}`"
     >
@@ -103,6 +108,13 @@ const focusMinutes = computed(() => store.taskFocusMinutes(props.task.id));
       </div>
       <span class="text-surface-800/50 shrink-0 text-[10px]"> {{ sub.done }}/{{ sub.total }} </span>
     </div>
+    <span
+      v-else-if="dense && sub.total > 0"
+      class="text-surface-800/50 shrink-0 text-[10px]"
+      :title="`子任务 ${sub.done}/${sub.total}`"
+    >
+      {{ sub.done }}/{{ sub.total }}
+    </span>
 
     <div class="mt-2 flex flex-wrap items-center gap-1.5">
       <!-- 受阻标记（克制：仅图标 + 悬停提示） -->
@@ -119,13 +131,15 @@ const focusMinutes = computed(() => store.taskFocusMinutes(props.task.id));
       >
         {{ priority.label }}
       </span>
-      <span
-        v-for="tag in task.tags"
-        :key="tag"
-        class="border-surface-100 bg-surface-50 text-surface-800/60 rounded border px-1.5 py-0.5 text-xs"
-      >
-        {{ tag }}
-      </span>
+      <template v-if="!dense">
+        <span
+          v-for="tag in task.tags"
+          :key="tag"
+          class="border-surface-100 bg-surface-50 text-surface-800/60 rounded border px-1.5 py-0.5 text-xs"
+        >
+          {{ tag }}
+        </span>
+      </template>
       <span
         v-if="isTodayFocus"
         class="text-brand-600 bg-brand-500/10 flex items-center rounded px-1.5 py-0.5 text-xs"
@@ -134,7 +148,7 @@ const focusMinutes = computed(() => store.taskFocusMinutes(props.task.id));
         <Timer class="size-3" />
       </span>
       <span
-        v-if="focusMinutes > 0"
+        v-if="!dense && focusMinutes > 0"
         class="text-surface-800/50 flex items-center gap-0.5 rounded px-1 py-0.5 text-xs"
         title="累计专注时长"
       >

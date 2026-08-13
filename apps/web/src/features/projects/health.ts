@@ -415,3 +415,85 @@ export function buildSnapshot(input: {
     },
   };
 }
+
+/**
+ * 项目卡片健康状态（纯函数）：按风险规则聚合为单档位。
+ * danger = 存在任何危险规则；warn = 存在任何警告规则；否则 ok。
+ */
+export function projectHealthTone(rules: RiskRule[]): 'danger' | 'warn' | 'ok' {
+  if (rules.some((r) => r.level === 'danger')) return 'danger';
+  if (rules.some((r) => r.level === 'warn')) return 'warn';
+  return 'ok';
+}
+
+/** 项目卡片健康状态展示元数据 */
+export const PROJECT_HEALTH_META: Record<
+  'danger' | 'warn' | 'ok',
+  { label: string; dot: string; badge: string }
+> = {
+  danger: { label: '有风险', dot: 'bg-red-500', badge: 'text-red-600 bg-red-500/10' },
+  warn: { label: '需关注', dot: 'bg-amber-500', badge: 'text-amber-600 bg-amber-500/10' },
+  ok: { label: '健康', dot: 'bg-green-500', badge: 'text-green-600 bg-green-500/10' },
+};
+
+/** 项目卡片聚合指标（列表页一次性计算，逐卡传入，避免每卡重复统计） */
+export interface ProjectCardMetrics {
+  /** 有效进度 0-100（自动=任务完成比例；手动=手动设置） */
+  progress: number;
+  /** 未完成任务数 */
+  unfinished: number;
+  /** 下一个关键日期（今天及以后最早的 目标 / 里程碑 / 任务截止 之一） */
+  nextDate: { label: '目标' | '里程碑' | '任务'; date: string } | null;
+  /** 健康档位 */
+  health: 'danger' | 'warn' | 'ok';
+}
+
+export interface ProjectCardMetricsInput {
+  project: ProjectDetail;
+  tasks: TaskItem[];
+  milestones: Milestone[];
+  activities: ProjectActivity[];
+  focusSessions: FocusSession[];
+  today: string;
+}
+
+/** 项目卡片聚合指标（纯函数；供列表页 memoized 计算后逐卡传入） */
+export function buildProjectCardMetrics(input: ProjectCardMetricsInput): ProjectCardMetrics {
+  const { project, tasks, milestones, activities, focusSessions, today } = input;
+  const nonCancelled = tasks.filter((t) => t.status !== 'cancelled');
+  const done = tasks.filter((t) => t.status === 'done').length;
+  const progress =
+    project.progressMode === 'manual'
+      ? (project.manualProgress ?? 0)
+      : nonCancelled.length === 0
+        ? 0
+        : Math.round((done / nonCancelled.length) * 100);
+  const unfinished = tasks.filter((t) => t.status !== 'done' && t.status !== 'cancelled').length;
+
+  const candidates: { label: '目标' | '里程碑' | '任务'; date: string }[] = [];
+  if (project.targetDate) candidates.push({ label: '目标', date: project.targetDate });
+  for (const m of milestones) {
+    if (m.dueDate && m.status !== 'done') candidates.push({ label: '里程碑', date: m.dueDate });
+  }
+  for (const t of tasks) {
+    if (t.dueDate && t.status !== 'done' && t.status !== 'cancelled') {
+      candidates.push({ label: '任务', date: t.dueDate });
+    }
+  }
+  const upcoming = candidates
+    .filter((c) => c.date >= today)
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const nextDate = upcoming[0] ?? null;
+
+  const latestActivityAt = activities[0]?.createdAt ?? null;
+  const rules = buildRiskRules({
+    project,
+    tasks,
+    milestones,
+    activities,
+    focusSessions,
+    today,
+    latestActivityAt,
+  });
+  return { progress, unfinished, nextDate, health: projectHealthTone(rules) };
+}

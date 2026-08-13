@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import {
   ArrowDownUp,
+  Ellipsis,
   FolderPlus,
+  Gauge,
+  LayoutList,
   Layers,
   Plus,
   RotateCcw,
@@ -14,22 +17,24 @@ import { computed, ref } from 'vue';
 
 import { useTaskStore } from '@/features/tasks/store';
 import { TaskForm } from '@/features/tasks';
-import type { TaskForm as TaskFormData } from '@/features/tasks/types';
+import type { TaskForm as TaskFormData, TaskItem } from '@/features/tasks/types';
 import {
-  ConfirmDialog,
   ArchiveDialog,
+  ConfirmDialog,
   ExecutionPanel,
   ProjectCard,
   ProjectDeleteDialog,
   ProjectForm,
   StorageWarningBanner,
   TechTree,
+  buildProjectCardMetrics,
+  sortProjects,
   useProjectStore,
 } from '@/features/projects';
+import type { ProjectCardMetrics } from '@/features/projects/health';
 import { useKnowledgeStore } from '@/features/projects/knowledge-store';
 import { useReleaseStore } from '@/features/projects/release-store';
 import { useWeeklyGoalStore } from '@/features/projects/weekly-goals-store';
-import { effectiveProgress, sortProjects } from '@/features/projects';
 import {
   archivePreview,
   archiveProjectWithTasks,
@@ -39,10 +44,18 @@ import {
 import { parseProjectBundle } from '@/features/projects/transfer';
 import type { ProjectImportResult } from '@/features/projects/transfer';
 import { PROJECT_FILTERS, PROJECT_SORT_OPTIONS, PROJECT_VIEWS } from '@/features/projects/types';
-import type { ProjectDetail, ProjectForm as ProjectFormType } from '@/features/projects/types';
+import type {
+  Milestone,
+  ProjectActivity,
+  ProjectDetail,
+  ProjectForm as ProjectFormType,
+} from '@/features/projects/types';
 
 const store = useProjectStore();
 const taskStore = useTaskStore();
+
+/** 工作台视图：项目列表 / 执行工作区 */
+const workspace = ref<'projects' | 'execution'>('projects');
 
 const formOpen = ref(false);
 const editing = ref<ProjectDetail | null>(null);
@@ -54,19 +67,60 @@ const permanentDeleting = ref<ProjectDetail | null>(null);
 const techTreeOpen = ref(false);
 /** 快速创建任务的目标项目 */
 const quickTaskProject = ref<ProjectDetail | null>(null);
+/** 更多菜单 */
+const moreOpen = ref(false);
 
-/** 总览统计：任务完成率（全局） */
-const completion = computed(() => taskStore.summary.completion);
-const summary = computed(() => store.summary);
+function todayStr(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
-/** 排序度量：每个项目的有效进度与未完成任务数 */
+/**
+ * 每项目聚合指标（一次性计算，逐卡传入；大量任务下避免每卡重复统计依赖 / 日期 / 健康状态）。
+ * 任务 / 里程碑 / 活动先按项目分桶，再逐项目计算。
+ */
+const metricsMap = computed(() => {
+  const taskBuckets = new Map<string, TaskItem[]>();
+  for (const t of taskStore.tasks) {
+    if (!t.projectId) continue;
+    const arr = taskBuckets.get(t.projectId) ?? [];
+    arr.push(t);
+    taskBuckets.set(t.projectId, arr);
+  }
+  const milestoneBuckets = new Map<string, Milestone[]>();
+  for (const p of store.projects) {
+    milestoneBuckets.set(p.id, store.milestonesOf(p.id));
+  }
+  const activityBuckets = new Map<string, ProjectActivity[]>();
+  for (const p of store.projects) {
+    activityBuckets.set(p.id, store.projectActivities(p.id));
+  }
+  const today = todayStr();
+  const map = new Map<string, ProjectCardMetrics>();
+  for (const p of store.projects) {
+    map.set(
+      p.id,
+      buildProjectCardMetrics({
+        project: p,
+        tasks: taskBuckets.get(p.id) ?? [],
+        milestones: milestoneBuckets.get(p.id) ?? [],
+        activities: activityBuckets.get(p.id) ?? [],
+        focusSessions: taskStore.focusSessions,
+        today,
+      }),
+    );
+  }
+  return map;
+});
+
+/** 排序度量（复用聚合指标，不再二次统计） */
 const sortMetrics = computed(() => {
   const progress = new Map<string, number>();
   const unfinished = new Map<string, number>();
-  for (const p of store.projects) {
-    const stats = taskStore.projectStats(p.id);
-    progress.set(p.id, effectiveProgress(p, stats.progress));
-    unfinished.set(p.id, stats.total - stats.done);
+  for (const [id, m] of metricsMap.value) {
+    progress.set(id, m.progress);
+    unfinished.set(id, m.unfinished);
   }
   return { progress, unfinished };
 });
@@ -183,12 +237,6 @@ function undoArchive() {
   undoArchiveWithTasks(store, taskStore);
 }
 
-function todayStr(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
 /** 快捷视图与状态筛选互斥 */
 function selectView(view: (typeof PROJECT_VIEWS)[number]['value']) {
   store.viewFilter = view;
@@ -218,6 +266,7 @@ function onImportFile(e: Event) {
   reader.onload = () => {
     importResult.value = parseProjectBundle(String(reader.result ?? ''));
     importing.value = true;
+    moreOpen.value = false;
   };
   reader.readAsText(file);
   input.value = '';
@@ -250,35 +299,13 @@ function confirmImport() {
       <div>
         <h1 class="text-surface-900 text-xl font-semibold">开发中</h1>
         <p class="text-surface-800/60 mt-1 text-sm">
-          个人项目与任务管理：总览、看板与活动记录（本地 mock 持久化）
+          个人研发工作台：项目、任务、执行与知识（本地 mock 持久化）
         </p>
-      </div>
-      <div class="flex items-center gap-2">
-        <label
-          class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex cursor-pointer items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors"
-        >
-          <Upload class="size-4" />
-          导入项目
-          <input
-            type="file"
-            accept=".json,application/json"
-            class="hidden"
-            @change="onImportFile"
-          />
-        </label>
-        <button
-          type="button"
-          class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
-          @click="openCreate"
-        >
-          <Plus class="size-4" />
-          新建项目
-        </button>
       </div>
     </header>
 
     <!-- 存储提示（损坏恢复 / 写入失败，非阻塞）+ 迁移提示 -->
-    <div class="space-y-2">
+    <div class="mb-4 space-y-2">
       <StorageWarningBanner
         :message="store.storageWarning || taskStore.storageWarning"
         @dismiss="
@@ -299,190 +326,257 @@ function confirmImport() {
       />
     </div>
 
-    <!-- 执行仪表盘 -->
-    <ExecutionPanel />
-
-    <!-- 归档撤销提示 -->
-    <div
-      v-if="store.canUndoArchive()"
-      class="page-content-section mb-5 flex flex-wrap items-center justify-between gap-3"
-    >
-      <p class="text-surface-800/70 text-sm">已归档项目，可撤销一次恢复原状态与数据。</p>
-      <button
-        type="button"
-        class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
-        @click="undoArchive"
+    <!-- 工作台视图切换：项目 / 执行 -->
+    <div class="mb-4 flex items-center gap-1">
+      <div
+        class="border-surface-100 bg-surface-0 flex items-center gap-0.5 rounded-xl border p-0.5"
+        role="tablist"
+        aria-label="工作台视图"
       >
-        <RotateCcw class="size-4" />
-        撤销归档
-      </button>
-    </div>
-
-    <!-- 统计条 -->
-    <div class="page-content-section mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <div class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-4">
-        <p class="text-surface-800/50 text-xs">总项目</p>
-        <p class="text-surface-900 mt-1 text-2xl font-semibold">{{ summary.total }}</p>
-      </div>
-      <div class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-4">
-        <p class="text-surface-800/50 text-xs">进行中</p>
-        <p class="mt-1 text-2xl font-semibold text-green-600">{{ summary.active }}</p>
-      </div>
-      <div class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-4">
-        <p class="text-surface-800/50 text-xs">已完成</p>
-        <p class="mt-1 text-2xl font-semibold text-indigo-600">{{ summary.completed }}</p>
-      </div>
-      <div class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-4">
-        <p class="text-surface-800/50 text-xs">任务完成率</p>
-        <p class="text-brand-600 mt-1 text-2xl font-semibold">{{ completion }}%</p>
-      </div>
-    </div>
-
-    <!-- 搜索 + 快捷视图 + 排序 -->
-    <div class="mb-3 flex flex-wrap items-center gap-3">
-      <div class="relative min-w-0 flex-1 sm:max-w-xs">
-        <Search class="text-surface-800/40 absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-        <input
-          v-model="store.searchQuery"
-          type="search"
-          class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 w-full rounded-lg border py-2 pr-3 pl-9 text-sm transition outline-none focus:ring-4"
-          placeholder="搜索项目名称、描述、标签、技术栈"
-        />
-      </div>
-      <div class="flex flex-wrap items-center gap-1.5">
         <button
-          v-for="view in PROJECT_VIEWS"
-          :key="view.value"
           type="button"
-          class="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+          role="tab"
+          :aria-selected="workspace === 'projects'"
+          class="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
           :class="
-            store.viewFilter === view.value
+            workspace === 'projects'
               ? 'bg-brand-600 text-surface-0'
-              : 'border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 border'
+              : 'text-surface-800/60 hover:text-surface-900'
           "
-          @click="selectView(view.value)"
+          @click="workspace = 'projects'"
         >
-          <Star v-if="view.value === 'favorites'" class="size-3" />
-          {{ view.label }}
+          <LayoutList class="size-4" />
+          项目
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="workspace === 'execution'"
+          class="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+          :class="
+            workspace === 'execution'
+              ? 'bg-brand-600 text-surface-0'
+              : 'text-surface-800/60 hover:text-surface-900'
+          "
+          @click="workspace = 'execution'"
+        >
+          <Gauge class="size-4" />
+          执行
         </button>
       </div>
-      <div class="ml-auto flex items-center gap-1.5">
-        <select
-          v-model="store.sortBy"
-          class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 rounded-lg border px-2.5 py-1.5 text-xs transition outline-none focus:ring-4"
-          aria-label="项目排序方式"
+    </div>
+
+    <!-- 执行工作区：今日计划 / 受阻任务 / 收件箱 / 周目标 / 历史 -->
+    <ExecutionPanel v-if="workspace === 'execution'" />
+
+    <!-- 项目列表工作区 -->
+    <template v-else>
+      <!-- 归档撤销提示 -->
+      <div
+        v-if="store.canUndoArchive()"
+        class="page-content-section mb-5 flex flex-wrap items-center justify-between gap-3"
+      >
+        <p class="text-surface-800/70 text-sm">已归档项目，可撤销一次恢复原状态与数据。</p>
+        <button
+          type="button"
+          class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
+          @click="undoArchive"
         >
-          <option v-for="opt in PROJECT_SORT_OPTIONS" :key="opt.value" :value="opt.value">
+          <RotateCcw class="size-4" />
+          撤销归档
+        </button>
+      </div>
+
+      <!-- 统一工具栏：搜索 + 状态 / 收藏筛选 + 排序 + 新建 + 更多 -->
+      <div class="mb-5 flex flex-wrap items-center gap-2">
+        <div class="relative min-w-0 flex-1 sm:max-w-xs">
+          <Search class="text-surface-800/40 absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+          <input
+            v-model="store.searchQuery"
+            type="search"
+            class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 w-full rounded-lg border py-2 pr-3 pl-9 text-sm transition outline-none focus:ring-4"
+            placeholder="搜索项目名称、描述、标签、技术栈"
+          />
+        </div>
+
+        <select
+          v-model="store.statusFilter"
+          class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 rounded-lg border px-2.5 py-2 text-sm transition outline-none focus:ring-4"
+          aria-label="项目状态筛选"
+          @change="selectStatus(store.statusFilter)"
+        >
+          <option v-for="opt in PROJECT_FILTERS" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </option>
         </select>
+
+        <div class="flex items-center gap-0.5">
+          <button
+            v-for="view in PROJECT_VIEWS"
+            :key="view.value"
+            type="button"
+            class="flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors"
+            :class="
+              store.viewFilter === view.value
+                ? 'bg-brand-600 text-surface-0'
+                : 'border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 border'
+            "
+            :aria-label="`视图：${view.label}`"
+            @click="selectView(view.value)"
+          >
+            <Star
+              v-if="view.value === 'favorites'"
+              class="size-3"
+              :fill="store.viewFilter === 'favorites' ? 'currentColor' : 'none'"
+            />
+            {{ view.label }}
+          </button>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+          <select
+            v-model="store.sortBy"
+            class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 rounded-lg border px-2.5 py-2 text-sm transition outline-none focus:ring-4"
+            aria-label="项目排序方式"
+          >
+            <option v-for="opt in PROJECT_SORT_OPTIONS" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
+          <button
+            type="button"
+            class="border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs transition-colors"
+            :title="store.sortDir === 'asc' ? '升序，点击切换' : '降序，点击切换'"
+            @click="store.sortDir = store.sortDir === 'asc' ? 'desc' : 'asc'"
+          >
+            <ArrowDownUp class="size-3" />
+            {{ store.sortDir === 'asc' ? '升序' : '降序' }}
+          </button>
+        </div>
+
         <button
           type="button"
-          class="border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-colors"
-          :title="store.sortDir === 'asc' ? '升序，点击切换' : '降序，点击切换'"
-          @click="store.sortDir = store.sortDir === 'asc' ? 'desc' : 'asc'"
+          class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
+          @click="openCreate"
         >
-          <ArrowDownUp class="size-3" />
-          {{ store.sortDir === 'asc' ? '升序' : '降序' }}
+          <Plus class="size-4" />
+          新建项目
+        </button>
+
+        <!-- 更多菜单：导入 / 技术栈总览 -->
+        <div class="relative">
+          <button
+            type="button"
+            class="border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2.5 py-2 text-sm font-medium transition-colors"
+            aria-label="更多操作"
+            title="更多操作"
+            @click="moreOpen = !moreOpen"
+          >
+            <Ellipsis class="size-4" />
+          </button>
+          <div
+            v-if="moreOpen"
+            class="border-surface-100 bg-surface-0 shadow-float absolute top-11 right-0 z-20 w-44 overflow-hidden rounded-xl border py-1"
+            role="menu"
+            aria-label="更多操作"
+          >
+            <label
+              class="text-surface-800/80 hover:bg-surface-50 flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
+              role="menuitem"
+            >
+              <Upload class="size-3.5" />
+              导入项目
+              <input
+                type="file"
+                accept=".json,application/json"
+                class="hidden"
+                @change="onImportFile"
+              />
+            </label>
+            <button
+              type="button"
+              role="menuitem"
+              class="text-surface-800/80 hover:bg-surface-50 flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
+              @click="
+                techTreeOpen = !techTreeOpen;
+                moreOpen = false;
+              "
+            >
+              <Layers class="size-3.5" />
+              {{ techTreeOpen ? '收起技术栈总览' : '技术栈总览' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 项目卡片（长列表整体进入，不给每张卡片单独加动画） -->
+      <div
+        v-if="visibleProjects.length"
+        class="page-content-section grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+      >
+        <ProjectCard
+          v-for="project in visibleProjects"
+          :key="project.id"
+          :project="project"
+          :metrics="metricsMap.get(project.id)!"
+          @edit="openEdit"
+          @archive="(p) => (archiving = p)"
+          @restore="(p) => store.restoreProject(p.id)"
+          @delete="(p) => (deleting = p)"
+          @favorite="(p) => store.toggleFavorite(p.id)"
+          @quick-task="(p) => (quickTaskProject = p)"
+        />
+      </div>
+
+      <!-- 空状态：无任何项目 -->
+      <div
+        v-else-if="!store.projects.length"
+        class="border-surface-100 bg-surface-0 shadow-card rounded-card flex flex-col items-center border px-6 py-16 text-center"
+      >
+        <span
+          class="bg-brand-500/10 text-brand-600 flex size-14 items-center justify-center rounded-2xl"
+        >
+          <FolderPlus class="size-7" />
+        </span>
+        <h3 class="text-surface-900 mt-4 text-base font-semibold">还没有项目</h3>
+        <p class="text-surface-800/60 mt-1 max-w-sm text-sm">
+          创建第一个项目，开始管理你的个人开发计划。
+        </p>
+        <button
+          type="button"
+          class="bg-brand-600 hover:bg-brand-700 text-surface-0 mt-5 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+          @click="openCreate"
+        >
+          创建项目
         </button>
       </div>
-    </div>
 
-    <!-- 状态筛选 -->
-    <div class="mb-5 flex flex-wrap items-center gap-1.5">
-      <button
-        v-for="opt in PROJECT_FILTERS"
-        :key="opt.value"
-        type="button"
-        class="rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
-        :class="
-          store.statusFilter === opt.value
-            ? 'bg-brand-600 text-surface-0'
-            : 'border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 border'
-        "
-        @click="selectStatus(opt.value)"
+      <!-- 空状态：筛选无结果 -->
+      <div
+        v-else
+        class="border-surface-100 bg-surface-0 shadow-card rounded-card flex flex-col items-center border px-6 py-16 text-center"
       >
-        {{ opt.label }}
-      </button>
-    </div>
-
-    <!-- 项目卡片（长列表整体进入，不给每张卡片单独加动画） -->
-    <div
-      v-if="visibleProjects.length"
-      class="page-content-section grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
-    >
-      <ProjectCard
-        v-for="project in visibleProjects"
-        :key="project.id"
-        :project="project"
-        @edit="openEdit"
-        @archive="(p) => (archiving = p)"
-        @restore="(p) => store.restoreProject(p.id)"
-        @delete="(p) => (deleting = p)"
-        @favorite="(p) => store.toggleFavorite(p.id)"
-        @quick-task="(p) => (quickTaskProject = p)"
-      />
-    </div>
-
-    <!-- 空状态：无任何项目 -->
-    <div
-      v-else-if="!store.projects.length"
-      class="border-surface-100 bg-surface-0 shadow-card rounded-card flex flex-col items-center border px-6 py-16 text-center"
-    >
-      <span
-        class="bg-brand-500/10 text-brand-600 flex size-14 items-center justify-center rounded-2xl"
-      >
-        <FolderPlus class="size-7" />
-      </span>
-      <h3 class="text-surface-900 mt-4 text-base font-semibold">还没有项目</h3>
-      <p class="text-surface-800/60 mt-1 max-w-sm text-sm">
-        创建第一个项目，开始管理你的个人开发计划。
-      </p>
-      <button
-        type="button"
-        class="bg-brand-600 hover:bg-brand-700 text-surface-0 mt-5 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-        @click="openCreate"
-      >
-        创建项目
-      </button>
-    </div>
-
-    <!-- 空状态：筛选无结果 -->
-    <div
-      v-else
-      class="border-surface-100 bg-surface-0 shadow-card rounded-card flex flex-col items-center border px-6 py-16 text-center"
-    >
-      <span
-        class="bg-surface-100 text-surface-800/50 flex size-14 items-center justify-center rounded-2xl"
-      >
-        <SearchX class="size-7" />
-      </span>
-      <h3 class="text-surface-900 mt-4 text-base font-semibold">没有匹配的项目</h3>
-      <p class="text-surface-800/60 mt-1 max-w-sm text-sm">换个关键词、状态或视图试试。</p>
-      <button
-        type="button"
-        class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 mt-5 rounded-lg border px-4 py-2 text-sm font-medium transition-colors"
-        @click="clearFilters"
-      >
-        清除筛选
-      </button>
-    </div>
-
-    <!-- 技术栈总览（保留原占位内容，折叠展示） -->
-    <section class="mt-8">
-      <button
-        type="button"
-        class="text-surface-800/60 hover:text-surface-900 flex items-center gap-2 text-sm font-medium transition-colors"
-        @click="techTreeOpen = !techTreeOpen"
-      >
-        <Layers class="size-4" />
-        仓库技术栈总览
-        <span class="text-surface-800/40 text-xs">{{ techTreeOpen ? '收起' : '展开' }}</span>
-      </button>
-      <div v-if="techTreeOpen" class="mt-4">
-        <TechTree />
+        <span
+          class="bg-surface-100 text-surface-800/50 flex size-14 items-center justify-center rounded-2xl"
+        >
+          <SearchX class="size-7" />
+        </span>
+        <h3 class="text-surface-900 mt-4 text-base font-semibold">没有匹配的项目</h3>
+        <p class="text-surface-800/60 mt-1 max-w-sm text-sm">换个关键词、状态或视图试试。</p>
+        <button
+          type="button"
+          class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 mt-5 rounded-lg border px-4 py-2 text-sm font-medium transition-colors"
+          @click="clearFilters"
+        >
+          清除筛选
+        </button>
       </div>
-    </section>
+
+      <!-- 技术栈总览（更多菜单触发，折叠展示） -->
+      <section v-if="techTreeOpen" class="mt-8">
+        <TechTree />
+      </section>
+    </template>
 
     <!-- 新建 / 编辑项目弹窗 -->
     <ProjectForm

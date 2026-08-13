@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { Activity, Gauge, Inbox, TrendingUp } from '@lucide/vue';
+import { Activity, Gauge, History, Inbox, TrendingUp, WalletCards } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { useProjectStore } from './store';
+import { useWeeklyGoalStore } from './weekly-goals-store';
 import { useTaskStore } from '@/features/tasks/store';
-import { buildPriorities, buildThroughput } from './execution';
+import type { FocusSession, TaskItem } from '@/features/tasks/types';
+import { buildPriorities, buildThroughput, weekProgress } from './execution';
 import type { PriorityKind, PriorityRow } from './execution';
-import { weekStartOf } from './execution';
 
 /** 筛选偏好（本地持久化：时间窗口 + 状态 + 项目） */
 interface ExecPrefs {
@@ -34,6 +35,7 @@ function loadPrefs(): ExecPrefs {
 
 const projectStore = useProjectStore();
 const taskStore = useTaskStore();
+const goalStore = useWeeklyGoalStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -51,6 +53,16 @@ const today = (() => {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 })();
+
+/** 分区展开状态：默认突出今日计划与受阻任务，其余分区收纳 */
+const sections = ref<Record<'inbox' | 'weekly' | 'history', boolean>>({
+  inbox: false,
+  weekly: false,
+  history: false,
+});
+function toggleSection(key: keyof typeof sections.value) {
+  sections.value = { ...sections.value, [key]: !sections.value[key] };
+}
 
 const latestActivityAt = computed(() => {
   const map = new Map<string, string>();
@@ -120,11 +132,70 @@ const activeTasks = computed(() =>
 );
 
 const inboxCount = computed(() => taskStore.inboxTasks.length);
-const weekGoalCount = computed(() => {
-  const ws = weekStartOf(today);
-  return projectStore.projects
-    .filter((p) => p.status === 'active')
-    .filter((p) => taskStore.tasksByProject(p.id).some((t) => t.dueDate && t.dueDate >= ws)).length;
+/** 收件箱分区：最近 5 条（按创建时间倒序） */
+const inboxPreview = computed(() =>
+  [...taskStore.inboxTasks].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 5),
+);
+
+/** 周目标分区：活动项目的本周目标进度（一次分桶，避免逐项目重复过滤） */
+const weeklyRows = computed(() => {
+  const taskProject = new Map<string, string>();
+  for (const t of taskStore.tasks) {
+    if (t.projectId) taskProject.set(t.id, t.projectId);
+  }
+  const sessionsByProject = new Map<string, FocusSession[]>();
+  for (const s of taskStore.focusSessions) {
+    const pid = taskProject.get(s.taskId);
+    if (!pid) continue;
+    const arr = sessionsByProject.get(pid) ?? [];
+    arr.push(s);
+    sessionsByProject.set(pid, arr);
+  }
+  const tasksByProject = new Map<string, TaskItem[]>();
+  for (const t of taskStore.tasks) {
+    if (!t.projectId) continue;
+    const arr = tasksByProject.get(t.projectId) ?? [];
+    arr.push(t);
+    tasksByProject.set(t.projectId, arr);
+  }
+  const rows: {
+    projectName: string;
+    projectId: string;
+    description: string;
+    overall: number;
+    taskProgress: number;
+    focusMinutes: number;
+  }[] = [];
+  for (const p of projectStore.projects) {
+    if (p.status !== 'active') continue;
+    const goal = goalStore.currentGoalOf(p.id, today);
+    if (!goal) continue;
+    const prog = weekProgress(
+      goal,
+      tasksByProject.get(p.id) ?? [],
+      sessionsByProject.get(p.id) ?? [],
+      today,
+    );
+    rows.push({
+      projectName: p.name,
+      projectId: p.id,
+      description: goal.description || '本周目标',
+      overall: prog.overall,
+      taskProgress: prog.taskProgress,
+      focusMinutes: prog.focusMinutes,
+    });
+  }
+  return rows.sort((a, b) => b.overall - a.overall);
+});
+
+/** 历史分区：已归档的每日计划 */
+const focusHistoryRows = computed(() => {
+  const days = taskStore.focusHistory.slice(0, 7);
+  return days.map((d) => ({
+    date: d.date,
+    done: d.doneIds.length,
+    total: d.items.length,
+  }));
 });
 </script>
 
@@ -134,7 +205,7 @@ const weekGoalCount = computed(() => {
     <div class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
       <h2 class="text-surface-900 flex items-center gap-2 text-sm font-semibold">
         <Gauge class="text-brand-600 size-4" />
-        个人执行优先级
+        执行工作台
       </h2>
       <div class="flex flex-wrap items-center gap-2">
         <button
@@ -154,6 +225,7 @@ const weekGoalCount = computed(() => {
       </div>
     </div>
 
+    <!-- 今日计划 / 受阻 等优先级（默认突出） -->
     <div class="flex flex-wrap gap-2 px-5 pt-3">
       <button
         v-for="row in priorities"
@@ -177,7 +249,7 @@ const weekGoalCount = computed(() => {
         type="button"
         class="text-surface-800/50 cursor-default rounded-full px-3 py-1.5 text-sm"
       >
-        无待处理事项
+        今日无待处理事项
       </button>
     </div>
 
@@ -221,14 +293,126 @@ const weekGoalCount = computed(() => {
       </div>
     </div>
 
+    <!-- 收件箱分区 -->
+    <div class="mx-5 mt-4 border-t pt-3">
+      <button
+        type="button"
+        class="flex w-full items-center justify-between gap-2 text-left"
+        :aria-expanded="sections.inbox"
+        @click="toggleSection('inbox')"
+      >
+        <span class="text-surface-900 flex items-center gap-2 text-sm font-semibold">
+          <Inbox class="text-brand-600 size-4" />
+          收件箱
+          <span class="bg-surface-50 text-surface-800/60 rounded-full px-2 py-0.5 text-xs">
+            {{ inboxCount }}
+          </span>
+        </span>
+        <span class="text-surface-800/40 text-xs">{{ sections.inbox ? '收起' : '展开' }}</span>
+      </button>
+      <div v-if="sections.inbox" class="mt-2 space-y-1">
+        <button
+          v-for="t in inboxPreview"
+          :key="t.id"
+          type="button"
+          class="text-surface-800/80 hover:bg-surface-100 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors"
+          :aria-label="`打开收件箱任务 ${t.title}`"
+          @click="router.push({ path: '/projects/inbox', query: { task: t.id } })"
+        >
+          <span class="min-w-0 truncate">{{ t.title }}</span>
+          <span class="text-surface-800/40 shrink-0 text-xs">{{ t.priority }}</span>
+        </button>
+        <p v-if="inboxPreview.length === 0" class="text-surface-800/40 py-1 text-xs">
+          收件箱为空，去收件箱快速捕获想法。
+        </p>
+        <button
+          type="button"
+          class="text-brand-600 hover:bg-brand-500/10 mt-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors"
+          @click="router.push({ path: '/projects/inbox' })"
+        >
+          打开收件箱 →
+        </button>
+      </div>
+    </div>
+
+    <!-- 周目标分区 -->
+    <div class="mx-5 mt-3 border-t pt-3">
+      <button
+        type="button"
+        class="flex w-full items-center justify-between gap-2 text-left"
+        :aria-expanded="sections.weekly"
+        @click="toggleSection('weekly')"
+      >
+        <span class="text-surface-900 flex items-center gap-2 text-sm font-semibold">
+          <WalletCards class="text-brand-600 size-4" />
+          周目标
+          <span class="bg-surface-50 text-surface-800/60 rounded-full px-2 py-0.5 text-xs">
+            {{ weeklyRows.length }}
+          </span>
+        </span>
+        <span class="text-surface-800/40 text-xs">{{ sections.weekly ? '收起' : '展开' }}</span>
+      </button>
+      <div v-if="sections.weekly" class="mt-2 space-y-2">
+        <div
+          v-for="row in weeklyRows"
+          :key="row.projectId"
+          class="border-surface-100 bg-surface-50 rounded-lg border p-2.5"
+        >
+          <div class="flex items-center justify-between gap-2 text-xs">
+            <span class="text-surface-900 min-w-0 truncate font-medium">{{ row.projectName }}</span>
+            <span class="text-surface-800/50 shrink-0">{{ row.overall }}%</span>
+          </div>
+          <p class="text-surface-800/50 mt-0.5 truncate text-xs">{{ row.description }}</p>
+          <div class="bg-surface-100 mt-1.5 h-1 overflow-hidden rounded-full">
+            <div
+              class="bg-brand-500 h-full rounded-full transition-all"
+              :style="{ width: `${row.taskProgress}%` }"
+            />
+          </div>
+          <p class="text-surface-800/40 mt-1 text-[10px]">
+            任务进度 {{ row.taskProgress }}% · 专注 {{ row.focusMinutes }} 分
+          </p>
+        </div>
+        <p v-if="weeklyRows.length === 0" class="text-surface-800/40 py-1 text-xs">
+          本周暂无已设定的项目周目标。
+        </p>
+      </div>
+    </div>
+
+    <!-- 历史分区（不常用，默认收起） -->
+    <div class="mx-5 mt-3 border-t pt-3">
+      <button
+        type="button"
+        class="flex w-full items-center justify-between gap-2 text-left"
+        :aria-expanded="sections.history"
+        @click="toggleSection('history')"
+      >
+        <span class="text-surface-900 flex items-center gap-2 text-sm font-semibold">
+          <History class="text-brand-600 size-4" />
+          历史
+        </span>
+        <span class="text-surface-800/40 text-xs">{{ sections.history ? '收起' : '展开' }}</span>
+      </button>
+      <div v-if="sections.history" class="mt-2 space-y-1">
+        <div
+          v-for="d in focusHistoryRows"
+          :key="d.date"
+          class="text-surface-800/70 flex items-center justify-between rounded-lg px-2 py-1.5 text-xs"
+        >
+          <span>{{ d.date }}</span>
+          <span class="text-surface-800/50">{{ d.done }}/{{ d.total }} 完成</span>
+        </div>
+        <p v-if="focusHistoryRows.length === 0" class="text-surface-800/40 py-1 text-xs">
+          暂无归档的每日计划历史。
+        </p>
+      </div>
+    </div>
+
     <!-- 吞吐与筛选 -->
     <div class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
       <h3 class="text-surface-900 flex items-center gap-2 text-sm font-semibold">
         <TrendingUp class="text-brand-600 size-4" />
         任务吞吐
-        <span class="text-surface-800/50 text-xs font-normal">
-          {{ weekGoalCount }} 个活动项目本周有截止任务
-        </span>
       </h3>
       <div class="flex items-center gap-2">
         <select
@@ -265,7 +449,7 @@ const weekGoalCount = computed(() => {
 
     <p class="text-surface-800/40 flex items-center gap-1.5 px-5 pb-4 text-xs">
       <Activity class="size-3.5" />
-      点击优先级指标可查看明细并跳转；筛选偏好保存在本地。
+      点击优先级指标可查看明细并跳转；收件箱 / 周目标 / 历史分区默认收起，按需展开。
     </p>
   </section>
 </template>

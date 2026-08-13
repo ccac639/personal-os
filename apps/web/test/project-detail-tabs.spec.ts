@@ -5,7 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 
 import ProjectDetailPage from '@/pages/projects/[id].vue';
 
-describe('项目详情二级导航（概览 / 任务 / 计划 / 执行 / 发布 / 知识 / 复盘 / 活动）', () => {
+describe('项目详情二级导航（概览 / 任务 / 计划 / 执行 / 发布 / 知识 / 复盘）', () => {
   let pinia: ReturnType<typeof createPinia>;
   let router: ReturnType<typeof createRouter>;
 
@@ -52,18 +52,26 @@ describe('项目详情二级导航（概览 / 任务 / 计划 / 执行 / 发布 
     });
   }
 
-  it('渲染八个二级导航 tab：概览 / 任务 / 计划 / 执行 / 发布 / 知识 / 复盘 / 活动记录', async () => {
+  it('渲染七个二级导航 tab：概览 / 任务 / 计划 / 执行 / 发布 / 知识 / 复盘', async () => {
     const wrapper = await mountPage();
     const labels = wrapper.findAll('nav button').map((b) => b.text());
-    expect(labels).toEqual(['概览', '任务', '计划', '执行', '发布', '知识', '复盘', '活动记录']);
+    expect(labels).toEqual(['概览', '任务', '计划', '执行', '发布', '知识', '复盘']);
     wrapper.unmount();
   });
 
-  it('默认显示概览；点击「计划」切换到计划视图', async () => {
+  it('默认显示概览：项目上下文（进度编辑器）+ 下一步行动 + 风险 + 近期活动', async () => {
     const wrapper = await mountPage();
-    // 默认概览：显示项目信息与进度编辑器 stub
+    // 概览包含进度编辑器（项目上下文）与三个分区
     expect(wrapper.find('[data-test="progress-editor"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('项目上下文');
+    expect(wrapper.text()).toContain('下一步行动');
+    expect(wrapper.text()).toContain('风险');
+    expect(wrapper.text()).toContain('近期活动');
+    wrapper.unmount();
+  });
 
+  it('点击「计划」切换到计划视图，概览内容卸载', async () => {
+    const wrapper = await mountPage();
     const tabs = wrapper.findAll('nav button');
     const planTab = tabs.find((b) => b.text() === '计划')!;
     await planTab.trigger('click');
@@ -73,7 +81,7 @@ describe('项目详情二级导航（概览 / 任务 / 计划 / 执行 / 发布 
     wrapper.unmount();
   });
 
-  it('点击「复盘」「任务」「执行」「活动记录」均能正确切换', async () => {
+  it('点击「复盘」「任务」「执行」均能正确切换', async () => {
     const wrapper = await mountPage();
     const clickTab = async (label: string) => {
       const tab = wrapper.findAll('nav button').find((b) => b.text() === label)!;
@@ -95,10 +103,42 @@ describe('项目详情二级导航（概览 / 任务 / 计划 / 执行 / 发布 
     await clickTab('知识');
     expect(wrapper.find('[data-test="knowledge-panel"]').exists()).toBe(true);
 
-    await clickTab('活动记录');
-    expect(wrapper.find('[data-test="retro-view"]').exists()).toBe(false);
+    await clickTab('复盘');
     expect(wrapper.find('[data-test="task-kanban"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('活动记录');
+    expect(wrapper.find('[data-test="knowledge-panel"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('视图懒初始化：未访问的视图不挂载，切换后旧视图卸载清理', async () => {
+    const wrapper = await mountPage();
+    // 初始只渲染概览
+    expect(wrapper.find('[data-test="task-kanban"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="plan-view"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="execution-tab"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="release-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="knowledge-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="retro-view"]').exists()).toBe(false);
+
+    const clickTab = async (label: string) => {
+      const tab = wrapper.findAll('nav button').find((b) => b.text() === label)!;
+      await tab.trigger('click');
+    };
+
+    // 访问任务 → 仅任务挂载
+    await clickTab('任务');
+    expect(wrapper.find('[data-test="task-kanban"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="execution-tab"]').exists()).toBe(false);
+
+    // 切到执行 → 任务卸载（v-if 按需初始化 + 离开清理），执行挂载
+    await clickTab('执行');
+    expect(wrapper.find('[data-test="task-kanban"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="execution-tab"]').exists()).toBe(true);
+
+    // 从未访问的计划 / 发布 / 知识 / 复盘仍未挂载
+    expect(wrapper.find('[data-test="plan-view"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="release-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="knowledge-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="retro-view"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

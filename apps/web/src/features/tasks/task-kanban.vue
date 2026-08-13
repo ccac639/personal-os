@@ -5,7 +5,9 @@ import {
   Check,
   Circle,
   Columns3,
+  ListFilter,
   Plus,
+  Rows3,
   Square,
   Undo2,
   X,
@@ -54,6 +56,8 @@ const dropHint = ref<{ status: KanbanStatus; beforeId: string | null } | null>(n
 const activeTaskId = ref<string | null>(null);
 /** 抽屉开关 */
 const drawerOpen = ref(false);
+/** 移动端筛选底部抽屉 */
+const mobileFiltersOpen = ref(false);
 
 const today = (() => {
   const d = new Date();
@@ -250,7 +254,7 @@ function performDrop(status: KanbanStatus, beforeId: string | null) {
 
 <template>
   <section class="space-y-4">
-    <!-- 工具栏：排序 + 筛选 + 视图 + 新建 -->
+    <!-- 统一筛选工具栏（桌面端内联；移动端收纳为底部抽屉） -->
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div class="flex items-center gap-2">
         <h3 class="text-surface-900 text-sm font-semibold">任务</h3>
@@ -259,62 +263,16 @@ function performDrop(status: KanbanStatus, beforeId: string | null) {
         </span>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <!-- 视图切换：看板 / 日期 -->
-        <div
-          class="border-surface-100 bg-surface-0 flex items-center gap-0.5 rounded-lg border p-0.5"
-        >
-          <button
-            type="button"
-            class="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors"
-            :class="
-              store.viewMode === 'kanban'
-                ? 'bg-brand-600 text-surface-0'
-                : 'text-surface-800/60 hover:text-surface-900'
-            "
-            title="看板视图"
-            aria-label="看板视图"
-            @click="store.viewMode = 'kanban'"
-          >
-            <Columns3 class="size-3.5" />
-            <span class="hidden sm:inline">看板</span>
-          </button>
-          <button
-            type="button"
-            class="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors"
-            :class="
-              store.viewMode === 'date'
-                ? 'bg-brand-600 text-surface-0'
-                : 'text-surface-800/60 hover:text-surface-900'
-            "
-            title="按截止日期分组"
-            aria-label="按截止日期分组"
-            @click="store.viewMode = 'date'"
-          >
-            <CalendarDays class="size-3.5" />
-            <span class="hidden sm:inline">日期</span>
-          </button>
-        </div>
-
-        <select
-          v-model="store.sortBy"
-          class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 rounded-lg border px-2.5 py-1.5 text-xs transition outline-none focus:ring-4"
-          aria-label="任务排序方式"
-        >
-          <option v-for="opt in TASK_SORT_OPTIONS" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
+        <!-- 移动端：筛选入口（打开底部抽屉） -->
         <button
-          v-if="store.sortBy !== 'order'"
           type="button"
-          class="border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-colors"
-          :title="store.sortDir === 'asc' ? '升序，点击切换' : '降序，点击切换'"
-          @click="store.setSort(store.sortBy)"
+          class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors md:hidden"
+          aria-label="打开筛选"
+          @click="mobileFiltersOpen = true"
         >
-          <ArrowDownUp class="size-3" />
-          {{ store.sortDir === 'asc' ? '升序' : '降序' }}
+          <ListFilter class="size-3.5" />
+          筛选
         </button>
-
         <button
           v-if="!props.readonly"
           type="button"
@@ -329,42 +287,221 @@ function performDrop(status: KanbanStatus, beforeId: string | null) {
       </div>
     </div>
 
-    <!-- 截止日期筛选 -->
-    <div class="flex flex-wrap items-center gap-1.5">
-      <span class="text-surface-800/50 text-xs">截止日期</span>
-      <button
-        v-for="opt in TASK_DATE_FILTERS"
-        :key="opt.value"
-        type="button"
-        class="rounded-full px-2.5 py-1 text-xs font-medium transition-colors"
-        :class="
-          store.dateFilter === opt.value
-            ? 'bg-brand-600 text-surface-0'
-            : 'border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 border'
-        "
-        @click="store.dateFilter = opt.value"
+    <!-- 桌面端统一工具栏：视图 + 排序 + 截止日期 + 快捷筛选 + 密度 -->
+    <div
+      class="border-surface-100 bg-surface-0 hidden flex-wrap items-center gap-1.5 rounded-xl border p-2 md:flex"
+      role="toolbar"
+      aria-label="任务筛选工具栏"
+    >
+      <div
+        class="border-surface-100 flex items-center gap-0.5 rounded-lg border p-0.5"
+        role="group"
+        aria-label="视图切换"
       >
-        {{ opt.label }}
+        <button
+          type="button"
+          class="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors"
+          :class="
+            store.viewMode === 'kanban'
+              ? 'bg-brand-600 text-surface-0'
+              : 'text-surface-800/60 hover:text-surface-900'
+          "
+          title="看板视图"
+          aria-label="看板视图"
+          @click="store.viewMode = 'kanban'"
+        >
+          <Columns3 class="size-3.5" />
+          看板
+        </button>
+        <button
+          type="button"
+          class="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors"
+          :class="
+            store.viewMode === 'date'
+              ? 'bg-brand-600 text-surface-0'
+              : 'text-surface-800/60 hover:text-surface-900'
+          "
+          title="按截止日期分组"
+          aria-label="按截止日期分组"
+          @click="store.viewMode = 'date'"
+        >
+          <CalendarDays class="size-3.5" />
+          日期
+        </button>
+      </div>
+
+      <select
+        v-model="store.sortBy"
+        class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 rounded-lg border px-2 py-1.5 text-xs transition outline-none focus:ring-4"
+        aria-label="任务排序方式"
+      >
+        <option v-for="opt in TASK_SORT_OPTIONS" :key="opt.value" :value="opt.value">
+          {{ opt.label }}
+        </option>
+      </select>
+      <button
+        v-if="store.sortBy !== 'order'"
+        type="button"
+        class="border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2 py-1.5 text-xs transition-colors"
+        :title="store.sortDir === 'asc' ? '升序，点击切换' : '降序，点击切换'"
+        aria-label="切换排序方向"
+        @click="store.setSort(store.sortBy)"
+      >
+        <ArrowDownUp class="size-3" />
+        {{ store.sortDir === 'asc' ? '升序' : '降序' }}
+      </button>
+
+      <select
+        v-model="store.dateFilter"
+        class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 rounded-lg border px-2 py-1.5 text-xs transition outline-none focus:ring-4"
+        aria-label="截止日期筛选"
+      >
+        <option v-for="opt in TASK_DATE_FILTERS" :key="opt.value" :value="opt.value">
+          截止：{{ opt.label }}
+        </option>
+      </select>
+
+      <select
+        v-model="store.quickFilter"
+        class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 rounded-lg border px-2 py-1.5 text-xs transition outline-none focus:ring-4"
+        aria-label="快捷筛选"
+      >
+        <option v-for="opt in TASK_QUICK_FILTERS" :key="opt.value" :value="opt.value">
+          快捷：{{ opt.label }}
+        </option>
+      </select>
+
+      <button
+        type="button"
+        class="border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2 py-1.5 text-xs transition-colors"
+        :title="store.density === 'dense' ? '切换为常规密度' : '切换为高密度'"
+        :aria-label="store.density === 'dense' ? '切换为常规密度' : '切换为高密度'"
+        @click="store.density = store.density === 'dense' ? 'comfortable' : 'dense'"
+      >
+        <Rows3 class="size-3" />
+        {{ store.density === 'dense' ? '紧凑' : '常规' }}
       </button>
     </div>
 
-    <!-- 快捷筛选：今日聚焦 / 本周到期 / 阻塞 -->
-    <div class="flex flex-wrap items-center gap-1.5">
-      <span class="text-surface-800/50 text-xs">快捷</span>
-      <button
-        v-for="opt in TASK_QUICK_FILTERS"
-        :key="opt.value"
-        type="button"
-        class="rounded-full px-2.5 py-1 text-xs font-medium transition-colors"
-        :class="
-          store.quickFilter === opt.value
-            ? 'bg-brand-600 text-surface-0'
-            : 'border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 border'
-        "
-        @click="store.quickFilter = opt.value"
+    <!-- 移动端筛选底部抽屉 -->
+    <div
+      v-if="mobileFiltersOpen"
+      class="fixed inset-0 z-40 md:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="任务筛选"
+    >
+      <div class="bg-surface-900/30 absolute inset-0" @click="mobileFiltersOpen = false" />
+      <div
+        class="border-surface-100 bg-surface-0 shadow-float absolute inset-x-0 bottom-0 rounded-t-2xl border p-4"
       >
-        {{ opt.label }}
-      </button>
+        <div class="mb-3 flex items-center justify-between">
+          <h3 class="text-surface-900 text-sm font-semibold">筛选</h3>
+          <button
+            type="button"
+            class="text-surface-800/50 hover:bg-surface-100 hover:text-surface-900 flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors"
+            aria-label="关闭筛选"
+            @click="mobileFiltersOpen = false"
+          >
+            <X class="size-3.5" />
+            完成
+          </button>
+        </div>
+        <div class="space-y-3">
+          <div class="flex items-center gap-1.5">
+            <span class="text-surface-800/50 w-14 shrink-0 text-xs">视图</span>
+            <div
+              class="border-surface-100 flex items-center gap-0.5 rounded-lg border p-0.5"
+              role="group"
+              aria-label="视图切换"
+            >
+              <button
+                type="button"
+                class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                :class="
+                  store.viewMode === 'kanban'
+                    ? 'bg-brand-600 text-surface-0'
+                    : 'text-surface-800/60 hover:text-surface-900'
+                "
+                aria-label="看板视图"
+                @click="store.viewMode = 'kanban'"
+              >
+                看板
+              </button>
+              <button
+                type="button"
+                class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                :class="
+                  store.viewMode === 'date'
+                    ? 'bg-brand-600 text-surface-0'
+                    : 'text-surface-800/60 hover:text-surface-900'
+                "
+                aria-label="按截止日期分组"
+                @click="store.viewMode = 'date'"
+              >
+                日期
+              </button>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-surface-800/50 w-14 shrink-0 text-xs">排序</span>
+            <select
+              v-model="store.sortBy"
+              class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 flex-1 rounded-lg border px-2 py-1.5 text-xs transition outline-none focus:ring-4"
+              aria-label="任务排序方式"
+            >
+              <option v-for="opt in TASK_SORT_OPTIONS" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+            <button
+              v-if="store.sortBy !== 'order'"
+              type="button"
+              class="border-surface-100 bg-surface-0 text-surface-800/60 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2 py-1.5 text-xs transition-colors"
+              aria-label="切换排序方向"
+              @click="store.setSort(store.sortBy)"
+            >
+              <ArrowDownUp class="size-3" />
+            </button>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-surface-800/50 w-14 shrink-0 text-xs">截止</span>
+            <select
+              v-model="store.dateFilter"
+              class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 flex-1 rounded-lg border px-2 py-1.5 text-xs transition outline-none focus:ring-4"
+              aria-label="截止日期筛选"
+            >
+              <option v-for="opt in TASK_DATE_FILTERS" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-surface-800/50 w-14 shrink-0 text-xs">快捷</span>
+            <select
+              v-model="store.quickFilter"
+              class="border-surface-100 bg-surface-0 focus:border-brand-500 focus:ring-brand-500/20 flex-1 rounded-lg border px-2 py-1.5 text-xs transition outline-none focus:ring-4"
+              aria-label="快捷筛选"
+            >
+              <option v-for="opt in TASK_QUICK_FILTERS" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-surface-800/50 w-14 shrink-0 text-xs">密度</span>
+            <button
+              type="button"
+              class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors"
+              :aria-label="store.density === 'dense' ? '切换为常规密度' : '切换为高密度'"
+              @click="store.density = store.density === 'dense' ? 'comfortable' : 'dense'"
+            >
+              <Rows3 class="size-3" />
+              {{ store.density === 'dense' ? '紧凑' : '常规' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 今日聚焦面板（跨项目，最多 5 个） -->
@@ -394,6 +531,7 @@ function performDrop(status: KanbanStatus, beforeId: string | null) {
             v-for="task in g.tasks"
             :key="task.id"
             :task="task"
+            :dense="store.density === 'dense'"
             :selected="store.selectedIds.has(task.id)"
             :selectable="true"
             @open="openDrawer"
@@ -512,6 +650,7 @@ function performDrop(status: KanbanStatus, beforeId: string | null) {
             >
               <TaskCard
                 :task="task"
+                :dense="store.density === 'dense'"
                 :selected="store.selectedIds.has(task.id)"
                 :selectable="true"
                 @dragstart="onDragStart($event, task.id)"

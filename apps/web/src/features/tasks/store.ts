@@ -49,6 +49,7 @@ import type {
   KanbanStatus,
   RunningFocus,
   TaskDateFilter,
+  TaskDensity,
   TaskEvent,
   TaskEventType,
   TaskForm,
@@ -123,6 +124,8 @@ export const useTaskStore = defineStore('tasks', () => {
   const viewMode = ref<'kanban' | 'date'>(uiInitial.viewMode);
   /** 快捷筛选：全部 / 今日聚焦 / 本周到期 / 阻塞 */
   const quickFilter = ref<TaskQuickFilter>(uiInitial.quickFilter);
+  /** 卡片密度：dense=高密度（默认）；comfortable=常规 */
+  const density = ref<TaskDensity>(uiInitial.density);
 
   function handleSave(result: { ok: boolean; reason?: string }): void {
     if (!result.ok) storageWarning.value = result.reason ?? '本地存储写入失败';
@@ -149,13 +152,14 @@ export const useTaskStore = defineStore('tasks', () => {
   );
 
   watch(
-    [dateFilter, viewMode, quickFilter],
+    [dateFilter, viewMode, quickFilter, density],
     () => {
       handleSave(
         saveTasksUi({
           dateFilter: dateFilter.value,
           viewMode: viewMode.value,
           quickFilter: quickFilter.value,
+          density: density.value,
         }),
       );
     },
@@ -976,6 +980,7 @@ export const useTaskStore = defineStore('tasks', () => {
     dateFilter,
     viewMode,
     quickFilter,
+    density,
     storageWarning,
     migrationNotice,
     selectedIds,

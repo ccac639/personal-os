@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Archive,
   Download,
+  Ellipsis,
   Eye,
   FileJson,
   Pencil,
@@ -75,6 +76,9 @@ const rules = computed<RiskRule[]>(() =>
 
 const retro = computed<Retrospective | null>(() => store.retrospectiveOf(props.project.id));
 
+/** 更多菜单（导出 / 导入等低频操作收纳） */
+const moreOpen = ref(false);
+
 /** 笔记编辑状态（未保存时使用副本） */
 const editing = ref(false);
 const draft = ref<Omit<Retrospective, 'projectId' | 'updatedAt'>>({
@@ -132,6 +136,7 @@ function onImportFile(e: Event) {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
+  moreOpen.value = false;
   const reader = new FileReader();
   reader.onload = () => {
     const text = String(reader.result ?? '');
@@ -340,15 +345,6 @@ function formatHours(minutes: number): string {
         </h2>
         <div class="flex items-center gap-2">
           <button
-            v-if="retro"
-            type="button"
-            class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
-            @click="exportMarkdown"
-          >
-            <Download class="size-3.5" />
-            导出 Markdown
-          </button>
-          <button
             v-if="!editing"
             type="button"
             class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
@@ -357,6 +353,50 @@ function formatHours(minutes: number): string {
             <Pencil class="size-3.5" />
             {{ retro ? '编辑' : '生成摘要' }}
           </button>
+          <div class="relative">
+            <button
+              type="button"
+              class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors"
+              aria-label="复盘更多操作"
+              title="更多操作"
+              @click="moreOpen = !moreOpen"
+            >
+              <Ellipsis class="size-4" />
+            </button>
+            <div
+              v-if="moreOpen"
+              class="border-surface-100 bg-surface-0 shadow-float absolute top-10 right-0 z-20 w-44 overflow-hidden rounded-xl border py-1"
+              role="menu"
+              aria-label="复盘更多操作"
+            >
+              <button
+                v-if="retro"
+                type="button"
+                role="menuitem"
+                class="text-surface-800/80 hover:bg-surface-50 flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
+                @click="
+                  exportMarkdown();
+                  moreOpen = false;
+                "
+              >
+                <Download class="size-3.5" />
+                导出复盘 Markdown
+              </button>
+              <label
+                class="text-surface-800/80 hover:bg-surface-50 flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
+                role="menuitem"
+              >
+                <Upload class="size-3.5" />
+                导入快照
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  class="hidden"
+                  @change="onImportFile"
+                />
+              </label>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -465,18 +505,6 @@ function formatHours(minutes: number): string {
           归档快照
         </h2>
         <div class="flex items-center gap-2">
-          <label
-            class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
-          >
-            <Upload class="size-3.5" />
-            导入快照
-            <input
-              type="file"
-              accept=".json,application/json"
-              class="hidden"
-              @change="onImportFile"
-            />
-          </label>
           <button
             type="button"
             class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"

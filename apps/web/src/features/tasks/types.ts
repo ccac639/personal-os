@@ -88,6 +88,9 @@ export interface FocusPlanDay {
 /** 看板列状态（cancelled 不进看板） */
 export type KanbanStatus = 'todo' | 'in-progress' | 'done';
 
+/** 任务卡片密度：dense=高密度（默认，隐藏低频字段）；comfortable=常规 */
+export type TaskDensity = 'dense' | 'comfortable';
+
 /** 排序键 */
 export type TaskSortKey = 'order' | 'priority' | 'dueDate' | 'createdAt' | 'updatedAt';
 

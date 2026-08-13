@@ -6,6 +6,7 @@ import {
   CalendarClock,
   ClipboardList,
   Download,
+  Ellipsis,
   Flag,
   Pencil,
   Plus,
@@ -13,7 +14,6 @@ import {
   RotateCcw,
   Tag,
   Trash2,
-  TrendingUp,
   Upload,
   User,
 } from '@lucide/vue';
@@ -46,7 +46,6 @@ import {
   deleteProjectWithTasks,
   undoArchiveWithTasks,
 } from '@/features/projects/archive';
-import { estimateInfo } from '@/features/projects/plan';
 import { effectiveProgress } from '@/features/projects/progress';
 import { PROJECT_STATUS_META } from '@/features/projects/types';
 import type {
@@ -55,13 +54,11 @@ import type {
 } from '@/features/projects/types';
 import { formatDateTime, formatDate, relativeTime } from '@/features/projects/utils';
 import { TaskForm, TaskKanban, useTaskStore } from '@/features/tasks';
-import { estimateSummary } from '@/features/tasks/estimates';
 import { parseTasksJson, serializeTasks } from '@/features/tasks/transfer';
 import type { TasksImportResult } from '@/features/tasks/transfer';
-import type { TaskForm as TaskFormData } from '@/features/tasks/types';
+import type { TaskForm as TaskFormData, TaskItem } from '@/features/tasks/types';
 
-type TabKey =
-  'overview' | 'tasks' | 'plan' | 'execution' | 'release' | 'knowledge' | 'retro' | 'activity';
+type TabKey = 'overview' | 'tasks' | 'plan' | 'execution' | 'release' | 'knowledge' | 'retro';
 
 const route = useRoute();
 const router = useRouter();
@@ -86,9 +83,12 @@ const deleting = ref(false);
 const permanentDeleting = ref(false);
 /** 快速创建任务 */
 const quickTaskOpen = ref(false);
+/** 任务导入 / 导出更多菜单 */
+const taskMenuOpen = ref(false);
 /** 归档项目只读模式（任务 / 计划 / 路线图 / 知识禁止编辑） */
 const readonly = computed(() => project.value?.status === 'archived');
 
+/** 统一二级导航（活动记录并入概览「近期活动」） */
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: '概览' },
   { key: 'tasks', label: '任务' },
@@ -97,7 +97,6 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'release', label: '发布' },
   { key: 'knowledge', label: '知识' },
   { key: 'retro', label: '复盘' },
-  { key: 'activity', label: '活动记录' },
 ];
 
 const ACTIVITY_META: Record<ProjectActivityType, { label: string; icon: Component; cls: string }> =
@@ -113,59 +112,18 @@ const ACTIVITY_META: Record<ProjectActivityType, { label: string; icon: Componen
     release: { label: '发布', icon: Rocket, cls: 'bg-green-500/10 text-green-600' },
   };
 
-/** 里程碑进度（自动模式下与任务进度并列展示；定义 = 已完成里程碑数 / 总数） */
-const milestoneProgress = computed(() => {
-  const list = store.milestonesOf(projectId.value);
-  if (!list.length) return null;
-  const done = list.filter((m) => m.status === 'done').length;
-  return Math.round((done / list.length) * 100);
-});
-
-/** 执行概览：三种进度来源并存，明确区分 */
-const overviewProgress = computed(() => {
-  const taskP = stats.value.progress;
-  const effective = effectiveProgress(project.value!, taskP);
-  return {
-    overall: effective,
-    overallSource:
-      project.value!.progressMode === 'manual'
-        ? '手动设置（进度设置面板维护）'
-        : '自动 = 任务完成比例',
-    task: taskP,
-    taskSource: '已完成任务 / 未取消任务',
-    milestone: milestoneProgress.value,
-    milestoneSource: '已完成里程碑 / 里程碑总数',
-  };
-});
-
-/** 项目累计专注分钟数（跨该项目的全部任务） */
-const projectFocusMinutes = computed(() => {
-  const taskIds = new Set(taskStore.tasksByProject(projectId.value).map((t) => t.id));
-  return taskStore.focusSessions
-    .filter((s) => taskIds.has(s.taskId))
-    .reduce((sum, s) => sum + s.minutes, 0);
-});
-
-/** 工时信息：预计 / 已完成（专注折算）/ 剩余 */
-const hours = computed(() => estimateInfo(project.value!, projectFocusMinutes.value));
-
-/** 任务估时偏差汇总（Σ任务估时 vs Σ实际投入） */
-const estimateSummaryInfo = computed(() =>
-  estimateSummary(taskStore.tasksByProject(projectId.value), taskStore.focusSessions),
-);
-
-/** 受阻任务数（存在未完成前置） */
-const blockedCount = computed(
-  () =>
-    taskStore.tasksByProject(projectId.value).filter((t) => taskStore.isBlockedTask(t.id)).length,
+/** 有效进度（概览上下文展示） */
+const effective = computed(() =>
+  project.value ? effectiveProgress(project.value, stats.value.progress) : 0,
 );
 
 /** 风险摘要：规则化输出（进度落后 / 临近截止 / 长期无活动 / 阻塞 / 专注偏差） */
 const riskSummary = computed<{ label: string; value: string; tone: 'danger' | 'warn' | 'ok' }[]>(
   () => {
+    if (!project.value) return [];
     const today = formatDate(new Date().toISOString()) || '';
     return buildRiskRules({
-      project: project.value!,
+      project: project.value,
       tasks: taskStore.tasksByProject(projectId.value),
       milestones: store.milestonesOf(projectId.value),
       activities: activities.value,
@@ -175,6 +133,32 @@ const riskSummary = computed<{ label: string; value: string; tone: 'danger' | 'w
     }).map((r) => ({ label: r.label, value: r.detail, tone: r.level }));
   },
 );
+
+/** 下一步行动：逾期 / 今日到期 / 受阻 的未完成任务（最多 6 条） */
+const nextActions = computed<TaskItem[]>(() => {
+  const today = formatDate(new Date().toISOString()) || '';
+  return taskStore
+    .tasksByProject(projectId.value)
+    .filter((t) => t.status !== 'done' && t.status !== 'cancelled')
+    .filter((t) => (!!t.dueDate && t.dueDate <= today) || taskStore.isBlockedTask(t.id))
+    .sort((a, b) => {
+      const aOverdue = a.dueDate && a.dueDate < today ? 0 : 1;
+      const bOverdue = b.dueDate && b.dueDate < today ? 0 : 1;
+      if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+      return (a.dueDate ?? '9999') < (b.dueDate ?? '9999') ? -1 : 1;
+    })
+    .slice(0, 6);
+});
+
+/** 近期活动：默认 5 条，可展开全部 */
+const activityLimit = ref(5);
+const shownActivities = computed(() => activities.value.slice(0, activityLimit.value));
+
+function todayStr(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
 /** 任务导入 / 导出（JSON，预览后确认） */
 const importingTasks = ref(false);
@@ -199,6 +183,7 @@ function onTasksImportFile(e: Event) {
   reader.onload = () => {
     tasksImportResult.value = parseTasksJson(String(reader.result ?? ''), projectId.value);
     importingTasks.value = true;
+    taskMenuOpen.value = false;
   };
   reader.readAsText(file);
   input.value = '';
@@ -293,12 +278,6 @@ function confirmArchiveToInbox() {
 
 function undoArchive() {
   undoArchiveWithTasks(store, taskStore);
-}
-
-function todayStr(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 function onQuickTaskSubmit(form: TaskFormData) {
@@ -463,13 +442,16 @@ function onQuickTaskSubmit(form: TaskFormData) {
         />
       </div>
 
-      <!-- 视图切换 -->
-      <nav class="border-surface-100 mt-5 flex items-center gap-1 border-b">
+      <!-- 视图切换（移动端横向滚动） -->
+      <nav
+        class="border-surface-100 mt-5 flex items-center gap-1 overflow-x-auto border-b"
+        aria-label="项目视图"
+      >
         <button
           v-for="t in TABS"
           :key="t.key"
           type="button"
-          class="-mb-px rounded-t-lg border-b-2 px-4 py-2.5 text-sm font-medium transition-colors"
+          class="-mb-px shrink-0 rounded-t-lg border-b-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors"
           :class="
             tab === t.key
               ? 'border-brand-600 text-brand-600'
@@ -481,131 +463,131 @@ function onQuickTaskSubmit(form: TaskFormData) {
         </button>
       </nav>
 
-      <!-- 概览 -->
-      <div v-if="tab === 'overview'" class="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <!-- 执行概览：三种进度 + 日期工时 + 风险摘要 -->
-        <section
-          class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5 lg:col-span-2"
-        >
-          <h2 class="text-surface-900 mb-4 flex items-center gap-2 text-sm font-semibold">
-            <TrendingUp class="text-brand-600 size-4" />
-            执行概览
-          </h2>
-
-          <!-- 三种进度来源（明确区分，避免误解） -->
-          <div class="space-y-3.5">
-            <div>
-              <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
-                <span class="text-surface-800/70 font-medium">总体进度</span>
-                <span class="text-surface-900 font-semibold">{{ overviewProgress.overall }}%</span>
+      <!-- 概览：项目上下文 + 下一步行动 + 风险 + 近期活动（按需初始化，切换即卸载清理） -->
+      <div v-if="tab === 'overview'" class="mt-5 space-y-4">
+        <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 flex-1">
+              <h2 class="text-surface-900 mb-3 flex items-center gap-2 text-sm font-semibold">
+                <ClipboardList class="text-brand-600 size-4" />
+                项目上下文
+              </h2>
+              <dl class="space-y-2.5 text-sm">
+                <div class="flex items-start gap-3">
+                  <dt class="text-surface-800/50 w-16 shrink-0">目标</dt>
+                  <dd class="text-surface-800/80 min-w-0 leading-6 break-words">
+                    {{ project.goal ?? '—' }}
+                  </dd>
+                </div>
+                <div class="flex items-start gap-3">
+                  <dt class="text-surface-800/50 w-16 shrink-0">技术栈</dt>
+                  <dd class="flex flex-wrap gap-1.5">
+                    <span
+                      v-for="tech in project.techStack"
+                      :key="tech"
+                      class="border-surface-100 bg-surface-50 text-surface-800/70 rounded-md border px-2 py-0.5 text-xs"
+                    >
+                      {{ tech }}
+                    </span>
+                    <span v-if="!project.techStack.length" class="text-surface-800/40">—</span>
+                  </dd>
+                </div>
+                <div class="flex items-start gap-3">
+                  <dt class="text-surface-800/50 w-16 shrink-0">日期</dt>
+                  <dd class="text-surface-800/80 min-w-0 text-xs">
+                    开始 {{ project.startDate ?? '—' }} · 目标完成 {{ project.targetDate ?? '—' }} ·
+                    预计
+                    {{ project.estimatedHours != null ? `${project.estimatedHours} 小时` : '—' }}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            <div class="w-full shrink-0 sm:w-56">
+              <div class="mb-1 flex items-baseline justify-between text-xs">
+                <span class="text-surface-800/50">总进度</span>
+                <span class="text-surface-900 font-semibold">{{ effective }}%</span>
               </div>
               <div class="bg-surface-100 h-2 overflow-hidden rounded-full">
                 <div
                   class="h-full rounded-full transition-all"
-                  :class="overviewProgress.overall >= 100 ? 'bg-green-500' : 'bg-brand-500'"
-                  :style="{ width: `${overviewProgress.overall}%` }"
+                  :class="effective >= 100 ? 'bg-green-500' : 'bg-brand-500'"
+                  :style="{ width: `${effective}%` }"
                 />
               </div>
-              <p class="text-surface-800/40 mt-1 text-xs">{{ overviewProgress.overallSource }}</p>
-            </div>
-            <div>
-              <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
-                <span class="text-surface-800/70 font-medium">任务进度</span>
-                <span class="text-surface-900 font-semibold">{{ overviewProgress.task }}%</span>
+              <div class="mt-3">
+                <ProgressEditor :project="project" />
               </div>
-              <div class="bg-surface-100 h-2 overflow-hidden rounded-full">
-                <div
-                  class="h-full rounded-full bg-sky-500 transition-all"
-                  :style="{ width: `${overviewProgress.task}%` }"
-                />
-              </div>
-              <p class="text-surface-800/40 mt-1 text-xs">{{ overviewProgress.taskSource }}</p>
-            </div>
-            <div v-if="overviewProgress.milestone !== null">
-              <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
-                <span class="text-surface-800/70 font-medium">里程碑进度</span>
-                <span class="text-surface-900 font-semibold"
-                  >{{ overviewProgress.milestone }}%</span
-                >
-              </div>
-              <div class="bg-surface-100 h-2 overflow-hidden rounded-full">
-                <div
-                  class="h-full rounded-full bg-indigo-500 transition-all"
-                  :style="{ width: `${overviewProgress.milestone}%` }"
-                />
-              </div>
-              <p class="text-surface-800/40 mt-1 text-xs">{{ overviewProgress.milestoneSource }}</p>
-            </div>
-            <div v-else>
-              <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
-                <span class="text-surface-800/70 font-medium">里程碑进度</span>
-              </div>
-              <p class="text-surface-800/40 text-xs">
-                暂无里程碑，无法计算里程碑进度（前往「计划」页创建）。
-              </p>
             </div>
           </div>
+        </section>
 
-          <!-- 日期与工时 -->
-          <dl class="mt-5 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <div class="border-surface-100 bg-surface-50 rounded-lg border p-3">
-              <dt class="text-surface-800/50 text-xs">目标完成日期</dt>
-              <dd class="text-surface-900 mt-1 font-medium break-words">
-                {{ project.targetDate ?? '未设置' }}
-              </dd>
-            </div>
-            <div class="border-surface-100 bg-surface-50 rounded-lg border p-3">
-              <dt class="text-surface-800/50 text-xs">预计投入</dt>
-              <dd class="text-surface-900 mt-1 font-medium">
-                {{ hours.estimatedHours != null ? `${hours.estimatedHours} 小时` : '未设置' }}
-              </dd>
-            </div>
-            <div class="border-surface-100 bg-surface-50 rounded-lg border p-3">
-              <dt class="text-surface-800/50 text-xs">已完成投入</dt>
-              <dd class="text-surface-900 mt-1 font-medium">
-                {{ projectFocusMinutes === 0 ? '暂无专注记录' : `${hours.doneHours} 小时` }}
-              </dd>
-            </div>
-            <div class="border-surface-100 bg-surface-50 rounded-lg border p-3">
-              <dt class="text-surface-800/50 text-xs">剩余投入</dt>
-              <dd class="text-surface-900 mt-1 font-medium">
-                {{ hours.remainingHours === null ? '未设置预计' : `${hours.remainingHours} 小时` }}
-              </dd>
-            </div>
-          </dl>
-
-          <!-- 任务估时偏差汇总 -->
-          <div
-            v-if="estimateSummaryInfo.estimatedCount > 0"
-            class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-3 py-2 text-xs"
-            :class="
-              estimateSummaryInfo.varianceDirection === 'behind'
-                ? 'border-amber-200 bg-amber-500/5 text-amber-700'
-                : estimateSummaryInfo.varianceDirection === 'ahead'
-                  ? 'border-green-200 bg-green-500/5 text-green-700'
-                  : 'border-surface-100 bg-surface-50 text-surface-800/60'
-            "
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <!-- 下一步行动 -->
+          <section
+            class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5 lg:col-span-2"
           >
-            <span>{{ estimateSummaryInfo.estimatedCount }} 个任务有估时</span>
-            <span>Σ估时 {{ estimateSummaryInfo.estimatedMinutes }} 分钟</span>
-            <span>Σ实际 {{ estimateSummaryInfo.actualMinutes }} 分钟</span>
-            <span v-if="estimateSummaryInfo.varianceMinutes !== null">
-              {{
-                estimateSummaryInfo.varianceMinutes >= 0
-                  ? `进度余量 ${estimateSummaryInfo.varianceMinutes} 分钟（实际投入低于估时）`
-                  : `超出估时 ${Math.abs(estimateSummaryInfo.varianceMinutes)} 分钟`
-              }}
-            </span>
-          </div>
+            <div class="mb-3 flex items-center justify-between">
+              <h2 class="text-surface-900 flex items-center gap-2 text-sm font-semibold">
+                <AlertTriangle class="text-brand-600 size-4" />
+                下一步行动
+              </h2>
+              <button
+                type="button"
+                class="text-brand-600 hover:bg-brand-500/10 rounded-lg px-2 py-1 text-xs font-medium transition-colors"
+                @click="tab = 'tasks'"
+              >
+                查看任务 →
+              </button>
+            </div>
+            <div v-if="nextActions.length" class="space-y-1.5">
+              <button
+                v-for="t in nextActions"
+                :key="t.id"
+                type="button"
+                class="hover:bg-surface-50 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors"
+                :aria-label="`打开任务 ${t.title}`"
+                @click="tab = 'tasks'"
+              >
+                <span
+                  class="size-2 shrink-0 rounded-full"
+                  :class="t.status === 'in-progress' ? 'bg-amber-500' : 'bg-sky-500'"
+                />
+                <span class="min-w-0 flex-1 truncate">{{ t.title }}</span>
+                <span
+                  v-if="taskStore.isBlockedTask(t.id)"
+                  class="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-600"
+                >
+                  受阻
+                </span>
+                <span
+                  v-if="t.dueDate"
+                  class="shrink-0 text-xs"
+                  :class="
+                    t.dueDate < (formatDate(new Date().toISOString()) || '')
+                      ? 'font-medium text-red-500'
+                      : 'text-surface-800/50'
+                  "
+                >
+                  {{ t.dueDate }}
+                </span>
+              </button>
+            </div>
+            <p v-else class="text-surface-800/40 py-4 text-center text-sm">
+              没有需要立即处理的任务 🎉
+            </p>
+          </section>
 
-          <!-- 风险摘要 -->
-          <div class="mt-5">
-            <h3 class="text-surface-800/50 mb-2 text-xs font-medium">风险摘要</h3>
-            <div v-if="riskSummary.length" class="flex flex-wrap gap-1.5">
+          <!-- 风险 -->
+          <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
+            <h2 class="text-surface-900 mb-3 flex items-center gap-2 text-sm font-semibold">
+              <AlertTriangle class="size-4 text-amber-500" />
+              风险
+            </h2>
+            <div v-if="riskSummary.length" class="space-y-1.5">
               <span
                 v-for="r in riskSummary"
                 :key="r.label"
-                class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
+                class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
                 :class="
                   r.tone === 'danger'
                     ? 'bg-red-500/10 text-red-600'
@@ -614,146 +596,64 @@ function onQuickTaskSubmit(form: TaskFormData) {
                       : 'bg-green-500/10 text-green-600'
                 "
               >
-                <AlertTriangle v-if="r.tone !== 'ok'" class="size-3" />
-                {{ r.label }}：{{ r.value }}
+                <AlertTriangle v-if="r.tone !== 'ok'" class="size-3 shrink-0" />
+                <span class="min-w-0">
+                  <span class="font-semibold">{{ r.label }}：</span>{{ r.value }}
+                </span>
               </span>
             </div>
-            <p v-else class="text-surface-800/40 text-xs">
+            <p v-else class="text-surface-800/40 py-4 text-center text-sm">
               {{
                 stats.total === 0 && store.milestonesOf(project.id).length === 0
                   ? '暂无任务与里程碑数据，无法评估风险。'
                   : '暂无异常，项目按计划推进。'
               }}
             </p>
-          </div>
-        </section>
-
-        <div class="space-y-4">
-          <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
-            <h2 class="text-surface-900 mb-4 text-sm font-semibold">任务统计</h2>
-            <div class="mb-4 flex items-end justify-between">
-              <p class="text-surface-900 text-3xl font-semibold">
-                {{ stats.progress }}<span class="text-surface-800/50 text-base">%</span>
-              </p>
-              <p class="text-surface-800/50 text-xs">完成率</p>
-            </div>
-            <div class="bg-surface-100 mb-5 h-2 overflow-hidden rounded-full">
-              <div
-                class="h-full rounded-full transition-all"
-                :class="stats.progress >= 100 ? 'bg-green-500' : 'bg-brand-500'"
-                :style="{ width: `${stats.progress}%` }"
-              />
-            </div>
-            <div class="grid grid-cols-3 gap-2 text-center">
-              <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
-                <p class="text-lg font-semibold text-sky-600">{{ stats.todo }}</p>
-                <p class="text-surface-800/50 mt-0.5 text-xs">待办</p>
-              </div>
-              <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
-                <p class="text-lg font-semibold text-amber-600">{{ stats.inProgress }}</p>
-                <p class="text-surface-800/50 mt-0.5 text-xs">进行中</p>
-              </div>
-              <div class="border-surface-100 bg-surface-50 rounded-lg border p-2.5">
-                <p class="text-lg font-semibold text-green-600">{{ stats.done }}</p>
-                <p class="text-surface-800/50 mt-0.5 text-xs">已完成</p>
-              </div>
-            </div>
-            <div class="mt-3 space-y-1.5">
-              <p
-                v-if="stats.overdue > 0"
-                class="rounded-lg bg-red-500/10 px-3 py-2 text-center text-xs font-medium text-red-600"
-              >
-                {{ stats.overdue }} 个任务已逾期
-              </p>
-              <p
-                v-if="blockedCount > 0"
-                class="rounded-lg bg-amber-500/10 px-3 py-2 text-center text-xs font-medium text-amber-600"
-              >
-                {{ blockedCount }} 个任务受阻（存在未完成前置）
-              </p>
-              <p
-                v-if="stats.overdue === 0 && blockedCount === 0"
-                class="text-surface-800/40 text-center text-xs"
-              >
-                暂无逾期与受阻任务
-              </p>
-            </div>
-          </section>
-
-          <!-- 进度模式编辑器（自动 / 手动，带说明） -->
-          <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
-            <ProgressEditor :project="project" />
           </section>
         </div>
 
-        <!-- 项目信息 -->
-        <section
-          class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5 lg:col-span-2"
-        >
-          <h2 class="text-surface-900 mb-4 text-sm font-semibold">项目信息</h2>
-          <dl class="space-y-3 text-sm">
-            <div class="flex items-start gap-3">
-              <dt class="text-surface-800/50 w-16 shrink-0">状态</dt>
-              <dd class="text-surface-900">
-                <span
-                  class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                  :class="PROJECT_STATUS_META[project.status].badge"
-                >
-                  {{ PROJECT_STATUS_META[project.status].label }}
-                </span>
-              </dd>
+        <!-- 近期活动（默认 5 条，可展开全部） -->
+        <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-5">
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-surface-900 flex items-center gap-2 text-sm font-semibold">
+              <ClipboardList class="text-brand-600 size-4" />
+              近期活动
+            </h2>
+            <button
+              v-if="activities.length > activityLimit"
+              type="button"
+              class="text-brand-600 hover:bg-brand-500/10 rounded-lg px-2 py-1 text-xs font-medium transition-colors"
+              @click="activityLimit = activityLimit === 5 ? activities.length : 5"
+            >
+              {{ activityLimit === 5 ? '查看全部' : '收起' }}
+            </button>
+          </div>
+          <div v-if="shownActivities.length" class="relative space-y-5 pl-1">
+            <div class="bg-surface-100 absolute top-1 bottom-1 left-[17px] w-px" />
+            <div v-for="act in shownActivities" :key="act.id" class="relative flex gap-4">
+              <span
+                class="z-10 flex size-9 shrink-0 items-center justify-center rounded-full"
+                :class="ACTIVITY_META[act.type].cls"
+              >
+                <component :is="ACTIVITY_META[act.type].icon" class="size-4" />
+              </span>
+              <div class="min-w-0 pt-0.5">
+                <p class="text-surface-900 text-sm font-medium">{{ act.title }}</p>
+                <p v-if="act.description" class="text-surface-800/60 mt-0.5 text-sm">
+                  {{ act.description }}
+                </p>
+                <p class="text-surface-800/40 mt-1 text-xs">{{ formatDateTime(act.createdAt) }}</p>
+              </div>
             </div>
-            <div class="flex items-start gap-3">
-              <dt class="text-surface-800/50 w-16 shrink-0">目标</dt>
-              <dd class="text-surface-800/80 min-w-0 leading-6 break-words">
-                {{ project.goal ?? '—' }}
-              </dd>
-            </div>
-            <div class="flex items-start gap-3">
-              <dt class="text-surface-800/50 w-16 shrink-0">描述</dt>
-              <dd class="text-surface-800/80 min-w-0 leading-6 break-words">
-                {{ project.description ?? '—' }}
-              </dd>
-            </div>
-            <div class="flex items-start gap-3">
-              <dt class="text-surface-800/50 w-16 shrink-0">技术栈</dt>
-              <dd class="flex flex-wrap gap-1.5">
-                <span
-                  v-for="tech in project.techStack"
-                  :key="tech"
-                  class="border-surface-100 bg-surface-50 text-surface-800/70 rounded-md border px-2 py-0.5 text-xs"
-                >
-                  {{ tech }}
-                </span>
-                <span v-if="!project.techStack.length" class="text-surface-800/40">—</span>
-              </dd>
-            </div>
-            <div class="flex items-start gap-3">
-              <dt class="text-surface-800/50 w-16 shrink-0">标签</dt>
-              <dd class="flex flex-wrap gap-1.5">
-                <span
-                  v-for="tag in project.tags"
-                  :key="tag"
-                  class="border-surface-100 bg-surface-50 text-surface-800/70 rounded-md border px-2 py-0.5 text-xs"
-                >
-                  {{ tag }}
-                </span>
-                <span v-if="!project.tags.length" class="text-surface-800/40">—</span>
-              </dd>
-            </div>
-            <div class="flex items-start gap-3">
-              <dt class="text-surface-800/50 w-16 shrink-0">创建时间</dt>
-              <dd class="text-surface-800/80">{{ formatDateTime(project.createdAt) }}</dd>
-            </div>
-            <div class="flex items-start gap-3">
-              <dt class="text-surface-800/50 w-16 shrink-0">更新时间</dt>
-              <dd class="text-surface-800/80">{{ formatDateTime(project.updatedAt) }}</dd>
-            </div>
-          </dl>
+          </div>
+          <div v-else class="py-8 text-center">
+            <ClipboardList class="text-surface-800/30 mx-auto size-8" />
+            <p class="text-surface-800/50 mt-2 text-sm">暂无活动记录</p>
+          </div>
         </section>
       </div>
 
-      <!-- 任务看板 -->
+      <!-- 任务看板（统一筛选工具栏 / 高密度默认 / 移动端降级） -->
       <div v-else-if="tab === 'tasks'" class="mt-5">
         <div
           v-if="readonly"
@@ -762,45 +662,66 @@ function onQuickTaskSubmit(form: TaskFormData) {
           <Archive class="size-3.5" />
           项目已归档（只读）：任务、计划、路线图与知识记录禁止编辑，可查看或恢复项目后继续操作。
         </div>
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div class="mb-3 flex items-center justify-between gap-2">
           <p class="text-surface-800/50 text-xs">
-            导出当前项目任务 JSON；导入时自动校验、清理无效依赖与循环依赖，预览后确认。
+            导入时自动校验、清理无效依赖与循环依赖，预览后确认。
           </p>
-          <div class="flex items-center gap-2">
+          <div class="relative">
             <button
               type="button"
-              class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
-              :disabled="taskStore.tasksByProject(project.id).length === 0"
-              @click="exportTasksJson"
+              class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors"
+              aria-label="任务更多操作"
+              title="更多操作"
+              @click="taskMenuOpen = !taskMenuOpen"
             >
-              <Download class="size-3.5" />
-              导出任务
+              <Ellipsis class="size-4" />
             </button>
-            <label
-              v-if="!readonly"
-              class="border-surface-100 bg-surface-0 text-surface-800/70 hover:bg-surface-50 hover:text-surface-900 flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
+            <div
+              v-if="taskMenuOpen"
+              class="border-surface-100 bg-surface-0 shadow-float absolute top-10 right-0 z-20 w-40 overflow-hidden rounded-xl border py-1"
+              role="menu"
+              aria-label="任务更多操作"
             >
-              <Upload class="size-3.5" />
-              导入任务
-              <input
-                type="file"
-                accept=".json,application/json"
-                class="hidden"
-                @change="onTasksImportFile"
-              />
-            </label>
+              <button
+                type="button"
+                role="menuitem"
+                class="text-surface-800/80 hover:bg-surface-50 flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
+                :disabled="taskStore.tasksByProject(project.id).length === 0"
+                @click="
+                  exportTasksJson();
+                  taskMenuOpen = false;
+                "
+              >
+                <Download class="size-3.5" />
+                导出任务
+              </button>
+              <label
+                v-if="!readonly"
+                class="text-surface-800/80 hover:bg-surface-50 flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
+                role="menuitem"
+              >
+                <Upload class="size-3.5" />
+                导入任务
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  class="hidden"
+                  @change="onTasksImportFile"
+                />
+              </label>
+            </div>
           </div>
         </div>
         <TaskKanban :project-id="project.id" :readonly="readonly" />
       </div>
 
-      <!-- 执行：吞吐 / 周目标 / 里程碑风险 -->
+      <!-- 执行：今日计划 / 受阻 / 周目标 / 吞吐 -->
       <ExecutionTab v-else-if="tab === 'execution'" :project-id="project.id" />
 
-      <!-- 发布：检查单 / 模板 / 记录 -->
+      <!-- 发布：检查单 / 记录（列表 + 详情） -->
       <ReleasePanel v-else-if="tab === 'release'" :project-id="project.id" :readonly="readonly" />
 
-      <!-- 知识：决策 / 问题 / 参考 -->
+      <!-- 知识：决策 / 问题 / 参考（列表 + 详情） -->
       <KnowledgePanel
         v-else-if="tab === 'knowledge'"
         :project-id="project.id"
@@ -813,39 +734,8 @@ function onQuickTaskSubmit(form: TaskFormData) {
       </div>
 
       <!-- 复盘视图：健康统计 / 趋势 / 复盘笔记 / 归档快照 -->
-      <div v-else-if="tab === 'retro'" class="mt-5">
-        <RetroView :project="project" />
-      </div>
-
-      <!-- 活动记录 -->
       <div v-else class="mt-5">
-        <section class="border-surface-100 bg-surface-0 shadow-card rounded-card border p-6">
-          <h2 class="text-surface-900 mb-5 text-sm font-semibold">活动记录</h2>
-          <div v-if="activities.length" class="relative space-y-6 pl-1">
-            <div class="bg-surface-100 absolute top-1 bottom-1 left-[17px] w-px" />
-            <div v-for="act in activities" :key="act.id" class="relative flex gap-4">
-              <span
-                class="z-10 flex size-9 shrink-0 items-center justify-center rounded-full"
-                :class="ACTIVITY_META[act.type].cls"
-              >
-                <component :is="ACTIVITY_META[act.type].icon" class="size-4" />
-              </span>
-              <div class="min-w-0 pt-0.5">
-                <p class="text-surface-900 text-sm font-medium">{{ act.title }}</p>
-                <p v-if="act.description" class="text-surface-800/60 mt-0.5 text-sm">
-                  {{ act.description }}
-                </p>
-                <p class="text-surface-800/40 mt-1 text-xs">
-                  {{ formatDateTime(act.createdAt) }}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div v-else class="py-8 text-center">
-            <ClipboardList class="text-surface-800/30 mx-auto size-8" />
-            <p class="text-surface-800/50 mt-2 text-sm">暂无活动记录</p>
-          </div>
-        </section>
+        <RetroView :project="project" />
       </div>
 
       <!-- 编辑弹窗 -->
