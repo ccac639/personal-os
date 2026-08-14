@@ -2,6 +2,7 @@ import type { ModuleManifest } from './module-manifest.js';
 
 import { aiManifest } from '../modules/ai/manifest.js';
 import { agentsManifest } from '../modules/agents/manifest.js';
+import { articlesManifest } from '../modules/articles/manifest.js';
 import { chatManifest } from '../modules/chat/manifest.js';
 import { dataImportManifest } from '../modules/data-import/manifest.js';
 import { focusManifest } from '../modules/focus/manifest.js';
@@ -40,4 +41,5 @@ export const businessManifests: ModuleManifest[] = [
   threeDManifest,
   workflowsManifest,
   sub2ApiManifest,
+  articlesManifest,
 ];
