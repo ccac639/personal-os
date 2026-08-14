@@ -3,6 +3,9 @@ useSeoMeta({
   title: '关于',
   titleTemplate: '%s · Personal OS Blog',
   description: '关于 Personal OS 博客与作者',
+  ogType: 'website',
+  ogTitle: '关于 · Personal OS Blog',
+  ogDescription: '关于 Personal OS 博客与作者',
 });
 </script>
 

@@ -7,6 +7,9 @@ useSeoMeta({
   title: `标签：${tag}`,
   titleTemplate: '%s · Personal OS Blog',
   description: `标签「${tag}」下的全部文章`,
+  ogType: 'website',
+  ogTitle: `标签：${tag} · Personal OS Blog`,
+  ogDescription: `标签「${tag}」下的全部文章`,
 });
 </script>
 

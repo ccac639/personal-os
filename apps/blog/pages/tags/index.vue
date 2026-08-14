@@ -5,6 +5,9 @@ useSeoMeta({
   title: '标签',
   titleTemplate: '%s · Personal OS Blog',
   description: '按标签浏览全部博客文章',
+  ogType: 'website',
+  ogTitle: '标签 · Personal OS Blog',
+  ogDescription: '按标签浏览全部博客文章',
 });
 </script>
 

@@ -2,6 +2,10 @@
 useSeoMeta({
   title: 'Personal OS Blog',
   description: '个人博客：文章 / 标签 / 分类 / 专题 / 项目介绍 / 成果展示',
+  ogType: 'website',
+  ogSiteName: 'Personal OS Blog',
+  ogTitle: 'Personal OS Blog',
+  ogDescription: '个人博客：文章 / 标签 / 分类 / 专题 / 项目介绍 / 成果展示',
 });
 </script>
 

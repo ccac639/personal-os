@@ -17,6 +17,12 @@ export default defineNuxtConfig({
     description: '个人博客：文章 / 标签 / 分类 / 专题 / 项目介绍 / 成果展示',
   },
 
+  // sitemap 动态源：模块运行时 fetch 本 API 补充文章/标签/分类 URL
+  // （用户自定义 server/routes/sitemap.xml.ts 会被模块自带 route 覆盖，不可用）
+  sitemap: {
+    sources: ['/api/sitemap-urls'],
+  },
+
   css: ['~/assets/css/main.css'],
 
   vite: {

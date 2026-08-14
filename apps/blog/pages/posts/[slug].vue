@@ -14,7 +14,16 @@ useSeoMeta({
   title: post.value.title,
   titleTemplate: '%s · Personal OS Blog',
   description: post.value.description,
+  ogType: 'article',
+  ogTitle: post.value.title,
+  ogDescription: post.value.description,
+  articlePublishedTime: post.value.date,
+  articleModifiedTime: post.value.updated,
+  articleTag: post.value.tags,
 });
+
+// BlogPosting 结构化数据由 <SchemaOrgArticle /> 组件注册（vue 集成中
+// defineArticle 仅构造带 resolver 的对象，不注册节点，已核实 vue.mjs）
 </script>
 
 <template>
@@ -51,6 +60,18 @@ useSeoMeta({
 
     <!-- 正文为服务端 markdown 渲染器产出：所有文本已转义，无原始 HTML 注入 -->
     <div class="prose-blog" v-html="post.body" />
+
+    <!-- BlogPosting 结构化数据：headline/datePublished/author 是搜索引擎最低要求 -->
+    <SchemaOrgArticle
+      type="BlogPosting"
+      :headline="post.title"
+      :description="post.description"
+      :date-published="post.date"
+      :date-modified="post.updated"
+      :author="{ name: 'Personal OS' }"
+      :keywords="post.tags"
+      in-language="zh-CN"
+    />
 
     <nav
       v-if="data?.prev || data?.next"

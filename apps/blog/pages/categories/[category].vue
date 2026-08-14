@@ -7,6 +7,9 @@ useSeoMeta({
   title: `分类：${category}`,
   titleTemplate: '%s · Personal OS Blog',
   description: `分类「${category}」下的全部文章`,
+  ogType: 'website',
+  ogTitle: `分类：${category} · Personal OS Blog`,
+  ogDescription: `分类「${category}」下的全部文章`,
 });
 </script>
 
