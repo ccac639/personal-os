@@ -213,11 +213,11 @@ describe('创建 / 编辑 / 禁用 / 删除', () => {
     await flushPromises();
 
     expect(sub2apiApiMock.createChannel).toHaveBeenCalledTimes(1);
-    // 提交中：按钮禁用（防重复提交）
+    // 提交中：按钮禁用（防重复提交）——等待 busy 生效，消除时序依赖
     const submitBtn = buttonByText(wrapper, '提交中…');
     expect(submitBtn).toBeDefined();
-    expect(submitBtn!.attributes('disabled')).toBeDefined();
-    // 再次提交被阻止
+    await vi.waitFor(() => expect(submitBtn!.attributes('disabled')).toBeDefined());
+    // 再次提交被阻止（onSubmit busy 守卫）
     await wrapper.find('[role="dialog"] form').trigger('submit');
     await flushPromises();
     expect(sub2apiApiMock.createChannel).toHaveBeenCalledTimes(1);

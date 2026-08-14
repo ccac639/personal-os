@@ -5,9 +5,11 @@ import {
   sessionToJson,
   sessionToMarkdown,
 } from '@/features/chat/export';
+import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import ChatMessage from '@/features/chat/components/chat-message.vue';
 import { useChatStore } from '@/features/chat/store';
 import type { ChatSession } from '@/features/chat/types';
 
@@ -157,8 +159,6 @@ describe('ChatMessage 导出按钮', () => {
   });
 
   it('导出按钮调用 store.exportMessage', async () => {
-    const { mount } = await import('@vue/test-utils');
-    const ChatMessage = (await import('@/features/chat/components/chat-message.vue')).default;
     const spy = vi.spyOn(exportModule, 'downloadTextFile').mockImplementation(() => {});
 
     const pinia = createPinia();
