@@ -19,6 +19,7 @@ const DEFAULT_CODES: Record<number, string> = {
   404: 'NOT_FOUND',
   405: 'METHOD_NOT_ALLOWED',
   409: 'CONFLICT',
+  413: 'PAYLOAD_TOO_LARGE',
   422: 'UNPROCESSABLE_ENTITY',
   429: 'TOO_MANY_REQUESTS',
   500: 'INTERNAL_ERROR',
@@ -87,7 +88,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         const body = response as Record<string, unknown>;
         code = typeof body.code === 'string' ? body.code : defaultCode(statusCode);
         message =
-          typeof body.message === 'string' ? redactSensitive(body.message) : redactSensitive(exception.message);
+          typeof body.message === 'string'
+            ? redactSensitive(body.message)
+            : redactSensitive(exception.message);
         if (Array.isArray(body.fields)) {
           fields = body.fields as ApiFieldError[];
         }
@@ -95,7 +98,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
     } else {
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
       code = defaultCode(statusCode);
-      message = isProduction ? 'Internal server error' : redactSensitive((exception as Error)?.message ?? 'Unknown error');
+      message = isProduction
+        ? 'Internal server error'
+        : redactSensitive((exception as Error)?.message ?? 'Unknown error');
       // 内部错误一律记录完整堆栈到日志，便于排查；不返回给客户端
       this.logger.error(
         `Unhandled exception on ${request.method} ${request.url}`,
@@ -103,7 +108,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
-    const body: ApiErrorBody = { ...base, statusCode, code, message, ...(fields ? { fields } : {}) };
+    const body: ApiErrorBody = {
+      ...base,
+      statusCode,
+      code,
+      message,
+      ...(fields ? { fields } : {}),
+    };
     void reply.status(statusCode).send(body);
   }
 }

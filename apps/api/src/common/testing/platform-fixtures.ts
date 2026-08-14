@@ -17,6 +17,7 @@ import { ApiKeyGuard } from '../guards/api-key.guard.js';
 import { HealthModule } from '../health/health.module.js';
 import { RequestIdInterceptor } from '../interceptors/request-id.interceptor.js';
 import { TransformInterceptor } from '../interceptors/transform.interceptor.js';
+import { RateLimitGuard } from '../rate-limit/rate-limit.guard.js';
 import { createValidationPipe } from '../validation.js';
 
 export class EchoDto {
@@ -45,6 +46,13 @@ export class EchoTestController {
   boom(): never {
     throw new Error('internal-secret-detail');
   }
+
+  /** 慢端点：用于验证请求超时（installRequestTimeout 的 30ms 窗口内不会返回） */
+  @Get('slow')
+  async slow(): Promise<{ slow: boolean }> {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return { slow: true };
+  }
 }
 
 @Controller('ping')
@@ -65,6 +73,7 @@ export class PingTestController {
   controllers: [PingTestController, EchoTestController],
   providers: [
     { provide: APP_GUARD, useClass: ApiKeyGuard },
+    { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_INTERCEPTOR, useClass: RequestIdInterceptor },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
