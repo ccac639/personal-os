@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play, X } from '@lucide/vue';
+import { Loader2, Play, X } from '@lucide/vue';
 import { computed, reactive, ref, watch } from 'vue';
 
 import ChatDrawer from './chat-drawer.vue';
@@ -7,6 +7,7 @@ import { agentIcon, initialAgentInputs } from '../agents';
 import { useAgentsStore } from '../agent-store';
 import type { AgentInputField, AgentLaunchInputs } from '../agent-types';
 import { pushToast } from '../toast';
+import { requestIdSuffix } from '@/features/agents/errors';
 
 const props = defineProps<{ open: boolean; agentId: string | null }>();
 
@@ -17,6 +18,10 @@ const store = useAgentsStore();
 const agent = computed(() => store.agentById(props.agentId ?? ''));
 const values = reactive<AgentLaunchInputs>({});
 const error = ref<string | null>(null);
+/** 启动进行中（防重复点击产生多个会话） */
+const launching = computed(() =>
+  props.agentId ? store.launchingIds.includes(props.agentId) : false,
+);
 
 /** 打开时初始化默认值 */
 watch(
@@ -41,17 +46,16 @@ function setValue(field: AgentInputField, value: string | boolean | string[]) {
 
 function toggleTag(field: AgentInputField, tag: string) {
   const current = Array.isArray(values[field.key]) ? (values[field.key] as string[]) : [];
-  values[field.key] = current.includes(tag)
-    ? current.filter((t) => t !== tag)
-    : [...current, tag];
+  values[field.key] = current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag];
 }
 
-function submit() {
-  if (!agent.value) return;
+async function submit() {
+  if (!agent.value || launching.value) return;
   error.value = null;
-  const result = store.launchAgent(agent.value.id, { ...values });
+  const result = await store.launchAgent(agent.value.id, { ...values });
   if (!result.ok) {
-    error.value = result.error ?? '启动失败';
+    error.value =
+      (result.info ? `${result.error}${requestIdSuffix(result.info)}` : result.error) || '启动失败';
     return;
   }
   pushToast(`已创建「${agent.value.name}」会话，草稿已填入输入框`, 'success');
@@ -114,32 +118,40 @@ function submit() {
             :value="fieldValue(field) as string"
             @change="setValue(field, ($event.target as HTMLSelectElement).value)"
           >
-            <option
-              v-for="opt in field.options ?? []"
-              :key="opt.value"
-              :value="opt.value"
-            >
-{{ opt.label }}
-</option>
+            <option v-for="opt in field.options ?? []" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
           </select>
 
           <!-- tags -->
           <div v-else-if="field.type === 'tags'" class="flex flex-wrap gap-1.5">
             <button
-              v-for="tag in (field.defaultValue as string[] | undefined) ?? ['类型安全', '性能', '可读性', '安全']"
+              v-for="tag in (field.defaultValue as string[] | undefined) ?? [
+                '类型安全',
+                '性能',
+                '可读性',
+                '安全',
+              ]"
               :key="tag"
               type="button"
-              class="border-surface-100 hover:border-brand-500/50 focus-visible:ring-brand-500/40 rounded-lg border px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2"
-              :class="(fieldValue(field) as string[]).includes(tag) ? 'bg-brand-500/10 border-brand-500/50 text-brand-600' : 'text-surface-800/60'"
+              class="border-surface-100 hover:border-brand-500/50 focus-visible:ring-brand-500/40 rounded-lg border px-2 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none"
+              :class="
+                (fieldValue(field) as string[]).includes(tag)
+                  ? 'bg-brand-500/10 border-brand-500/50 text-brand-600'
+                  : 'text-surface-800/60'
+              "
               :aria-pressed="(fieldValue(field) as string[]).includes(tag)"
               @click="toggleTag(field, tag)"
             >
-{{ tag }}
-</button>
+              {{ tag }}
+            </button>
           </div>
 
           <!-- switch -->
-          <label v-else-if="field.type === 'switch'" class="flex cursor-pointer items-center gap-2 text-xs">
+          <label
+            v-else-if="field.type === 'switch'"
+            class="flex cursor-pointer items-center gap-2 text-xs"
+          >
             <input
               type="checkbox"
               class="accent-brand-500 size-3.5"
@@ -149,20 +161,20 @@ function submit() {
             <span class="text-surface-800/70">{{ field.help ?? '开启' }}</span>
           </label>
 
-          <p v-if="field.help && field.type !== 'switch'" class="text-surface-800/40 text-[10px]">{{ field.help }}</p>
+          <p v-if="field.help && field.type !== 'switch'" class="text-surface-800/40 text-[10px]">
+            {{ field.help }}
+          </p>
         </div>
 
-        <p v-if="error" class="text-red-500 text-[11px]" role="alert">{{ error }}</p>
+        <p v-if="error" class="text-[11px] text-red-500" role="alert">{{ error }}</p>
 
-        <p class="text-surface-800/40 text-[10px]">
-          启动后将创建新会话并预填草稿，不会自动发送
-        </p>
+        <p class="text-surface-800/40 text-[10px]">启动后将创建新会话并预填草稿，不会自动发送</p>
       </form>
     </div>
 
     <template #footer>
       <button
-        class="hover:bg-surface-100 text-surface-800/70 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2"
+        class="hover:bg-surface-100 text-surface-800/70 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
         aria-label="取消"
         @click="emit('close')"
       >
@@ -170,12 +182,14 @@ function submit() {
         取消
       </button>
       <button
-        class="hover:bg-brand-600 bg-brand-500 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-lg px-4 py-1.5 text-xs font-medium text-white transition-colors focus-visible:outline-none focus-visible:ring-2"
+        class="hover:bg-brand-600 bg-brand-500 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-lg px-4 py-1.5 text-xs font-medium text-white transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
         aria-label="开始使用"
+        :disabled="launching"
         @click="submit"
       >
-        <Play class="size-3.5" />
-        开始使用
+        <Loader2 v-if="launching" class="size-3.5 animate-spin" />
+        <Play v-else class="size-3.5" />
+        {{ launching ? '启动中…' : '开始使用' }}
       </button>
     </template>
   </ChatDrawer>

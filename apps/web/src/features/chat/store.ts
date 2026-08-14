@@ -10,6 +10,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
 
+import { ChatApiError, isChatAbortError } from './api';
 import { budgetInfo, estimateSessionTokens } from './budget';
 import {
   downloadTextFile,
@@ -27,12 +28,7 @@ import {
 } from './models';
 import { promptPresetName, systemPromptPresetById } from './presets';
 import { getChatReplyService } from './service';
-import {
-  loadPreferences,
-  loadSessions,
-  savePreferences,
-  saveSessions,
-} from './storage';
+import { loadPreferences, loadSessions, savePreferences, saveSessions } from './storage';
 import type {
   ChatMessage,
   ChatModelCategory,
@@ -63,6 +59,8 @@ export const useChatStore = defineStore('chat', () => {
   const prefsRecovered = ref(prefsResult.recovered);
 
   let timer: ReturnType<typeof setInterval> | null = null;
+  /** 进行中的生成请求（用于取消：stopStreaming / 会话切换 / 重发时 abort） */
+  let activeRequest: { controller: AbortController; messageId: string } | null = null;
 
   watch(
     sessions,
@@ -88,9 +86,7 @@ export const useChatStore = defineStore('chat', () => {
     },
   );
 
-  const activeSession = computed(
-    () => sessions.value.find((s) => s.id === activeId.value) ?? null,
-  );
+  const activeSession = computed(() => sessions.value.find((s) => s.id === activeId.value) ?? null);
   const isStreaming = computed(() => streamingMessageId.value !== null);
 
   /* ---------- 会话工作区：固定 / 归档 / 筛选 / 统计 ---------- */
@@ -99,9 +95,7 @@ export const useChatStore = defineStore('chat', () => {
 
   const sessionModelFilter = computed(() => prefs.value.sessionModelFilter);
   const sessionTimeFilter = computed(() => prefs.value.sessionTimeFilter);
-  const sessionBookmarkFilter = computed(
-    () => prefs.value.sessionBookmarkFilter,
-  );
+  const sessionBookmarkFilter = computed(() => prefs.value.sessionBookmarkFilter);
 
   function inTimeWindow(ts: number, filter: ChatSessionTimeFilter): boolean {
     if (filter === 'all') return true;
@@ -120,17 +114,13 @@ export const useChatStore = defineStore('chat', () => {
       list = list.filter((s) => s.messages.some((m) => m.bookmarked));
     }
     return [...list].sort(
-      (a, b) =>
-        Number(b.pinned ?? false) - Number(a.pinned ?? false) ||
-        b.updatedAt - a.updatedAt,
+      (a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false) || b.updatedAt - a.updatedAt,
     );
   });
 
   /** 已归档会话（更新时间倒序） */
   const archivedSessions = computed(() =>
-    [...sessions.value.filter((s) => s.archived)].sort(
-      (a, b) => b.updatedAt - a.updatedAt,
-    ),
+    [...sessions.value.filter((s) => s.archived)].sort((a, b) => b.updatedAt - a.updatedAt),
   );
 
   function setSessionModelFilter(filter: ChatModelCategory | 'all') {
@@ -190,9 +180,7 @@ export const useChatStore = defineStore('chat', () => {
   /* ---------- 输出模式 ↔ 模型能力联动 ---------- */
 
   /** 输出模式推荐模型（Composer 展示「推荐」，不强制切换） */
-  const modeRecommendedModel = computed(() =>
-    recommendedModelForMode(prefs.value.outputMode),
-  );
+  const modeRecommendedModel = computed(() => recommendedModelForMode(prefs.value.outputMode));
   const modeCategory = computed(() => MODE_CATEGORY[prefs.value.outputMode]);
 
   /** 当前模型（全局偏好；新会话默认） */
@@ -236,34 +224,68 @@ export const useChatStore = defineStore('chat', () => {
     return -1;
   }
 
-  /** 停止流式输出：保留已生成的部分内容 */
-  function stopStreaming() {
+  /** 收尾一条流式消息：清打字机计时器、清除 streaming 标志、裁剪尾随空白 */
+  function finishStreaming(messageId: string | null) {
     if (timer) {
       clearInterval(timer);
       timer = null;
     }
-    if (streamingMessageId.value) {
-      const msg = findMessage(streamingMessageId.value);
+    if (messageId) {
+      const msg = findMessage(messageId);
       if (msg) {
         msg.streaming = false;
         msg.content = msg.content.replace(/\s+$/, '');
       }
-      streamingMessageId.value = null;
+    }
+    streamingMessageId.value = null;
+  }
+
+  /** 停止生成：取消进行中的请求并保留已生成的部分内容 */
+  function stopStreaming() {
+    if (activeRequest) {
+      activeRequest.controller.abort();
+      activeRequest = null;
+    }
+    finishStreaming(streamingMessageId.value);
+  }
+
+  /** 标记生成失败：清理流式态，保留占位消息供重试（附可展示原因） */
+  function markError(messageId: string, errorMessage?: string) {
+    stopStreaming();
+    const msg = findMessage(messageId);
+    if (msg) {
+      msg.error = true;
+      if (errorMessage) msg.errorMessage = errorMessage;
     }
   }
 
-  /** 标记生成失败：清理流式态，保留占位消息供重试 */
-  function markError(messageId: string) {
-    stopStreaming();
-    const msg = findMessage(messageId);
-    if (msg) msg.error = true;
+  /** 把归一化错误转成 UI 可展示的中文文案（仅后端已脱敏的 message，绝不含密钥） */
+  function describeChatError(err: unknown): string {
+    if (err instanceof ChatApiError) {
+      switch (err.kind) {
+        case 'timeout':
+          return '请求超时，请重试';
+        case 'empty':
+          return '模型返回了空回复，请重试';
+        case 'http':
+          return err.message && err.message !== 'OK'
+            ? err.message
+            : `服务请求失败（HTTP ${err.status ?? '未知'}）`;
+        case 'network':
+          return err.message && err.message !== 'OK' ? err.message : '无法连接后端服务';
+        default:
+          return '回复生成失败，请重试';
+      }
+    }
+    const message = err instanceof Error ? err.message : '';
+    return message && message !== 'OK' ? message : '回复生成失败，请重试';
   }
 
-  function createSession(model = prefs.value.currentModel): ChatSession {
+  function createSession(model = prefs.value.currentModel, id = uid()): ChatSession {
     stopStreaming();
     const now = Date.now();
     const session: ChatSession = {
-      id: uid(),
+      id,
       title: '新对话',
       messages: [],
       model,
@@ -362,9 +384,7 @@ export const useChatStore = defineStore('chat', () => {
 
   /* ---------- 会话级系统提示词 ---------- */
 
-  const sessionSystemPrompt = computed(
-    () => activeSession.value?.systemPrompt ?? null,
-  );
+  const sessionSystemPrompt = computed(() => activeSession.value?.systemPrompt ?? null);
 
   /** 应用预设：写入会话（presetId + 解析文本，导出自包含） */
   function setSessionSystemPrompt(presetId: string, text: string) {
@@ -413,9 +433,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /** 最近使用的模型（当前会话模型优先，其次全局偏好） */
-  const activeModelId = computed(
-    () => activeSession.value?.model ?? prefs.value.currentModel,
-  );
+  const activeModelId = computed(() => activeSession.value?.model ?? prefs.value.currentModel);
 
   /* ---------- 消息流 ---------- */
 
@@ -441,12 +459,17 @@ export const useChatStore = defineStore('chat', () => {
     }, 16);
   }
 
-  /** 启动一轮回复：同步声明流式态，service 返回完整文本后打字机推进 */
+  /** 启动一轮回复：同步声明流式态，service 返回完整文本后打字机推进。
+   *  请求绑定 AbortController：stopStreaming / 切换会话 / 重新生成时取消；
+   *  用户主动取消静默收尾，其余错误标记失败供重试。 */
   function runExchange(assistantId: string, prompt: string) {
     streamingMessageId.value = assistantId;
     const session = activeSession.value;
     const modelId = session?.model ?? prefs.value.currentModel;
     const presetId = session?.systemPrompt?.presetId;
+    const controller = new AbortController();
+    if (activeRequest) activeRequest.controller.abort();
+    activeRequest = { controller, messageId: assistantId };
     void getChatReplyService()
       .generateReply(prompt, {
         mode: prefs.value.outputMode,
@@ -458,17 +481,25 @@ export const useChatStore = defineStore('chat', () => {
           : undefined,
         agentId: presetId?.startsWith('agent:') ? presetId.slice('agent:'.length) : undefined,
         agentName: session?.agentName,
+        signal: controller.signal,
       })
-      .then((full) => streamInto(assistantId, full))
-      .catch(() => markError(assistantId));
+      .then((full) => {
+        if (activeRequest?.messageId === assistantId) activeRequest = null;
+        streamInto(assistantId, full);
+      })
+      .catch((err: unknown) => {
+        if (activeRequest?.messageId === assistantId) activeRequest = null;
+        if (isChatAbortError(err)) {
+          // 用户主动取消：静默收尾，保留已生成内容，不标记失败
+          finishStreaming(assistantId);
+          return;
+        }
+        markError(assistantId, describeChatError(err));
+      });
   }
 
   /** 追加用户消息 + 助手占位，未命名会话自动生成标题，随后开始流式输出 */
-  function pushExchange(
-    session: ChatSession,
-    content: string,
-    quote?: ChatQuote,
-  ) {
+  function pushExchange(session: ChatSession, content: string, quote?: ChatQuote) {
     const now = Date.now();
     const userMsg: ChatMessage = {
       id: uid(),
@@ -507,11 +538,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /** 编辑并重新发送：仅允许最近一条用户消息，删除其后的上下文后重发 */
-  function editAndResend(
-    messageId: string,
-    text: string,
-    quote?: ChatQuote,
-  ) {
+  function editAndResend(messageId: string, text: string, quote?: ChatQuote) {
     const content = text.trim();
     if (!content) return;
     const session = activeSession.value;
@@ -591,6 +618,7 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * 从智能体启动创建新会话：应用系统提示词 / 推荐模型 / 输出模式 / 草稿。
    * 初始内容绝不自动发送；返回新会话。
+   * id 可选：不传则生成本地 uid；传则对齐后端会话（如 start 返回的 conversationId）。
    */
   function launchAgentSession(input: {
     agentId: string;
@@ -599,9 +627,10 @@ export const useChatStore = defineStore('chat', () => {
     modelId: string;
     mode: ChatOutputMode;
     draft: string;
+    id?: string;
   }): ChatSession {
     stopStreaming();
-    const session = createSession(input.modelId);
+    const session = createSession(input.modelId, input.id);
     const text = input.systemPrompt.trim();
     if (text) {
       session.systemPrompt = { presetId: `agent:${input.agentId}`, text };

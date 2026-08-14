@@ -9,7 +9,7 @@ import { reactive } from 'vue';
 export interface ToastItem {
   id: number;
   text: string;
-  kind: 'info' | 'success' | 'warning';
+  kind: 'info' | 'success' | 'warning' | 'error';
 }
 
 let seq = 0;

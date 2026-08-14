@@ -8,6 +8,7 @@ import { useAgentsStore } from '../agent-store';
 import { modelLabel } from '../models';
 import { promptPresetName } from '../presets';
 import { pushToast } from '../toast';
+import { requestIdSuffix } from '@/features/agents/errors';
 
 const props = defineProps<{ open: boolean; agentId: string | null }>();
 
@@ -26,7 +27,13 @@ let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
 const modeLabel = computed(() => {
   const mode = resolved.value?.recommendedMode ?? 'chat';
-  return mode === 'chat' ? '对话' : mode === 'writing' ? '写作' : mode === 'code' ? '代码' : '图像提示词';
+  return mode === 'chat'
+    ? '对话'
+    : mode === 'writing'
+      ? '写作'
+      : mode === 'code'
+        ? '代码'
+        : '图像提示词';
 });
 
 async function copyPrompt() {
@@ -41,6 +48,14 @@ async function copyPrompt() {
     }, 1500);
   } catch {
     pushToast('复制失败，请手动选择文本', 'warning');
+  }
+}
+
+async function toggleFavorite() {
+  if (!resolved.value) return;
+  const ok = await store.toggleFavorite(resolved.value.id);
+  if (!ok && store.actionError) {
+    pushToast(store.actionError.message + requestIdSuffix(store.actionError), 'error');
   }
 }
 
@@ -73,17 +88,20 @@ function handleLaunch() {
               <span
                 v-if="!resolved.builtin"
                 class="bg-brand-500/10 text-brand-600 rounded px-1.5 py-px text-[10px] font-medium"
-              >个人</span>
+                >个人</span
+              >
             </div>
-            <p class="text-surface-800/50 text-[11px]">{{ agentCategoryLabel(resolved.category) }}</p>
+            <p class="text-surface-800/50 text-[11px]">
+              {{ agentCategoryLabel(resolved.category) }}
+            </p>
           </div>
           <button
-            class="text-surface-800/40 hover:text-amber-500 focus-visible:ring-brand-500/40 ml-auto flex size-7 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2"
+            class="text-surface-800/40 focus-visible:ring-brand-500/40 ml-auto flex size-7 shrink-0 items-center justify-center rounded-md transition-colors hover:text-amber-500 focus-visible:ring-2 focus-visible:outline-none"
             :class="resolved.favorite ? 'text-amber-500' : ''"
             :aria-pressed="resolved.favorite"
             :aria-label="resolved.favorite ? '取消收藏' : '收藏'"
             :title="resolved.favorite ? '取消收藏' : '收藏'"
-            @click="store.toggleFavorite(resolved.id)"
+            @click="toggleFavorite"
           >
             <Star class="size-4" :class="resolved.favorite ? 'fill-current' : ''" />
           </button>
@@ -98,14 +116,19 @@ function handleLaunch() {
             v-for="t in resolved.tags"
             :key="t"
             class="border-surface-100 bg-surface-50 text-surface-800/60 rounded border px-1.5 py-px text-[10px]"
-          >{{ t }}</span>
+            >{{ t }}</span
+          >
         </div>
 
         <!-- 推荐配置 -->
-        <div class="border-surface-100 bg-surface-50/60 grid grid-cols-2 gap-2 rounded-lg border p-3">
+        <div
+          class="border-surface-100 bg-surface-50/60 grid grid-cols-2 gap-2 rounded-lg border p-3"
+        >
           <div>
             <p class="text-surface-800/40 text-[10px]">推荐模型</p>
-            <p class="text-surface-900 mt-0.5 text-xs font-medium">{{ modelLabel(resolved.recommendedModelId) }}</p>
+            <p class="text-surface-900 mt-0.5 text-xs font-medium">
+              {{ modelLabel(resolved.recommendedModelId) }}
+            </p>
           </div>
           <div>
             <p class="text-surface-800/40 text-[10px]">输出模式</p>
@@ -118,7 +141,11 @@ function handleLaunch() {
           <div>
             <p class="text-surface-800/40 text-[10px]">最近使用</p>
             <p class="text-surface-900 mt-0.5 text-xs font-medium">
-              {{ resolved.lastUsedAt ? new Date(resolved.lastUsedAt).toLocaleDateString('zh-CN') : '从未' }}
+              {{
+                resolved.lastUsedAt
+                  ? new Date(resolved.lastUsedAt).toLocaleDateString('zh-CN')
+                  : '从未'
+              }}
             </p>
           </div>
         </div>
@@ -132,8 +159,8 @@ function handleLaunch() {
               :key="i"
               class="border-surface-100 bg-surface-0 text-surface-800/75 rounded-lg border px-2.5 py-1.5 text-[11px]"
             >
-{{ s }}
-</li>
+              {{ s }}
+            </li>
           </ul>
         </div>
 
@@ -142,7 +169,7 @@ function handleLaunch() {
           <div class="mb-1.5 flex items-center justify-between">
             <p class="text-surface-900 text-xs font-semibold">系统提示词</p>
             <button
-              class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2"
+              class="hover:bg-surface-100 text-surface-800/60 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none"
               :aria-label="copied ? '已复制' : '复制系统提示词'"
               @click="copyPrompt"
             >
@@ -151,8 +178,12 @@ function handleLaunch() {
               {{ copied ? '已复制' : '复制' }}
             </button>
           </div>
-          <pre class="border-surface-100 bg-surface-50/60 text-surface-800/80 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-lg border p-2.5 text-[11px] leading-relaxed">{{ resolved.systemPrompt }}</pre>
-          <p class="text-surface-800/35 mt-1 text-[10px]">启动后作为会话级提示词生效（{{ promptPresetName('agent:' + resolved.id) }}）</p>
+          <pre
+            class="border-surface-100 bg-surface-50/60 text-surface-800/80 max-h-40 overflow-y-auto rounded-lg border p-2.5 text-[11px] leading-relaxed whitespace-pre-wrap"
+            >{{ resolved.systemPrompt }}</pre>
+          <p class="text-surface-800/35 mt-1 text-[10px]">
+            启动后作为会话级提示词生效（{{ promptPresetName('agent:' + resolved.id) }}）
+          </p>
         </div>
       </div>
     </template>
@@ -160,7 +191,7 @@ function handleLaunch() {
     <template #footer>
       <button
         v-if="!resolved?.builtin"
-        class="hover:bg-surface-100 text-surface-800/70 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2"
+        class="hover:bg-surface-100 text-surface-800/70 hover:text-surface-900 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
         :aria-label="`编辑 ${resolved?.name ?? ''}`"
         @click="resolved && emit('edit', resolved.id)"
       >
@@ -168,7 +199,7 @@ function handleLaunch() {
         编辑
       </button>
       <button
-        class="hover:bg-brand-600 bg-brand-500 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-lg px-4 py-1.5 text-xs font-medium text-white transition-colors focus-visible:outline-none focus-visible:ring-2"
+        class="hover:bg-brand-600 bg-brand-500 focus-visible:ring-brand-500/40 flex items-center gap-1 rounded-lg px-4 py-1.5 text-xs font-medium text-white transition-colors focus-visible:ring-2 focus-visible:outline-none"
         aria-label="开始使用"
         @click="handleLaunch"
       >
