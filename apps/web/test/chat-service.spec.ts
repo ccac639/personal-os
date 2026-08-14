@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
+import { ChatApiError } from '@/features/chat/api';
 import {
-  getChatReplyService,
+  HttpChatReplyService,
   MockChatReplyService,
   setChatReplyService,
   type ChatReplyService,
@@ -18,14 +19,41 @@ describe('chat service 边界', () => {
     setChatReplyService(new MockChatReplyService());
   });
 
-  it('默认使用 mock 实现，generateReply 返回含 Markdown 结构的完整回复', async () => {
-    const service = getChatReplyService();
-    expect(service).toBeInstanceOf(MockChatReplyService);
-
+  it('默认服务为真实优先（测试环境自动走 mock 降级，不触网）', async () => {
+    // 模块初始默认实现 = HttpChatReplyService（enabled 由 MODE 决定）
+    const service = new HttpChatReplyService();
+    // 测试环境 enabled=false → 行为等同 mock（含 Markdown 结构）
     const reply = await service.generateReply('帮我写一个 Vue 组件');
     expect(typeof reply).toBe('string');
     expect(reply.length).toBeGreaterThan(0);
     expect(reply).toContain('##');
+  });
+
+  it('真实模式：后端成功时返回模型回复，失败时降级 mock', async () => {
+    const okClient = {
+      complete: async () => ({ content: '真实模型回复', model: 'gpt-x' }),
+    };
+    const svcOk = new HttpChatReplyService({ api: okClient, enabled: true });
+    await expect(svcOk.generateReply('hi')).resolves.toBe('真实模型回复');
+
+    const failClient = {
+      complete: async () => {
+        throw new ChatApiError('network', '无法连接后端服务');
+      },
+    };
+    const svcFail = new HttpChatReplyService({ api: failClient, enabled: true });
+    const degraded = await svcFail.generateReply('hi');
+    expect(degraded.length).toBeGreaterThan(0); // 降级 mock 模板回复
+  });
+
+  it('真实模式：用户主动取消透传（不降级，由 store 静默收尾）', async () => {
+    const abortClient = {
+      complete: async () => {
+        throw new ChatApiError('aborted', '请求已取消');
+      },
+    };
+    const svc = new HttpChatReplyService({ api: abortClient, enabled: true });
+    await expect(svc.generateReply('hi')).rejects.toBeInstanceOf(ChatApiError);
   });
 
   it('替换 service 后，store 流式输出使用新实现的回复', async () => {
