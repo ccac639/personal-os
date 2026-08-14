@@ -1,8 +1,13 @@
-# ADR-0005: Worker 异步任务分线（workflow-runs + chat-generation）
+# ADR-0010: Worker 异步任务分线（workflow-runs + chat-generation）— 第一轮基线
 
-- 状态：Accepted
+- 状态：Superseded by ADR-0005（worker-queue-contract，第二轮 P0 优化合并本决策）
 - 日期：2026-08-15
 - 决策人：Architect / Developer（Worker 分线）
+
+> 说明：本 ADR 记录第一轮（初始装配 + 镜像常量 + 一致性测试）的决策；
+> 第二轮 P0 优化已将其升级为共享契约包 `@personal-os/queue-contract`、
+> AbortSignal 贯通、UnrecoverableError 映射、retry-after 生效与生命周期
+> 所有权完善，统一记录在 ADR-0005（worker-queue-contract）。
 
 ## 背景
 
