@@ -73,6 +73,7 @@ const navItems: NavItem[] = [
   { label: 'Chat', to: '/chat' },
   { label: '工作流', to: '/workflows' },
   { label: '开发中', to: '/projects' },
+  { label: 'AI 工作台', to: '/ai' },
   { label: '已完成', to: '/achievements' },
   { label: '管理系统', to: '/admin' },
 ];

@@ -60,7 +60,7 @@ describe('default-layout 顶部导航', () => {
     const wrapper = await mountLayout('/');
     const links = wrapper.findAll('a');
     const labels = wrapper.findAll('nav a').map((a) => a.text());
-    expect(labels).toEqual(['首页', 'Chat', '工作流', '开发中', '已完成', '管理系统']);
+    expect(labels).toEqual(['首页', 'Chat', '工作流', '开发中', 'AI 工作台', '已完成', '管理系统']);
     // 第一个链接是跳转主内容（键盘无障碍），第二个是品牌，最后一个是设置（幽灵按钮）
     expect(links[0].text()).toBe('跳到主内容');
     expect(links[0].attributes('href')).toBe('#main-content');
@@ -119,7 +119,15 @@ describe('default-layout 移动端抽屉', () => {
     expect(wrapper.find('button[aria-label="打开导航菜单"]').exists()).toBe(false);
     // 桌面导航结构完整（6 项 + 设置；可见性由 md: 断点 CSS 控制）
     const navLabels = wrapper.findAll('nav[aria-label="主导航"] a').map((a) => a.text());
-    expect(navLabels).toEqual(['首页', 'Chat', '工作流', '开发中', '已完成', '管理系统']);
+    expect(navLabels).toEqual([
+      '首页',
+      'Chat',
+      '工作流',
+      '开发中',
+      'AI 工作台',
+      '已完成',
+      '管理系统',
+    ]);
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 });

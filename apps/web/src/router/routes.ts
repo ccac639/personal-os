@@ -76,6 +76,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '已完成' },
   },
   {
+    path: '/ai',
+    name: 'ai',
+    component: () => import('@/pages/ai/index.vue'),
+    meta: { title: 'AI 工作台' },
+  },
+  {
     path: '/admin',
     name: 'admin',
     component: () => import('@/pages/admin/index.vue'),
