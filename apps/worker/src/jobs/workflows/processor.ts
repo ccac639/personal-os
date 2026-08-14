@@ -1,8 +1,8 @@
 /**
  * BullMQ `workflow-runs` 队列常量与 Worker 处理器
  *
- * - 队列名与 api 端 workflow.queue.ts 保持一致（镜像常量，见
- *   apps/api/test/queue-contract.spec.ts）
+ * - 队列名 / Job 名 / Payload 类型来自共享契约 @personal-os/queue-contract
+ *   （单一事实来源，见 apps/api/test/queue-contract.spec.ts），不再镜像常量
  * - 处理器职责：接收 runId → 加载运行与工作流 → 经 Adapter 执行 →
  *   结果落库（结构化日志 / 失败可恢复状态）
  * - 错误语义：
@@ -15,9 +15,10 @@
  */
 import type { Job, Processor } from 'bullmq';
 
+import { WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_JOB } from '@personal-os/queue-contract';
+import type { WorkflowRunJobData } from '@personal-os/queue-contract';
 import type { WorkflowExecutionAdapter, AdapterExecuteResult } from './adapter.js';
 import type { WorkerRunStore } from './run-store.js';
-import { WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_JOB } from '@personal-os/queue-contract';
 import {
   isRetryableError,
   errorMessage,
@@ -26,10 +27,7 @@ import {
 } from '../../errors/worker-errors.js';
 
 export { WORKFLOW_RUN_QUEUE, WORKFLOW_RUN_JOB };
-
-export interface WorkflowRunJobData {
-  runId: string;
-}
+export type { WorkflowRunJobData } from '@personal-os/queue-contract';
 
 export interface WorkflowRunProcessorDeps {
   store: WorkerRunStore;
