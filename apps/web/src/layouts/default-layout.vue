@@ -14,7 +14,8 @@
  */
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Menu } from '@lucide/vue';
+import { Menu, ServerCog } from '@lucide/vue';
+import type { Component } from 'vue';
 
 import AppDrawer from '@/components/AppDrawer.vue';
 import PagePet from '@/components/PagePet.vue';
@@ -66,6 +67,8 @@ function focusMain(): void {
 interface NavItem {
   label: string;
   to: string;
+  /** 可选图标（@lucide/vue 组件） */
+  icon?: Component;
 }
 
 const navItems: NavItem[] = [
@@ -75,6 +78,7 @@ const navItems: NavItem[] = [
   { label: '开发中', to: '/projects' },
   { label: 'AI 工作台', to: '/ai' },
   { label: '已完成', to: '/achievements' },
+  { label: 'Sub2API', to: '/sub2api', icon: ServerCog },
   { label: '管理系统', to: '/admin' },
 ];
 
@@ -127,6 +131,9 @@ function prefetch(to: string): void {
             @mouseenter="prefetch(item.to)"
             @focusin="prefetch(item.to)"
           >
+            <span v-if="item.icon" class="mr-1.5 inline-flex -translate-y-px">
+              <component :is="item.icon" class="size-4" aria-hidden="true" />
+            </span>
             {{ item.label }}
             <span
               class="bg-surface-900 absolute inset-x-2 bottom-1 h-0.5 rounded-full transition-opacity"
@@ -194,6 +201,9 @@ function prefetch(to: string): void {
           @mouseenter="prefetch(item.to)"
           @focusin="prefetch(item.to)"
         >
+          <span v-if="item.icon" class="mr-2 inline-flex">
+            <component :is="item.icon" class="size-4" aria-hidden="true" />
+          </span>
           {{ item.label }}
         </RouterLink>
         <RouterLink to="/settings" class="app-drawer-nav__link" @click="closeDrawer">

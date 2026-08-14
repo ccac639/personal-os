@@ -76,6 +76,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '已完成' },
   },
   {
+    path: '/sub2api',
+    name: 'sub2api',
+    component: () => import('@/pages/sub2api/index.vue'),
+    meta: { title: 'Sub2API 控制台' },
+  },
+  {
     path: '/ai',
     name: 'ai',
     component: () => import('@/pages/ai/index.vue'),
