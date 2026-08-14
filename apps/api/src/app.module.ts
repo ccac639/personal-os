@@ -5,12 +5,14 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { LoggerModule } from 'nestjs-pino';
 
 import { configuration } from './config/configuration.js';
-import { ProjectsModule } from './modules/projects/projects.module.js';
+import { ModuleRegistry } from './platform/module-registry.js';
+import { businessManifests } from './platform/business-manifests.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { ApiKeyGuard } from './common/guards/api-key.guard.js';
 import { HealthModule } from './common/health/health.module.js';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor.js';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
+import { RateLimitGuard } from './common/rate-limit/rate-limit.guard.js';
 import { RedisModule } from './common/redis/redis.module.js';
 import { createValidationPipe } from './common/validation.js';
 
@@ -20,9 +22,20 @@ import { createValidationPipe } from './common/validation.js';
  * - 日志：nestjs-pino（level 来自 LOG_LEVEL；development 用 pino-pretty）
  * - Mongo：lazyConnection（启动不阻塞，依赖不可用后台重连）+ 短 serverSelectionTimeout
  * - Redis：ioredis 全局提供者（后台连接，不阻塞启动）
- * - 全局：API Key 守卫、统一异常过滤器、requestId + 统一响应拦截器、DTO 校验管道
- * - 业务模块由各功能分支自行注册（本文件保持平台基座自包含）
+ * - 业务模块：ModuleRegistry 解析 business-manifests（拓扑 fail-fast），按序装配；
+ *   业务接入只编辑 business-manifests.ts，不直接改本文件
+ * - 全局：API Key 守卫、限流守卫、统一异常过滤器、requestId + 统一响应拦截器、DTO 校验管道
  */
+
+/** 顶层同步装配（fail-fast）：注册全部业务 manifest 并解析拓扑顺序 */
+const registry = new ModuleRegistry();
+for (const manifest of businessManifests) {
+  registry.register(manifest);
+}
+const businessModules = registry
+  .resolve({ nodeEnv: process.env.NODE_ENV ?? 'development' })
+  .map((manifest) => manifest.module);
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -59,10 +72,11 @@ import { createValidationPipe } from './common/validation.js';
     }),
     RedisModule,
     HealthModule,
-    ProjectsModule,
+    ...businessModules,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ApiKeyGuard },
+    { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     // 顺序敏感：RequestId 在外层先生成 requestId，Transform 再读取包装
     { provide: APP_INTERCEPTOR, useClass: RequestIdInterceptor },
