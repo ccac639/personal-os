@@ -8,6 +8,9 @@
 import type { Project, ProjectStatus } from '@personal-os/types';
 import type { TaskItem } from '@/features/tasks/types';
 
+/** 前端扩展使用的 ProjectStatus（从共享类型 re-export，供 features/projects/sync 消费） */
+export type { ProjectStatus } from '@personal-os/types';
+
 /** 项目进度模式 */
 export type ProjectProgressMode = 'auto' | 'manual';
 
