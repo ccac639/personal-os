@@ -10,7 +10,9 @@ import { businessManifests } from './platform/business-manifests.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { ApiKeyGuard } from './common/guards/api-key.guard.js';
 import { HealthModule } from './common/health/health.module.js';
+import { CacheInterceptor } from './common/cache/cache.interceptor.js';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor.js';
+import { MetricsInterceptor } from './common/metrics/metrics.interceptor.js';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
 import { RateLimitGuard } from './common/rate-limit/rate-limit.guard.js';
 import { RedisModule } from './common/redis/redis.module.js';
@@ -49,6 +51,27 @@ const businessModules = registry
       useFactory: (config: ConfigService) => ({
         pinoHttp: {
           level: config.get<string>('logLevel'),
+          // 关联 ID：优先透传客户端 X-Request-Id，否则生成 UUID —— 与
+          // RequestIdInterceptor 同一来源，贯穿请求/响应日志（correlationId）
+          genReqId: (req) => {
+            const incoming = (req.headers as Record<string, unknown>)['x-request-id'];
+            return typeof incoming === 'string' && incoming.length > 0
+              ? incoming
+              : ((req as { id?: string }).id ?? crypto.randomUUID());
+          },
+          // 密钥脱敏：API Key / token 绝不落日志（Sub2API 红线：token 不回显）
+          redact: {
+            paths: [
+              'req.headers["x-api-key"]',
+              'req.headers.authorization',
+              'req.headers["proxy-authorization"]',
+              '*.apiKey',
+              '*.token',
+              '*.secret',
+              '*.password',
+            ],
+            censor: '[REDACTED]',
+          },
           ...(config.get<string>('nodeEnv') === 'production'
             ? {}
             : {
@@ -78,8 +101,11 @@ const businessModules = registry
     { provide: APP_GUARD, useClass: ApiKeyGuard },
     { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
-    // 顺序敏感：RequestId 在外层先生成 requestId，Transform 再读取包装
+    // 顺序敏感：RequestId 在外层先生成 requestId；Cache 在 Transform 之前（缓存裸数据）；
+    // Transform 最后统一包装 { code, message, data }
     { provide: APP_INTERCEPTOR, useClass: RequestIdInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: CacheInterceptor },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
     {
       provide: APP_PIPE,
