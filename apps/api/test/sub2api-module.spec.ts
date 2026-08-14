@@ -9,6 +9,11 @@ import { REDIS_CLIENT } from '../src/common/redis/redis.module.js';
 import { ModuleRegistry } from '../src/platform/module-registry.js';
 import { SUB2API_ADAPTER } from '../src/modules/sub2api/client/adapter.js';
 import { FakeSub2ApiAdapter } from '../src/modules/sub2api/client/fake.adapter.js';
+import {
+  ALLOWED_PATH_PREFIXES,
+  isAllowedPath,
+} from '../src/modules/sub2api/client/sub2api.client.js';
+import { buildUpstreamUrl } from '../src/modules/sub2api/client/url-validation.js';
 import { sub2ApiManifest } from '../src/modules/sub2api/manifest.js';
 import { Sub2ApiModule } from '../src/modules/sub2api/sub2api.module.js';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter.js';
@@ -112,6 +117,28 @@ describe('Sub2API 管理模块', () => {
       expect(app).toBeTruthy();
       // 通过 HTTP 探测即可证明路由已装配（404 以外的响应都说明模块已加载）
       void expect;
+    });
+  });
+
+  describe('上游 URL 构造（防路径前缀回归）', () => {
+    it('buildUpstreamUrl 拼接 /api/v1 前缀，usage 为非 admin 端点', () => {
+      const base = 'https://sub2api.example.com';
+      expect(buildUpstreamUrl(base, '/usage')).toBe(`${base}/api/v1/usage`);
+      expect(buildUpstreamUrl(base, '/usage/stats')).toBe(`${base}/api/v1/usage/stats`);
+      expect(buildUpstreamUrl(base, '/admin/channels')).toBe(`${base}/api/v1/admin/channels`);
+      expect(buildUpstreamUrl(base, '/keys')).toBe(`${base}/api/v1/keys`);
+    });
+
+    it('usage 路径已对齐上游（非 /admin），防止 404 回归', () => {
+      // 回归护栏：listUsage / getUsageStats 必须命中非 admin 前缀
+      expect(ALLOWED_PATH_PREFIXES).toContain('/usage');
+      expect(ALLOWED_PATH_PREFIXES).not.toContain('/admin/usage');
+      // 白名单前缀不得互相遮蔽（/usage 不应被 /admin/usage 之类吞掉）
+      expect(ALLOWED_PATH_PREFIXES.filter((p) => p.includes('usage'))).toEqual(['/usage']);
+      // isAllowedPath 第二道闸：/usage 与 /usage/stats 均放行，/admin/usage 拒绝
+      expect(isAllowedPath('/usage')).toBe(true);
+      expect(isAllowedPath('/usage/stats')).toBe(true);
+      expect(isAllowedPath('/admin/usage')).toBe(false);
     });
   });
 

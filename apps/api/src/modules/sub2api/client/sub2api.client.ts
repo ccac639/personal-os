@@ -54,7 +54,7 @@ export const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_PAGE_SIZE = 20;
 
 /** 本适配器允许访问的上游路径前缀白名单（全部来自内部模板） */
-const ALLOWED_PATH_PREFIXES: readonly string[] = [
+export const ALLOWED_PATH_PREFIXES: readonly string[] = [
   '/admin/system/version',
   '/admin/dashboard/stats',
   '/admin/dashboard/realtime',
@@ -65,11 +65,11 @@ const ALLOWED_PATH_PREFIXES: readonly string[] = [
   '/admin/subscriptions',
   '/admin/groups',
   '/keys',
-  '/admin/usage',
   '/models',
+  '/usage',
 ];
 
-function isAllowedPath(path: string): boolean {
+export function isAllowedPath(path: string): boolean {
   // 精确匹配或以允许前缀 + / 数字 id 结尾（id 由 ParseIntPipe 校验过的数字）
   return ALLOWED_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
@@ -264,7 +264,7 @@ export class Sub2ApiClient implements Sub2ApiAdapter {
   // ---------- 请求日志 ----------
 
   async listUsage(params: Sub2ApiListParams): Promise<Sub2ApiPage<Sub2ApiUsageLog>> {
-    return this.request<Sub2ApiPage<Sub2ApiUsageLog>>('/admin/usage', {
+    return this.request<Sub2ApiPage<Sub2ApiUsageLog>>('/usage', {
       query: this.normalizeListParams(params),
     });
   }
@@ -272,7 +272,7 @@ export class Sub2ApiClient implements Sub2ApiAdapter {
   async getUsageStats(
     params: Record<string, string | number | boolean | undefined>,
   ): Promise<Sub2ApiUsageStats> {
-    return this.request<Sub2ApiUsageStats>('/admin/usage/stats', {
+    return this.request<Sub2ApiUsageStats>('/usage/stats', {
       query: { ...params, timezone: 'Asia/Shanghai' },
     });
   }
