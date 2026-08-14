@@ -50,7 +50,7 @@ function replyForCode(mode: ChatOutputMode): string {
         '  done: boolean;',
         '}',
         '',
-        "export async function fetchTodos(): Promise<TodoItem[]> {",
+        'export async function fetchTodos(): Promise<TodoItem[]> {',
         "  return apiFetch<TodoItem[]>('/todos');",
         '}',
         '',
@@ -197,9 +197,7 @@ function replyForImagePrompt(input: string): string {
     {
       head: '这是一版可直接使用的图像提示词模板（套用你的主题）：',
       sections: [
-        '**Prompt**：`' +
-          input.trim() +
-          ', 电影感光线, 高细节, 8K`',
+        '**Prompt**：`' + input.trim() + ', 电影感光线, 高细节, 8K`',
         '**Negative**：`模糊, 低分辨率, 多余肢体, 文字水印`',
         '**参数建议**：步数 30，CFG 7，分辨率按目标比例',
       ],
@@ -264,8 +262,7 @@ function applyLength(text: string, length: ChatReplyLength): string {
   }
   if (length === 'detailed') {
     return (
-      text +
-      '\n\n---\n\n> 已按「详细」档位展开。如需要，我可以进一步补充示例、边界情况与反例。'
+      text + '\n\n---\n\n> 已按「详细」档位展开。如需要，我可以进一步补充示例、边界情况与反例。'
     );
   }
   return text;
@@ -281,6 +278,8 @@ export interface MockReplyContext {
   /** 智能体上下文（启动智能体后的会话） */
   agentId?: string;
   agentName?: string;
+  /** 多轮历史（透传自 service；仅用于回复开头的「继续对话」引用，不改生成逻辑） */
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 /** 根据用户输入生成一条模拟回复（含 Markdown 结构，用于展示渲染效果） */
@@ -314,16 +313,31 @@ export function mockReply(input: string, ctx: MockReplyContext = {}): string {
   }
 
   const result = applyLength(reply, length);
+  // 多轮历史引用（mock 不做语义理解，仅提示「已结合此前对话」）
+  const historyNote =
+    ctx.history && ctx.history.length > 0
+      ? `\n\n> 已结合此前 ${ctx.history.length} 轮对话（本地演示，仅作上下文占位）。`
+      : '';
   // 确定性署名：说明当前模型与输出模式（演示 service 上下文透传）
   const modelName = model?.label ?? '通用推理';
   const modeNote =
-    mode === 'image' ? '图像提示词' : mode === 'writing' ? '写作' : mode === 'code' ? '代码' : '对话';
+    mode === 'image'
+      ? '图像提示词'
+      : mode === 'writing'
+        ? '写作'
+        : mode === 'code'
+          ? '代码'
+          : '对话';
   const promptNote =
     ctx.systemPrompt && ctx.systemPrompt.trim()
       ? ` · 已应用提示词（${ctx.presetName ?? '自定义'}）`
       : '';
   const agentNote = ctx.agentName ? ` · 智能体「${ctx.agentName}」` : '';
-  return result + `\n\n---\n\n*由 ${modelName}（${modeNote}）生成 · 本地演示${promptNote}${agentNote}*`;
+  return (
+    result +
+    historyNote +
+    `\n\n---\n\n*由 ${modelName}（${modeNote}）生成 · 本地演示${promptNote}${agentNote}*`
+  );
 }
 
 export type { ChatModelOption };

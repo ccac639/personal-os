@@ -12,9 +12,17 @@ import type { ChatApiTurn } from './api';
 import { mockReply } from './mock';
 import type { ChatOutputMode, ChatReplyLength } from './types';
 
+/** 对话历史轮次（多轮上下文；后端 AiChatDto.messages 的 user/assistant 子集） */
+export interface ChatHistoryTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface GenerateReplyOptions {
   /** 取消信号：真实 socket/API 场景下用于中断请求 */
   signal?: AbortSignal;
+  /** 多轮历史（当前 prompt 之前的 user/assistant 轮次，按时间正序） */
+  history?: ChatHistoryTurn[];
   /** 创作控制台输出模式 */
   mode?: ChatOutputMode;
   /** 当前模型 id */
@@ -35,11 +43,35 @@ export interface ChatReplyService {
   generateReply(input: string, options?: GenerateReplyOptions): Promise<string>;
 }
 
+/**
+ * 后端 AiChatDto.messages 上限（ArrayMaxSize(20)，含 system 与末条 user）。
+ * 超出时从历史末尾保留最近轮次（丢弃最旧）。
+ */
+const MAX_MESSAGES = 20;
+
+/** 组装下发消息：system（可选） + 历史（裁剪到上限） + 当前 user（末条） */
+export function buildChatMessages(input: string, options?: GenerateReplyOptions): ChatApiTurn[] {
+  const messages: ChatApiTurn[] = [];
+  if (options?.systemPrompt && options.systemPrompt.trim()) {
+    messages.push({ role: 'system', content: options.systemPrompt });
+  }
+  const history = options?.history ?? [];
+  const room = MAX_MESSAGES - messages.length - 1;
+  if (room > 0) {
+    for (const h of history.slice(-room)) {
+      messages.push(h);
+    }
+  }
+  messages.push({ role: 'user', content: input });
+  return messages;
+}
+
 /** 本地 mock 实现：按输出模式与模型生成确定性的演示内容 */
 export class MockChatReplyService implements ChatReplyService {
   generateReply(input: string, options?: GenerateReplyOptions): Promise<string> {
     return Promise.resolve(
       mockReply(input, {
+        history: options?.history,
         mode: options?.mode,
         model: options?.model,
         replyLength: options?.replyLength,
@@ -81,11 +113,8 @@ export class HttpChatReplyService implements ChatReplyService {
   async generateReply(input: string, options?: GenerateReplyOptions): Promise<string> {
     if (!this.enabled) return this.fallback.generateReply(input, options);
     try {
-      const messages: ChatApiTurn[] = [];
-      if (options?.systemPrompt) messages.push({ role: 'system', content: options.systemPrompt });
-      messages.push({ role: 'user', content: input });
       const result = await this.api.complete(
-        { messages, model: options?.model },
+        { messages: buildChatMessages(input, options), model: options?.model },
         { signal: options?.signal },
       );
       return result.content;

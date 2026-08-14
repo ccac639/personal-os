@@ -27,7 +27,7 @@ import {
   recommendedModelForMode,
 } from './models';
 import { promptPresetName, systemPromptPresetById } from './presets';
-import { getChatReplyService } from './service';
+import { getChatReplyService, type ChatHistoryTurn } from './service';
 import { loadPreferences, loadSessions, savePreferences, saveSessions } from './storage';
 import type {
   ChatMessage,
@@ -459,6 +459,22 @@ export const useChatStore = defineStore('chat', () => {
     }, 16);
   }
 
+  /** 组装多轮历史：当前 prompt 对应的 user 消息之前的所有 user/assistant 轮次（正序） */
+  function buildHistory(session: ChatSession, prompt: string): ChatHistoryTurn[] {
+    const turns: ChatHistoryTurn[] = [];
+    let currentSeen = false;
+    for (let i = session.messages.length - 1; i >= 0; i -= 1) {
+      const m = session.messages[i];
+      if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
+      if (!currentSeen && m.role === 'user' && m.content === prompt) {
+        currentSeen = true; // 当前轮 user 消息：不纳入历史
+        continue;
+      }
+      if (currentSeen) turns.unshift({ role: m.role, content: m.content });
+    }
+    return turns;
+  }
+
   /** 启动一轮回复：同步声明流式态，service 返回完整文本后打字机推进。
    *  请求绑定 AbortController：stopStreaming / 切换会话 / 重新生成时取消；
    *  用户主动取消静默收尾，其余错误标记失败供重试。 */
@@ -472,6 +488,7 @@ export const useChatStore = defineStore('chat', () => {
     activeRequest = { controller, messageId: assistantId };
     void getChatReplyService()
       .generateReply(prompt, {
+        history: session ? buildHistory(session, prompt) : undefined,
         mode: prefs.value.outputMode,
         model: modelId,
         replyLength: prefs.value.replyLength,
