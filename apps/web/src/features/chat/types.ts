@@ -24,6 +24,8 @@ export interface ChatMessage {
   streaming?: boolean;
   /** 生成失败（service 异常），UI 提供重试 */
   error?: boolean;
+  /** 生成失败原因（UI 可展示，后端已脱敏） */
+  errorMessage?: string;
   /** 消息书签（会话内筛选与导出标记） */
   bookmarked?: boolean;
   /** 引用回复：发送时附带的被引用消息快照（纯文本，无二进制） */
