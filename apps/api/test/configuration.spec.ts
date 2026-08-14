@@ -103,9 +103,16 @@ describe('api configuration', () => {
   });
 
   it('SWAGGER_ENABLED：默认 development 开启 / production 关闭，可显式覆盖', () => {
-    withEnv({ ...VALID_ENV, NODE_ENV: 'production' });
+    // production 必须配置 API Key（平台安全策略），SWAGGER_ENABLED 用例补齐前置条件
+    const PROD_KEY = 'prod-secret-api-key-123';
+    withEnv({ ...VALID_ENV, NODE_ENV: 'production', PERSONAL_OS_API_KEY: PROD_KEY });
     expect(configuration().swagger.enabled).toBe(false);
-    withEnv({ ...VALID_ENV, NODE_ENV: 'production', SWAGGER_ENABLED: 'true' });
+    withEnv({
+      ...VALID_ENV,
+      NODE_ENV: 'production',
+      PERSONAL_OS_API_KEY: PROD_KEY,
+      SWAGGER_ENABLED: 'true',
+    });
     expect(configuration().swagger.enabled).toBe(true);
     withEnv({ ...VALID_ENV, SWAGGER_ENABLED: 'false' });
     expect(configuration().swagger.enabled).toBe(false);
