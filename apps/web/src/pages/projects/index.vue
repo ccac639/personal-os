@@ -13,7 +13,7 @@ import {
   Star,
   Upload,
 } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, ref, toRef } from 'vue';
 
 import { useTaskStore } from '@/features/tasks/store';
 import { TaskForm } from '@/features/tasks';
@@ -44,7 +44,8 @@ import {
 import { parseProjectBundle } from '@/features/projects/transfer';
 import type { ProjectImportResult } from '@/features/projects/transfer';
 import SyncStatusBanner from '@/features/projects/sync-status-banner.vue';
-import { bumpSyncState, createSyncState } from '@/features/projects/sync-core';
+import { createProjectSync } from '@/features/projects/sync';
+import { createTaskSync } from '@/features/tasks/sync';
 import { PROJECT_FILTERS, PROJECT_SORT_OPTIONS, PROJECT_VIEWS } from '@/features/projects/types';
 import type {
   Milestone,
@@ -56,13 +57,26 @@ import type {
 const store = useProjectStore();
 const taskStore = useTaskStore();
 
-/** 同步状态（本轮只读接线：数据源未切换，状态保持 idle；切换后由 sync 引擎状态替换） */
-const syncState = createSyncState();
+/** 同步引擎：真实数据源为主、local-first 离线降级（hydrate / 乐观更新+回滚 / 离线队列） */
+const projectSync = createProjectSync({
+  projects: toRef(store, 'projects'),
+  milestones: toRef(store, 'milestones'),
+});
+const taskSync = createTaskSync({
+  tasks: toRef(taskStore, 'tasks'),
+  focus: toRef(taskStore, 'focus'),
+  focusDone: toRef(taskStore, 'focusDone'),
+  focusHistory: toRef(taskStore, 'focusHistory'),
+  focusSessions: toRef(taskStore, 'focusSessions'),
+  titleOf: (id) => taskStore.tasks.find((t) => t.id === id)?.title ?? '',
+});
 function retrySync(): void {
-  // 数据源切换后在此接入 createProjectSync().retry()
+  void projectSync.retry();
+  void taskSync.retry();
 }
 function dismissSync(): void {
-  if (syncState.lastError) bumpSyncState(syncState, { lastError: null });
+  projectSync.dismissError();
+  taskSync.dismissError();
 }
 
 /** 工作台视图：项目列表 / 执行工作区 */
@@ -317,7 +331,11 @@ function confirmImport() {
 
     <!-- 存储提示（损坏恢复 / 写入失败，非阻塞）+ 迁移提示 + 同步状态 -->
     <div class="mb-4 space-y-2">
-      <SyncStatusBanner :states="[syncState]" @retry="retrySync" @dismiss="dismissSync" />
+      <SyncStatusBanner
+        :states="[projectSync.state, taskSync.state]"
+        @retry="retrySync"
+        @dismiss="dismissSync"
+      />
       <StorageWarningBanner
         :message="store.storageWarning || taskStore.storageWarning"
         @dismiss="
