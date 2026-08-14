@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "built_at": "2026-08-15T07:56:55",
+  "files": 1255,
+  "symbols": 8719,
+  "apis": 0,
+  "lines": 1600486,
+  "languages": {
+    "shell": 13,
+    "yaml": 20,
+    "markdown": 73,
+    "go": 2340,
+    "json": 171,
+    "text": 11,
+    "html": 3,
+    "sql": 260,
+    "javascript": 41,
+    "vue": 441,
+    "typescript": 957,
+    "css": 11,
+    "python": 1
+  },
+  "duration_s": 60.1,
+  "updated_files": 390,
+  "deleted_files": 3511
+}

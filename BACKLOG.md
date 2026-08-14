@@ -52,5 +52,6 @@
 
 - [ ] P2 根 tsconfig 仅占位（solution-style references 待各包 composite 化后启用）
 - [ ] P2 Playwright 浏览器二进制未预装（`npx playwright install` 按需执行）
+- [x] P2 repo-index 脚本已恢复至项目 workspace 层（`.opensquilla/skills/repo-index/scripts/`，2026-08-15），索引已刷新入库
 - [ ] P3 TS 7 升级跟踪（待 typescript-eslint 兼容后评估）
 - [ ] P2 repo-index 脚本未随项目分发（`.opensquilla/index/` 6:08 构建已过期，增量更新需 workspace 层 indexer.py；见 repo-index skill）
