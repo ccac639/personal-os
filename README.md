@@ -100,7 +100,7 @@ personal-os/
 │   │   ├── pages/  components/  layouts/  server/  assets/
 │   ├── api/                  # NestJS 11 + Fastify
 │   │   └── src/
-│   │       ├── modules/      # auth/users/dashboard/projects/tasks/chat/agents/workflows/documents/achievements/articles/admin
+│   │       ├── modules/      # auth/users/dashboard/projects/tasks/chat/agents/workflows/documents/achievements/articles/admin/sub2api/three-d/data-import
 │   │       ├── common/       # 共享基础设施（预留）
 │   │       ├── config/       # configuration.ts 环境配置
 │   │       └── main.ts
