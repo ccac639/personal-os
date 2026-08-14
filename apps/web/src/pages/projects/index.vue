@@ -43,6 +43,8 @@ import {
 } from '@/features/projects/archive';
 import { parseProjectBundle } from '@/features/projects/transfer';
 import type { ProjectImportResult } from '@/features/projects/transfer';
+import SyncStatusBanner from '@/features/projects/sync-status-banner.vue';
+import { bumpSyncState, createSyncState } from '@/features/projects/sync-core';
 import { PROJECT_FILTERS, PROJECT_SORT_OPTIONS, PROJECT_VIEWS } from '@/features/projects/types';
 import type {
   Milestone,
@@ -53,6 +55,15 @@ import type {
 
 const store = useProjectStore();
 const taskStore = useTaskStore();
+
+/** 同步状态（本轮只读接线：数据源未切换，状态保持 idle；切换后由 sync 引擎状态替换） */
+const syncState = createSyncState();
+function retrySync(): void {
+  // 数据源切换后在此接入 createProjectSync().retry()
+}
+function dismissSync(): void {
+  if (syncState.lastError) bumpSyncState(syncState, { lastError: null });
+}
 
 /** 工作台视图：项目列表 / 执行工作区 */
 const workspace = ref<'projects' | 'execution'>('projects');
@@ -304,8 +315,9 @@ function confirmImport() {
       </div>
     </header>
 
-    <!-- 存储提示（损坏恢复 / 写入失败，非阻塞）+ 迁移提示 -->
+    <!-- 存储提示（损坏恢复 / 写入失败，非阻塞）+ 迁移提示 + 同步状态 -->
     <div class="mb-4 space-y-2">
+      <SyncStatusBanner :states="[syncState]" @retry="retrySync" @dismiss="dismissSync" />
       <StorageWarningBanner
         :message="store.storageWarning || taskStore.storageWarning"
         @dismiss="
