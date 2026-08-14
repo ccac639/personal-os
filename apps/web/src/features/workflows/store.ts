@@ -48,6 +48,12 @@ import { createRunControl, runWorkflow, type RunnerHooks, type RunSnapshot } fro
 import { normalizeDelay, resetToDefaults, validateDataShape } from './schema';
 import { autoConnect, type AutoConnectResult } from './ai-workflow-schema';
 import {
+  parseShareSnapshot,
+  quickCheckShareJson,
+  remapShareNodes,
+  shareSnapshotJson,
+} from './share';
+import {
   alignPositions,
   autoLayoutPositions,
   distributePositions,
@@ -1272,6 +1278,57 @@ export const useWorkflowStore = defineStore('workflow', () => {
     return true;
   }
 
+  /* ---------- 分享快照（薄封装：组件 → store → 纯函数单向依赖） ---------- */
+
+  /** 生成当前工作流的只读分享快照 JSON（剥离运行时状态与敏感字段） */
+  function buildShareSnapshotJson(): string {
+    const rec = active.value;
+    if (!rec) return '';
+    return shareSnapshotJson({
+      name: rec.name,
+      description: rec.description ?? '',
+      tags: rec.tags ?? [],
+      nodes: rec.nodes,
+      edges: rec.edges,
+      inputs: rec.inputs ?? [],
+      outputs: rec.outputs ?? [],
+      runConfig: rec.runConfig ?? defaultRunConfig(),
+    });
+  }
+
+  /** 分享快照快速结构检查（轻量，导入前调用，不做完整深校验） */
+  function quickCheckShare(text: string): { ok: boolean; error?: string } {
+    return quickCheckShareJson(text);
+  }
+
+  /** 导入分享快照为新工作流：独立 ID + 节点重映射，复用既有导入路径 */
+  function importShareSnapshot(text: string): { ok: boolean; errors: string[] } {
+    const parsed = parseShareSnapshot(text);
+    if (!parsed.ok || !parsed.snapshot) return { ok: false, errors: parsed.errors };
+    const { nodes, edges } = remapShareNodes(parsed.snapshot);
+    pushUndo();
+    const id = createWorkflow(parsed.snapshot.workflow.name);
+    const rec = records.value.find((r) => r.id === id);
+    if (!rec) return { ok: false, errors: ['创建工作流失败'] };
+    rec.nodes = nodes.map((n) => ({
+      ...n,
+      type: 'custom' as const,
+      data: { ...n.data, status: 'idle' as const },
+    }));
+    rec.edges = edges;
+    // 重映射节点 id 为 n-1..n-N，同步推进序号避免后续 addNode 冲突
+    rec.seq = nodes.length + 1;
+    rec.tags = parsed.snapshot.workflow.tags;
+    rec.description = parsed.snapshot.workflow.description ?? '';
+    rec.inputs = parsed.snapshot.workflow.inputs;
+    rec.outputs = parsed.snapshot.workflow.outputs;
+    rec.runConfig = parsed.snapshot.workflow.runConfig;
+    selectNode(null);
+    layoutBump.value++;
+    save(false);
+    return { ok: true, errors: [] };
+  }
+
   /* ---------- 模拟运行（runner 驱动） ---------- */
 
   function resetStatus() {
@@ -2475,6 +2532,10 @@ export const useWorkflowStore = defineStore('workflow', () => {
     importJson,
     inspectJson,
     validateSnapshot,
+    // 分享快照（薄封装）
+    buildShareSnapshotJson,
+    quickCheckShare,
+    importShareSnapshot,
     // 工具
     resetToDefaults,
   };
