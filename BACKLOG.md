@@ -6,8 +6,8 @@
 
 - [x] P0 初始化 Monorepo（目录骨架与依赖安装）
 - [ ] P1 Sub2API 真实实例冒烟与凭据静态加密（Sub2API 真实实例线）
-- [ ] P1 Blog 内容源 A/B 决策与收尾提交（Blog 内容线）
-- [ ] P1 Worker 线在途改动提交（Worker 线）
+- [x] P1 Blog 内容源 A/B 决策与收尾提交（Blog 内容线；2026-08-15 交付，ADR-0014）
+- [x] P1 Worker 线在途改动提交（Worker 线；2026-08-15 收口，ADR-0013）
 - [ ] P1 Web 同步层数据源切换（Web 恢复与同步线 Phase 1/2）
 
 ## 待办（后续阶段）
@@ -53,3 +53,4 @@
 - [ ] P2 根 tsconfig 仅占位（solution-style references 待各包 composite 化后启用）
 - [ ] P2 Playwright 浏览器二进制未预装（`npx playwright install` 按需执行）
 - [ ] P3 TS 7 升级跟踪（待 typescript-eslint 兼容后评估）
+- [ ] P2 repo-index 脚本未随项目分发（`.opensquilla/index/` 6:08 构建已过期，增量更新需 workspace 层 indexer.py；见 repo-index skill）
