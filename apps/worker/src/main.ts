@@ -7,8 +7,8 @@
  * 3. 装配 workflow-runs 与 chat-generation 两个 Worker（并发见 QUEUE_CONTRACT）
  * 4. 多 worker 初始化：任一失败按 WORKER_FAILURE_POLICY 处理
  *    （all=全部关闭退出；partial=继续运行健康 worker；factory 创建失败同样覆盖）
- * 5. 优雅退出：SIGINT/SIGTERM → 停止接单 → 等待在途任务（全局 grace 上限）→
- *    关闭 Worker → SecretReader → Redis → Mongo
+ * 5. 优雅退出：SIGINT/SIGTERM → 停止接单并等待在途任务（全局 grace 上限）→
+ *    超预算 abort 在途 + force close → SecretReader → Redis → Mongo
  * 6. 进程级兜底：uncaughtException / unhandledRejection → 记录后有序退出，
  *    由进程管理器重启（不继续运行，避免状态损坏）
  */
@@ -16,7 +16,11 @@ import mongoose from 'mongoose';
 import { Redis } from 'ioredis';
 import { pino } from 'pino';
 
-import { SILICONFLOW_API_KEY_REDIS_KEY } from '@personal-os/queue-contract';
+import {
+  SILICONFLOW_API_KEY_REDIS_KEY,
+  WORKFLOW_RUN_QUEUE,
+  CHAT_QUEUE_NAME,
+} from '@personal-os/queue-contract';
 import { loadWorkerConfig, WorkerConfigError } from './config.js';
 import { errorMessage } from './errors/worker-errors.js';
 import { LocalDeterministicAdapter, MongoWorkerRunStore } from './jobs/workflows/index.js';
@@ -100,7 +104,7 @@ async function main(): Promise<void> {
     logger,
     factories: [
       {
-        queue: 'workflow-runs',
+        queue: WORKFLOW_RUN_QUEUE,
         create: () =>
           createWorkflowWorker({
             store: workflowStore,
@@ -111,7 +115,7 @@ async function main(): Promise<void> {
           }),
       },
       {
-        queue: 'chat-generation',
+        queue: CHAT_QUEUE_NAME,
         create: () =>
           createChatWorker({
             service: chatService,

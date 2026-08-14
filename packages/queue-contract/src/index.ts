@@ -77,8 +77,13 @@ export const SILICONFLOW_API_KEY_REDIS_KEY = 'siliconflow:api_key';
 
 /**
  * 429 retry-after 延迟上下限（ms）：
+ * - 入队侧 backoff.type 固定为 'custom'（见 worker queues/contract.ts 与
+ *   api chat-job-queue.ts / workflow.queue.ts），worker 侧
+ *   settings.backoffStrategy 才会被 BullMQ 调用并消费 WorkerError.retryAfterMs；
  * - retry-after 头提供的值被 clamp 到 [min, max]；
  * - 无 retry-after 时的指数退避同样受 max 封顶。
+ * 限制：BullMQ 6 内置策略（exponential/fixed）优先于自定义 backoffStrategy，
+ * 因此任何入队侧不得改回内置类型，否则 retry-after 会被解析但不生效。
  */
 export const RETRY_AFTER_MIN_MS = 1_000;
 export const RETRY_AFTER_MAX_MS = 60_000;

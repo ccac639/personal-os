@@ -5,10 +5,13 @@
  *   · all（默认）：关闭全部已创建 handle（含失败/超时 handle）并抛
  *     WorkerStartupError（进程退出，由进程管理器重启）
  *   · partial：关闭失败 worker，继续运行健康 worker（日志明确告警）
- * - shutdown：停止接单 → 并行等待在途任务（全局 grace 预算）→ 关闭 worker →
- *   closables（Queue/SecretReader）→ Redis → Mongo
- * - shutdownGraceMs 为全局预算：多个 Worker 并行关闭共享同一预算，
- *   超过全局期限后统一 force close（不会每个 worker 各消耗一整轮 grace）
+ * - shutdown：停止接单并等待在途（pause，全局 grace 预算）→ 超预算 abort 在途 +
+ *   force close → closables（Queue/SecretReader）→ Redis → Mongo
+ * - shutdownGraceMs 为全局时间预算：所有 worker 并行共享同一 deadline，
+ *   不是每个 worker 各消耗一整轮 grace；超过全局期限后统一 force close。
+ * - BullMQ 6 的 Worker.close 幂等（第二次调用返回第一次的 promise，force 参数
+ *   只在首次调用生效），因此 shutdown 采用 pause → cancelActive → close(true)
+ *   的顺序：close(true) 是首次调用，force 真正生效。
  * - 超时工具 withTimeout 供启动/关闭复用
  */
 import type { LoggerLike } from '../jobs/workflows/processor.js';
@@ -135,8 +138,8 @@ export interface ShutdownOptions {
   logger: LoggerLike;
   handles: WorkerHandle[];
   /**
-   * 优雅关闭全局预算 ms（默认 30_000）：所有 worker 并行共享这一预算，
-   * 超时后统一 force close；之后按顺序关闭 closables → Redis → Mongo。
+   * 优雅关闭全局预算 ms（默认 30_000）：所有 worker 并行共享这一 deadline，
+   * 超时后 abort 在途任务并统一 force close；之后按顺序关闭 closables → Redis → Mongo。
    */
   graceMs?: number;
   /** 额外需关闭的资源（Queue / SecretReader），在 worker 之后、Redis 之前 */
@@ -145,38 +148,55 @@ export interface ShutdownOptions {
   mongo?: { disconnect(): Promise<unknown> };
 }
 
-/** 优雅关闭：停止接单 → 并行等待在途（全局 grace）→ worker → closables → Redis → Mongo */
+/**
+ * 优雅关闭：停止接单并等待在途（全局 grace）→ 超预算 abort + force close
+ * → closables → Redis → Mongo。
+ *
+ * 时序（对应任务 5 的全局预算语义）：
+ * 1. pause()：所有 worker 并行「停止接单 + 等待在途任务自然结束」，共享同一
+ *    全局 deadline（BullMQ 6 的 pause(false) 公开语义，内部等待在途结束）；
+ * 2. 超预算：对未排空的 worker cancelActive（向处理器发 AbortSignal，协作式
+ *    停止，见 registration.withJobTimeout），随后统一 close(true)——首次调用
+ *    即 force，避免 BullMQ close 幂等导致 force 参数失效；
+ * 3. closables（Queue/SecretReader）→ Redis → Mongo（每个环节异常不阻断后续）。
+ */
 export async function shutdown(options: ShutdownOptions): Promise<void> {
   const graceMs = options.graceMs ?? 30_000;
+  const deadline = Date.now() + graceMs;
   options.logger.info(
     {
       queues: options.handles.map((h) => h.queue),
       graceMs,
       closables: options.closables?.map((c) => c.name),
     },
-    'shutdown: 停止接单并等待在途任务',
+    'shutdown: 停止接单并等待在途任务（全局 grace 预算）',
   );
 
-  // 1. 并行优雅关闭全部 worker（共享同一全局 grace 预算）
-  const closeResults = await Promise.allSettled(
+  // 1. 并行停止接单 + 等待在途任务自然完成（共享同一全局 deadline）
+  const drainResults = await Promise.allSettled(
     options.handles.map((handle) =>
-      withTimeout(handle.close(false), graceMs, `worker ${handle.queue} 优雅关闭超时`),
+      withTimeout(
+        handle.pause(),
+        Math.max(0, deadline - Date.now()),
+        `worker ${handle.queue} 等待在途任务超时（超过全局 grace）`,
+      ),
     ),
   );
 
-  // 2. 超过全局期限的 worker 统一 force close（并行）
+  // 2. 超预算：abort 在途任务（协作式），随后统一 force close（首次调用即 force）
+  const stragglers = options.handles.filter((_, i) => drainResults[i]?.status === 'rejected');
+  for (const handle of stragglers) {
+    options.logger.warn(
+      { queue: handle.queue },
+      'shutdown: 全局 grace 到期，中止在途任务并强制关闭 worker',
+    );
+    handle.cancelActive('shutdown: 全局 grace 到期，中止在途任务');
+  }
+  const forceTimeout = Math.min(5_000, Math.max(500, graceMs));
   await Promise.allSettled(
-    options.handles.map((handle, i) => {
-      const result = closeResults[i]!;
-      if (result.status === 'rejected') {
-        options.logger.warn(
-          { queue: handle.queue, err: errorMessage(result.reason) },
-          'shutdown: 优雅关闭超时，强制关闭 worker',
-        );
-        return handle.close(true);
-      }
-      return undefined;
-    }),
+    options.handles.map((handle) =>
+      withTimeout(handle.close(true), forceTimeout, `worker ${handle.queue} force close 超时`),
+    ),
   );
 
   // 3. closables（Queue / SecretReader）→ Redis → Mongo

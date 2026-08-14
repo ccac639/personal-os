@@ -2,7 +2,8 @@
  * Worker 装配与生命周期测试：
  * - 多 worker 注册（queue 名 / 并发 / 事件装配 / backoffStrategy）
  * - 初始化失败策略（all / partial，覆盖 factory 创建失败）
- * - shutdown 全局 grace 预算：并行关闭、超时统一 force close、closables → Redis → Mongo
+ * - shutdown 全局 grace 预算：pause → 并行等待在途（共享 deadline）→
+ *   超预算 cancelActive（abort 在途）→ 统一 force close → closables → Redis → Mongo
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { Worker } from 'bullmq';
@@ -147,6 +148,8 @@ describe('startWorkers 多 worker 装配（factories 形态）', () => {
         opts.ready === false
           ? () => Promise.reject(new Error(`redis down: ${queue}`))
           : () => Promise.resolve(),
+      pause: async () => undefined,
+      cancelActive: () => undefined,
       close: (force = false) => {
         state.closed += 1;
         if (force) state.forceClosed = true;
@@ -257,23 +260,29 @@ describe('startWorkers 多 worker 装配（factories 形态）', () => {
 
 describe('shutdown 优雅退出', () => {
   function fakeHandleWithClose(queue: string, order: string[], opts: { hangGrace?: boolean } = {}) {
-    const state = { closed: 0, force: false };
+    const state = { closed: 0, force: false, cancelled: false, paused: false };
     const handle = {
       queue,
       worker: {} as Worker,
       waitUntilReady: async () => undefined,
+      pause: () => {
+        state.paused = true;
+        return opts.hangGrace ? new Promise<void>(() => undefined) : Promise.resolve();
+      },
+      cancelActive: () => {
+        state.cancelled = true;
+      },
       close: (force = false) => {
         state.closed += 1;
         state.force = force;
         order.push(queue);
-        if (opts.hangGrace && !force) return new Promise<void>(() => undefined);
         return Promise.resolve();
       },
     };
     return { handle, state };
   }
 
-  it('顺序：worker 全部关闭 → closables → redis.quit → mongo.disconnect', async () => {
+  it('顺序：pause → worker 全部关闭 → closables → redis.quit → mongo.disconnect', async () => {
     const order: string[] = [];
     const a = fakeHandleWithClose('workflow-runs', order);
     const b = fakeHandleWithClose('chat-generation', order);
@@ -293,9 +302,12 @@ describe('shutdown 优雅退出', () => {
       graceMs: 500,
     });
 
+    expect(a.state.paused).toBe(true);
+    expect(b.state.paused).toBe(true);
     expect(a.state.closed).toBe(1);
     expect(b.state.closed).toBe(1);
-    expect(a.state.force).toBe(false);
+    expect(a.state.force).toBe(true);
+    expect(a.state.cancelled).toBe(false);
     expect(secret.close).toHaveBeenCalledOnce();
     expect(redis.quit).toHaveBeenCalledOnce();
     expect(mongo.disconnect).toHaveBeenCalledOnce();
@@ -304,7 +316,7 @@ describe('shutdown 优雅退出', () => {
 
   it('多个 worker 并行关闭共享同一全局 grace 预算（总时长 ≈ graceMs，而非 N×graceMs）', async () => {
     const order: string[] = [];
-    // 两个 worker 各自优雅关闭需 80ms（> graceMs 30ms）→ 都被超时强关
+    // 两个 worker 的在途任务都超过 grace（30ms）→ 到 deadline 后统一 abort + force close
     const a = fakeHandleWithClose('workflow-runs', order, { hangGrace: true });
     const b = fakeHandleWithClose('chat-generation', order, { hangGrace: true });
 
@@ -312,28 +324,32 @@ describe('shutdown 优雅退出', () => {
     await shutdown({ logger: nullLogger, handles: [a.handle, b.handle], graceMs: 30 });
     const elapsed = Date.now() - started;
 
-    expect(a.state.closed).toBe(2); // close(false) 超时后 close(true)
-    expect(b.state.closed).toBe(2);
+    // 全局预算：两个 worker 并行等待，到 deadline 后 cancelActive + close(true) 各一次
+    expect(a.state.closed).toBe(1);
+    expect(b.state.closed).toBe(1);
     expect(a.state.force).toBe(true);
     expect(b.state.force).toBe(true);
-    // 全局预算：两个 worker 并行等待，总时长接近单个 grace（30ms）+ force 开销
+    expect(a.state.cancelled).toBe(true);
+    expect(b.state.cancelled).toBe(true);
+    // 总时长接近单个 grace（30ms）+ force 开销，远小于 2×grace
     expect(elapsed).toBeLessThan(200);
   });
 
-  it('优雅关闭超时 → 强制关闭 worker', async () => {
+  it('优雅关闭超时 → abort 在途任务并强制关闭 worker', async () => {
     const hanging = {
       queue: 'chat-generation',
       worker: {} as Worker,
       waitUntilReady: async () => undefined,
-      close: vi.fn((force: boolean) =>
-        force ? Promise.resolve() : new Promise<void>(() => undefined),
-      ),
+      pause: vi.fn(() => new Promise<void>(() => undefined)),
+      cancelActive: vi.fn(),
+      close: vi.fn().mockResolvedValue(undefined),
     };
     const redis = { quit: vi.fn().mockResolvedValue(undefined) };
 
     await shutdown({ logger: nullLogger, handles: [hanging], redis, graceMs: 50 });
 
-    expect(hanging.close).toHaveBeenCalledWith(false);
+    expect(hanging.pause).toHaveBeenCalledOnce();
+    expect(hanging.cancelActive).toHaveBeenCalledOnce();
     expect(hanging.close).toHaveBeenCalledWith(true);
     expect(redis.quit).toHaveBeenCalledOnce();
   });

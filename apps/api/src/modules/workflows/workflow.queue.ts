@@ -47,9 +47,12 @@ export class BullMqRunQueue implements RunQueuePort {
       {
         // 与 worker 侧 QUEUE_CONTRACT.workflowRuns 保持一致（单一契约源）
         // 注：BullMQ v5+ 无入队侧 timeout 选项，超时由 worker 侧处理器强制
+        // backoff.type 固定为 'custom'：BullMQ 6 对内置类型（exponential/fixed）
+        // 优先使用内置策略，会跳过 worker 侧 settings.backoffStrategy，导致
+        // 429 retry-after 解析但不生效（见 worker/src/workers/registration.ts）
         jobId: runId,
         attempts: WORKFLOW_ENTRY.attempts,
-        backoff: { type: 'exponential', delay: WORKFLOW_ENTRY.backoffMs },
+        backoff: { type: 'custom', delay: WORKFLOW_ENTRY.backoffMs },
         removeOnComplete: WORKFLOW_ENTRY.removeOnComplete,
         removeOnFail: WORKFLOW_ENTRY.removeOnFail,
       },

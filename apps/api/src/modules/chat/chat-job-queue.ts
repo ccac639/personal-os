@@ -30,6 +30,10 @@ const CHAT_ENTRY = QUEUE_CONTRACT.chatGeneration;
  * jobId = runId：BullMQ 对同 jobId 去重，天然幂等。
  * 注：BullMQ v5+ 已移除入队侧 timeout 选项，超时由 worker 侧处理器按
  * 契约 timeoutMs 强制（见 worker/src/workers/registration.ts）。
+ * backoff.type 固定为 'custom'：BullMQ 6 的 lookupStrategy 对内置类型
+ * （exponential/fixed）优先使用内置策略，会跳过 worker 侧 settings.backoffStrategy，
+ * 导致 429 retry-after 解析但不生效。只有 'custom' 才会调用自定义策略
+ * （消费 WorkerError.retryAfterMs，无 retry-after 时回退指数退避）。
  */
 @Injectable()
 export class BullChatJobQueue extends ChatJobQueue {
@@ -50,7 +54,7 @@ export class BullChatJobQueue extends ChatJobQueue {
     const job = await this.queue.add(CHAT_JOB_NAME, payload, {
       jobId: payload.runId,
       attempts: CHAT_ENTRY.attempts,
-      backoff: { type: 'exponential', delay: CHAT_ENTRY.backoffMs },
+      backoff: { type: 'custom', delay: CHAT_ENTRY.backoffMs },
       removeOnComplete: CHAT_ENTRY.removeOnComplete,
       removeOnFail: CHAT_ENTRY.removeOnFail,
     });

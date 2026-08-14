@@ -6,7 +6,11 @@
  * - 统一事件日志：ready / error / completed / failed（含 queue、jobId、runId）
  * - 统一 worker 选项：concurrency / lockDuration / stalledInterval
  * - 统一重试策略：settings.backoffStrategy 消费 WorkerError.retryAfterMs（429），
- *   无 retry-after 时回退指数退避（见 errors/worker-errors.ts retryDelayMs）
+ *   无 retry-after 时回退指数退避（见 errors/worker-errors.ts retryDelayMs）。
+ *   前提：入队侧 backoff.type 必须是非内置类型（'custom'）——BullMQ 6 的
+ *   Backoffs.lookupStrategy 优先使用内置策略（exponential/fixed），否则
+ *   settings.backoffStrategy 永远不会被调用（见 queues/contract.ts 与
+ *   api 侧 chat-job-queue.ts / workflow.queue.ts 的入队选项）。
  * - 统一超时：withJobTimeout 超时先 abort（signal 透传处理器 → adapter/engine 停止），
  *   等待底层任务停止后再抛错，杜绝「超时后后台继续执行」与 attempt 重叠
  */
@@ -36,7 +40,20 @@ export interface WorkerHandle {
   readonly queue: string;
   readonly worker: Worker;
   waitUntilReady(): Promise<void>;
-  /** 优雅关闭：停止接单并等待在途任务；force=true 立即中断 */
+  /**
+   * 停止接单并等待在途任务结束（BullMQ 6 的 pause(false) 公开语义：
+   * 内部调用私有 whenCurrentJobsFinished；全局 grace 预算由 shutdown 控制）。
+   */
+  pause(): Promise<void>;
+  /** 中止全部在途任务：向处理器发 AbortSignal（协作式停止，见 withJobTimeout） */
+  cancelActive(reason: string): void;
+  /**
+   * 关闭 worker。
+   * 注意：BullMQ 6 的 Worker.close 是幂等的——第二次调用返回第一次的 promise，
+   * force 参数只在首次调用时生效。因此「先 close(false) 再 close(true)」无法
+   * 真正强关；manager.shutdown 先 pause（等待在途，全局 grace），超预算后
+   * cancelActive 并直接以 close(true) 作为首次调用完成 force close。
+   */
   close(force?: boolean): Promise<void>;
 }
 
@@ -64,6 +81,8 @@ function makeHandle(queue: string, worker: Worker, logger: LoggerLike): WorkerHa
     queue,
     worker,
     waitUntilReady: () => worker.waitUntilReady(),
+    pause: () => worker.pause(false),
+    cancelActive: (reason: string) => worker.cancelAllJobs(reason),
     close: (force = false) => worker.close(force),
   };
 }
@@ -130,9 +149,11 @@ export function createChatWorker(options: CreateChatWorkerOptions): WorkerHandle
 }
 
 /**
- * 429 retry-after 生效：BullMQ 每次失败后调用本策略计算重试延迟。
+ * 429 retry-after 生效：BullMQ 在 job 可重试失败后调用本策略计算重试延迟。
  * - err 为 WorkerError 且携带 retryAfterMs（429 头）→ 使用该值（clamp 上下限）；
  * - 无 retry-after → 指数退避（backoffMs * 2^(attemptsMade-1)），受上限封顶。
+ * 生效前提：入队侧 backoff.type 为 'custom'（非内置类型），否则 BullMQ 6 的
+ * lookupStrategy 会优先使用内置 exponential 策略而跳过本函数。
  */
 export function makeBackoffStrategy(
   backoffMs: number,
