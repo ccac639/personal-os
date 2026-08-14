@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
+    "validate:posts": "node scripts/validate-posts.mjs",
     "clean": "rimraf .nuxt .output"
   },
   "dependencies": {
