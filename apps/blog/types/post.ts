@@ -41,3 +41,10 @@ export interface AdjacentPost {
   slug: string;
   title: string;
 }
+
+/** 文章详情响应：正文 + 相邻导航（详情页一次取齐，避免二次请求）。 */
+export interface PostDetail {
+  post: BlogPost;
+  prev: AdjacentPost | null;
+  next: AdjacentPost | null;
+}

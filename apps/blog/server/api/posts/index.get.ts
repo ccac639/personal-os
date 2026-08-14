@@ -1,3 +1,3 @@
-import { postsStore } from '../../utils/posts';
+import { getPostsStore } from '../../utils/posts';
 
-export default defineEventHandler(() => postsStore.listPosts());
+export default defineEventHandler(() => getPostsStore().listPosts());

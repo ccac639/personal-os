@@ -1,4 +1,5 @@
 import tailwindcss from '@tailwindcss/vite';
+import { resolve } from 'node:path';
 import { defineNuxtConfig } from 'nuxt/config';
 
 export default defineNuxtConfig({
@@ -32,6 +33,9 @@ export default defineNuxtConfig({
   },
 
   runtimeConfig: {
+    // 内容目录在 build 期固化为绝对路径：nitro 运行时（preview/生产）cwd 会被切到
+    // .output，不能再依赖 process.cwd() 定位源码目录。
+    blogContentDir: resolve(process.cwd(), 'content/posts'),
     public: {
       apiUrl: process.env.API_URL ?? 'http://localhost:3000',
     },

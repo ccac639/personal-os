@@ -346,7 +346,16 @@ export function createPostsStore(contentDir: string, options: { dev?: boolean } 
 }
 
 /**
- * 默认实例：内容目录相对应用根目录（dev/build/preview 的 cwd 均为 apps/blog）。
+ * 默认实例（惰性单例）：内容目录来自 build 期固化的 runtimeConfig.blogContentDir。
+ * nitro 运行时（preview/生产）cwd 为 .output，不能再用 process.cwd() 定位源码目录。
  * 测试用 createPostsStore 注入临时目录，避免触碰真实内容。
  */
-export const postsStore: PostsStore = createPostsStore(resolve(process.cwd(), 'content/posts'));
+let store: PostsStore | null = null;
+
+export function getPostsStore(): PostsStore {
+  if (!store) {
+    const config = useRuntimeConfig() as unknown as { blogContentDir: string };
+    store = createPostsStore(config.blogContentDir || resolve(process.cwd(), 'content/posts'));
+  }
+  return store;
+}

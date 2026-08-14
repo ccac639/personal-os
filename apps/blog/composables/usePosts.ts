@@ -1,4 +1,4 @@
-import type { BlogPost, BlogPostMeta, PostGroupCount } from '~/types/post';
+import type { AdjacentPost, BlogPost, BlogPostMeta, PostGroupCount } from '~/types/post';
 
 /**
  * 数据访问层替换点（客户端侧）。
@@ -14,9 +14,18 @@ export function usePostList() {
   return useFetch<BlogPostMeta[]>(`${BASE}/posts`, { key: 'blog:posts' });
 }
 
-/** 文章详情；未知 slug 返回 null（页面负责转 404）。 */
+/** 文章详情响应：正文 + 相邻导航；未知 slug 由 API 返回 404。 */
+export interface PostDetailPayload {
+  post: BlogPost;
+  prev: AdjacentPost | null;
+  next: AdjacentPost | null;
+}
+
+/** 文章详情；未知 slug 的请求由服务端 404 拦截（页面负责兜底）。 */
 export function usePostDetail(slug: string) {
-  return useFetch<BlogPost | null>(`${BASE}/posts/${slug}`, { key: `blog:post:${slug}` });
+  return useFetch<PostDetailPayload>(`${BASE}/posts/${slug}`, {
+    key: `blog:post:${slug}`,
+  });
 }
 
 /** 标签聚合（含文章数）。 */
