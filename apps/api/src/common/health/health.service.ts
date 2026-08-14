@@ -4,6 +4,7 @@ import type { Connection } from 'mongoose';
 import type { Redis } from 'ioredis';
 
 import { REDIS_CLIENT } from '../redis/redis.module.js';
+import { MetricsService, type MetricsSnapshot } from '../metrics/metrics.service.js';
 import {
   HEALTH_CONTRIBUTORS,
   type HealthCheckResult,
@@ -21,6 +22,8 @@ export interface HealthResponse {
     mongo: 'up' | 'down';
     redis: 'up' | 'down';
   };
+  /** 轻量请求指标快照（MetricsService 注入时提供；未装配时省略） */
+  metrics?: MetricsSnapshot;
 }
 
 /** 内置依赖检查：mongo（mongoose readyState）与 redis（ioredis status） */
@@ -71,12 +74,13 @@ export class HealthService {
     @Optional()
     @Inject(HEALTH_CONTRIBUTORS)
     private readonly contributors: HealthContributor[] = [],
+    @Optional() private readonly metrics?: MetricsService,
   ) {
     this.builtinContributors = dependencyContributors(this.connection, this.redis);
   }
 
   check(version: string): HealthResponse {
-    return {
+    const response: HealthResponse = {
       status: 'ok',
       version,
       time: new Date().toISOString(),
@@ -86,6 +90,10 @@ export class HealthService {
         redis: this.redis?.status === 'ready' ? 'up' : 'down',
       },
     };
+    if (this.metrics) {
+      response.metrics = this.metrics.snapshot();
+    }
+    return response;
   }
 
   /** 就绪检查：所有检查项 up → ready，否则 not_ready（每项带超时保护） */
