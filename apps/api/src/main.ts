@@ -2,10 +2,12 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from '@fastify/helmet';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module.js';
 import { buildCorsOptions } from './common/cors.js';
+import { buildHelmetOptions } from './common/security/helmet.js';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -18,6 +20,9 @@ async function bootstrap(): Promise<void> {
 
   app.useLogger(app.get(Logger));
   app.setGlobalPrefix('api');
+
+  // 安全响应头：CSP 基础策略 + helmet 默认头（与下方 CORS 白名单协调，见 buildHelmetOptions）
+  await app.register(helmet, buildHelmetOptions());
 
   // CORS：仅允许配置的 Web Origin（不允许 origin=* 与 credentials 混用）
   app.enableCors(buildCorsOptions(config.get<string>('cors.origin') as string));
@@ -39,12 +44,15 @@ async function bootstrap(): Promise<void> {
   await app.listen(port, host);
   app
     .get(Logger)
-    .log(`Personal OS API listening on http://${host}:${port} (env=${config.get<string>('nodeEnv')})`, 'Bootstrap');
+    .log(
+      `Personal OS API listening on http://${host}:${port} (env=${config.get<string>('nodeEnv')})`,
+      'Bootstrap',
+    );
 }
 
 void bootstrap().catch((error: unknown) => {
   // 配置校验失败等启动期错误：fail-fast，输出到 stderr 并以非零码退出
-  // eslint-disable-next-line no-console
+
   console.error('[bootstrap] failed:', error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });
