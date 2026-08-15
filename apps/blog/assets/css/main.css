@@ -3,12 +3,21 @@
 @import '@personal-os/ui/styles';
 
 /*
- * 深色模式：跟随系统 prefers-color-scheme，只覆盖 @theme 的语义变量。
- * 工具类（bg-surface-50 等）引用 var(--color-surface-*) 而自动切换；
- * brand 色在深色背景下可读性保持，不做覆盖。
+ * 深色模式：默认跟随系统 prefers-color-scheme；也可经 layout 手动切换
+ * （给 <html> 加 .dark class 覆盖）。两种途径都只覆盖 @theme 的语义变量，
+ * 工具类（bg-surface-50 等）引用 var(--color-surface-*) 而自动切换。
  */
+:root.dark,
+:root[data-theme='dark'] {
+  --color-surface-0: #0f172a;
+  --color-surface-50: #1e293b;
+  --color-surface-100: #334155;
+  --color-surface-800: #cbd5e1;
+  --color-surface-900: #f1f5f9;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.dark):not([data-theme='light']) {
     --color-surface-0: #0f172a;
     --color-surface-50: #1e293b;
     --color-surface-100: #334155;
