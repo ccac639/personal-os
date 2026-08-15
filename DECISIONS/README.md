@@ -17,3 +17,6 @@ ADR 文件存放于 `.opensquilla/decisions/`，采用 [ADR 格式](https://adr.
 | ADR-0010 | Worker 异步任务分线（workflow-runs + chat-generation）— 第一轮基线       | 已被 ADR-0005 取代 | 2026-08-15 |
 | ADR-0011 | 队列契约第二轮 P0 硬化（超时取消 / retry-after / 生命周期 / 连接所有权） | 已接受             | 2026-08-15 |
 | ADR-0012 | Sub2API 真实连接验证、双模测试与契约校准                                 | 已接受             | 2026-08-15 |
+| ADR-0013 | bullmq6 关闭幂等性与 backoff custom（队列契约）                          | 已接受             | 2026-08-15 |
+| ADR-0014 | articles 只读镜像决策（内容层统一由 Blog 维护）                          | 已接受             | 2026-08-15 |
+| ADR-0015 | API 版本化策略（URI，无 defaultVersion）与会话鉴权暂缓（G1/G2）          | 已接受             | 2026-08-15 |
