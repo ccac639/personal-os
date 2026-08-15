@@ -8,6 +8,7 @@ import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module.js';
 import { buildCorsOptions } from './common/cors.js';
+import { installProcessGuards } from './common/process-guard.js';
 import { buildHelmetOptions } from './common/security/helmet.js';
 
 async function bootstrap(): Promise<void> {
@@ -18,8 +19,16 @@ async function bootstrap(): Promise<void> {
   );
 
   const config = app.get(ConfigService);
+  const logger = app.get(Logger);
 
-  app.useLogger(app.get(Logger));
+  app.useLogger(logger);
+
+  // 进程级守卫：尽早注册（listen 之前），未捕获 rejection / 异常 → 结构化日志 +
+  // 受控退出（app.close() → Redis quit + Mongoose disconnect → exit 1），杜绝静默崩溃
+  installProcessGuards(app, logger);
+
+  // SIGINT / SIGTERM → Nest 生命周期（onApplicationShutdown：Redis quit + Mongoose disconnect）
+  app.enableShutdownHooks();
   app.setGlobalPrefix('api');
 
   // API 版本化：URI 策略，不设 defaultVersion（ADR-0015）

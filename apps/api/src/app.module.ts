@@ -89,8 +89,13 @@ const businessModules = registry
         uri: config.get<string>('mongodb.uri'),
         // 启动不等待连接成功；依赖不可用时 /health 显示 down，进程仍可启动
         lazyConnection: true,
-        serverSelectionTimeoutMS: 3000,
-        retryAttempts: 1,
+        // ── 连接韧性（ADR-0016）：显式超时 / 连接池 / 重试，杜绝无限挂起 ──
+        serverSelectionTimeoutMS: 3000, // 驱动级选择超时（有界，不无限挂起）
+        socketTimeoutMS: 45_000, // socket 无响应超时（长查询防悬挂）
+        maxPoolSize: 20, // 连接池上限（默认 100 偏大，个人应用 20 足够）
+        retryWrites: true, // 驱动级写重试（副本集下防瞬时主从切换失败）
+        retryAttempts: 3, // 模块级连接重试（有界，1 → 3）
+        retryDelay: 1000, // 重试间隔
       }),
     }),
     RedisModule,

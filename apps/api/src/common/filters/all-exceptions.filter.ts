@@ -101,10 +101,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message = isProduction
         ? 'Internal server error'
         : redactSensitive((exception as Error)?.message ?? 'Unknown error');
-      // 内部错误一律记录完整堆栈到日志，便于排查；不返回给客户端
+      // 内部错误一律记录完整堆栈到日志，便于排查；不返回给客户端。
+      // 结构化字段：requestId（跨层追踪）+ err（pino 序列化完整堆栈）
       this.logger.error(
+        {
+          requestId,
+          err: exception instanceof Error ? exception : new Error(String(exception)),
+        },
         `Unhandled exception on ${request.method} ${request.url}`,
-        exception instanceof Error ? exception.stack : String(exception),
       );
     }
 
