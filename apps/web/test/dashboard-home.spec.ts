@@ -285,7 +285,9 @@ describe('首页 Dashboard（轮播版）', () => {
     expect(webRow?.html()).toContain('bg-green-500');
   });
 
-  it('快速操作：四宫格、图标、点击跳转已有路由（无死链接）', async () => {
+  it('快速操作：四宫格、图标、点击跳转已有路由（无死链接）', { timeout: 15_000 }, async () => {
+    // 真实 routes（懒加载 chunk）：router.push 触发页面 chunk 导入，全量并行下
+    // 超出默认 5s 阈值（与 77/282 行同根因），显式放宽
     const wrapper = mountWithRouter(DashboardQuickActions);
     const links = wrapper.findAll('a');
     expect(links.length).toBe(4);
