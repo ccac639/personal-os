@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { nextTick } from 'vue';
 
 import { useChatStore } from '@/features/chat/store';
+import { setChatReplyService, type ChatReplyService } from '@/features/chat/service';
 import { CHAT_MODELS } from '@/features/chat/mock';
 
 describe('chat store', () => {
@@ -82,6 +83,40 @@ describe('chat store', () => {
     expect(messages[1]!.content.length).toBeGreaterThan(0);
     // 变体序号不同，内容应与第一次不同
     expect(messages[1]!.content).not.toBe(firstContent);
+  });
+
+  it('多轮历史边界：第二轮携带首轮历史；重新生成首轮时历史为空（空占位跳过）', async () => {
+    vi.useFakeTimers();
+    const calls: { prompt: string; history?: { role: string; content: string }[] }[] = [];
+    const spyService: ChatReplyService = {
+      generateReply: async (prompt, options) => {
+        calls.push({ prompt, history: options?.history });
+        return `[回复:${prompt}]`;
+      },
+    };
+    setChatReplyService(spyService);
+
+    const store = useChatStore();
+    store.sendMessage('第一问');
+    await vi.advanceTimersByTimeAsync(60_000);
+    const first = store.activeSession!.messages[1]!;
+
+    store.sendMessage('第二问');
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    // 第二轮请求携带首轮完整历史（user + assistant）
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.prompt).toBe('第二问');
+    expect(calls[1]!.history).toHaveLength(2);
+    expect(calls[1]!.history![0]).toEqual({ role: 'user', content: '第一问' });
+    expect(calls[1]!.history![1]!.role).toBe('assistant');
+
+    // 重新生成第一轮：截断后首轮之前无历史（buildHistory 跳过空 assistant 占位）
+    store.regenerate(first.id);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(calls).toHaveLength(3);
+    expect(calls[2]!.prompt).toBe('第一问');
+    expect(calls[2]!.history).toEqual([]);
   });
 
   it('持久化：会话变更写入 localStorage，重新加载可恢复', async () => {

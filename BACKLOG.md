@@ -55,3 +55,19 @@
 - [x] P2 repo-index 脚本已恢复至项目 workspace 层（`.opensquilla/skills/repo-index/scripts/`，2026-08-15），索引已刷新入库
 - [ ] P3 TS 7 升级跟踪（待 typescript-eslint 兼容后评估）
 - [ ] P2 repo-index 脚本未随项目分发（`.opensquilla/index/` 6:08 构建已过期，增量更新需 workspace 层 indexer.py；见 repo-index skill）
+
+## FO3 测试体系收口登记（2026-08-15 Phase 0）
+
+### 覆盖缺口清单
+
+- [ ] sync：createProjectSync/createTaskSync/createReleasesSync handle 级测试（hydrate/乐观/离线三态）
+- [ ] sync：sync-status-banner.vue 组件测试（merged 状态 → 可见性/tone/text）
+- [ ] sub2api：route-form-dialog 路由表单校验（白名单相关，isAllowedPath 为后端概念）
+- [ ] chat：多轮上下文 store 端到端（buildHistory regenerate 边界，对应 7e325d5）
+
+### 本线治理项
+
+- [ ] 全局错误边界 AppErrorBoundary（Phase 1）
+- [ ] Playwright E2E 冒烟 3 条（Phase 3）
+- [ ] a11y 基线 eslint-plugin-vue-a11y（Phase 4）
+- [ ] dashboard-home 并发超时 flaky 根治（Phase 5）
