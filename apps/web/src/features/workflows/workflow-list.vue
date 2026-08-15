@@ -294,14 +294,10 @@ const warningsOpen = ref(true);
           </span>
         </div>
         <span class="text-surface-800/50 text-xs">运行成功率</span>
-        <button
-          type="button"
-          class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition"
-          @click="createWorkflow"
-        >
+        <AppButton size="sm" @click="createWorkflow">
           <Plus class="size-3.5" />
           新建工作流
-        </button>
+        </AppButton>
       </div>
     </header>
 
@@ -364,15 +360,10 @@ const warningsOpen = ref(true);
               : '没有符合筛选条件的工作流'
           }}
         </p>
-        <button
-          v-if="store.workflows.length === 0"
-          type="button"
-          class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition"
-          @click="createWorkflow"
-        >
+        <AppButton v-if="store.workflows.length === 0" size="sm" @click="createWorkflow">
           <Plus class="size-3.5" />
           新建工作流
-        </button>
+        </AppButton>
       </div>
 
       <ul v-else class="space-y-1 p-3">

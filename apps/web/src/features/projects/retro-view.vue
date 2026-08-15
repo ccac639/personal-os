@@ -426,14 +426,10 @@ function formatHours(minutes: number): string {
           >
             取消
           </button>
-          <button
-            type="button"
-            class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
-            @click="saveDraft"
-          >
+          <AppButton @click="saveDraft">
             <Save class="size-3.5" />
             保存复盘
-          </button>
+          </AppButton>
         </div>
       </div>
 
@@ -505,14 +501,10 @@ function formatHours(minutes: number): string {
           归档快照
         </h2>
         <div class="flex items-center gap-2">
-          <button
-            type="button"
-            class="bg-brand-600 hover:bg-brand-700 text-surface-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-            @click="snapshoting = true"
-          >
+          <AppButton @click="snapshoting = true">
             <Archive class="size-3.5" />
             生成快照
-          </button>
+          </AppButton>
         </div>
       </div>
       <p class="text-surface-800/50 mb-4 text-xs">
@@ -649,13 +641,7 @@ function formatHours(minutes: number): string {
             >
               取消
             </button>
-            <button
-              type="button"
-              class="bg-brand-600 hover:bg-brand-700 text-surface-0 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
-              @click="confirmImportSnapshot"
-            >
-              确认导入
-            </button>
+            <AppButton @click="confirmImportSnapshot"> 确认导入 </AppButton>
           </div>
         </template>
         <template v-else>

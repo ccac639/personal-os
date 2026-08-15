@@ -299,13 +299,7 @@ function submit() {
           placeholder="模板名称，如：数据迁移"
           autocomplete="off"
         />
-        <button
-          type="button"
-          class="bg-brand-600 hover:bg-brand-700 text-surface-0 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors"
-          @click="confirmSaveTemplate"
-        >
-          保存
-        </button>
+        <AppButton size="sm" @click="confirmSaveTemplate"> 保存 </AppButton>
         <button
           type="button"
           class="text-surface-800/50 hover:text-surface-900 rounded-lg px-2 py-1.5 text-xs transition-colors"
@@ -334,12 +328,9 @@ function submit() {
           >
             取消
           </button>
-          <button
-            type="submit"
-            class="bg-brand-600 hover:bg-brand-700 text-surface-0 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors"
-          >
+          <AppButton type="submit">
             {{ task ? '保存修改' : '创建任务' }}
-          </button>
+          </AppButton>
         </div>
       </div>
     </form>
