@@ -107,6 +107,14 @@ describe('worker 注册', () => {
       ?.backoffStrategy;
     expect(typeof strategy).toBe('function');
   });
+
+  it('WorkerHandle 暴露 pause/resume/cancelActive/close（背压控制面完整）', () => {
+    const handle = makeWorkflowHandle();
+    expect(typeof handle.pause).toBe('function');
+    expect(typeof handle.resume).toBe('function');
+    expect(typeof handle.cancelActive).toBe('function');
+    expect(typeof handle.close).toBe('function');
+  });
 });
 
 describe('makeBackoffStrategy（429 retry-after 生效）', () => {
@@ -149,6 +157,7 @@ describe('startWorkers 多 worker 装配（factories 形态）', () => {
           ? () => Promise.reject(new Error(`redis down: ${queue}`))
           : () => Promise.resolve(),
       pause: async () => undefined,
+      resume: async () => undefined,
       cancelActive: () => undefined,
       close: (force = false) => {
         state.closed += 1;

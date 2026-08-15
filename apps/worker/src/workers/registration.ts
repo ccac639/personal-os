@@ -47,6 +47,8 @@ export interface WorkerHandle {
    * 内部调用私有 whenCurrentJobsFinished；全局 grace 预算由 shutdown 控制）。
    */
   pause(): Promise<void>;
+  /** 恢复接单（与 pause 配对；仅当此前 pause 过才有意义） */
+  resume(): Promise<void>;
   /** 中止全部在途任务：向处理器发 AbortSignal（协作式停止，见 withJobTimeout） */
   cancelActive(reason: string): void;
   /**
@@ -127,6 +129,7 @@ function makeHandle(
     worker,
     waitUntilReady: () => worker.waitUntilReady(),
     pause: () => worker.pause(false),
+    resume: () => worker.resume(),
     cancelActive: (reason: string) => worker.cancelAllJobs(reason),
     close: (force = false) => worker.close(force),
   };
