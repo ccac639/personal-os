@@ -75,6 +75,7 @@
 
 .prose-blog img {
   @apply rounded-card my-4 max-w-full;
+  height: auto; /* 配合 width/height 占位防 CLS，同时保持比例 */
 }
 
 .prose-blog hr {

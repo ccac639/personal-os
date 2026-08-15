@@ -79,7 +79,7 @@ function renderInline(text: string): string {
           return escapeText(match);
         }
         const titleAttr = target.title ? ` title="${escapeHtml(target.title)}"` : '';
-        return `<img src="${escapeHtml(safe)}" alt="${escapeHtml(alt)}" loading="lazy"${titleAttr}>`;
+        return `<img src="${escapeHtml(safe)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" width="768" height="432"${titleAttr}>`;
       }
       if (label !== undefined && linkTarget !== undefined) {
         const target = parseLinkTarget(linkTarget);

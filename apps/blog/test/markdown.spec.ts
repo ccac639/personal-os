@@ -73,7 +73,9 @@ describe('markdown 渲染器（子集）', () => {
 
   it('图片', () => {
     const html = renderMarkdown('![alt 文本](/img/a.png "标题")');
-    expect(html).toContain('<img src="/img/a.png" alt="alt 文本" loading="lazy" title="标题">');
+    expect(html).toContain(
+      '<img src="/img/a.png" alt="alt 文本" loading="lazy" decoding="async" width="768" height="432" title="标题">',
+    );
   });
 });
 
