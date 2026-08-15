@@ -50,11 +50,11 @@ test('快速连点导航：最终页面正常显示（回归：过渡状态机�
   await expect(page.locator('.page-transition-overlay')).toHaveCount(0, { timeout: 5000 });
 
   const navLinks = page.locator('header nav a');
-  await expect(navLinks).toHaveCount(6);
+  await expect(navLinks).toHaveCount(8);
 
   // 3 轮快速连点（间隔远小于过渡窗口，制造挂起/合并）
   for (let round = 0; round < 3; round++) {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       await navLinks.nth(i).click({ force: true });
       await page.waitForTimeout(100);
     }
