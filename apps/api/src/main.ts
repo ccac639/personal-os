@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -20,6 +21,11 @@ async function bootstrap(): Promise<void> {
 
   app.useLogger(app.get(Logger));
   app.setGlobalPrefix('api');
+
+  // API 版本化：URI 策略，不设 defaultVersion（ADR-0015）
+  // - 现有 controller 未标 @Version → 路由保持 /api/... 不变（Sub2API 31 端点零破坏）
+  // - 未来新版本模块显式 @Version('2') → /api/v2/...
+  app.enableVersioning({ type: VersioningType.URI });
 
   // 安全响应头：CSP 基础策略 + helmet 默认头（与下方 CORS 白名单协调，见 buildHelmetOptions）
   await app.register(helmet, buildHelmetOptions());

@@ -6,7 +6,7 @@
  * test/ 下的文件含装饰器会转换失败。夹具仅被 test/platform-*.spec.ts 引用，
  * 不进入任何业务模块。
  */
-import { Controller, Get, Module, Post, Body } from '@nestjs/common';
+import { Body, Controller, Get, Module, Post, Version } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { IsInt, IsNotEmpty, IsString, Min } from 'class-validator';
@@ -63,6 +63,15 @@ export class PingTestController {
   }
 }
 
+@Controller('versioned')
+export class VersionedTestController {
+  @Version('2')
+  @Get()
+  get(): { version: string } {
+    return { version: 'v2' };
+  }
+}
+
 /** 装配与真实 AppModule 相同的平台管道（不含 Mongo/Redis/Pino），供集成测试使用 */
 @Module({
   imports: [
@@ -70,7 +79,7 @@ export class PingTestController {
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
     HealthModule,
   ],
-  controllers: [PingTestController, EchoTestController],
+  controllers: [PingTestController, EchoTestController, VersionedTestController],
   providers: [
     { provide: APP_GUARD, useClass: ApiKeyGuard },
     { provide: APP_GUARD, useClass: RateLimitGuard },
