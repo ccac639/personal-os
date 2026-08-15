@@ -18,6 +18,7 @@ import { Menu, ServerCog } from '@lucide/vue';
 import type { Component } from 'vue';
 
 import AppDrawer from '@/components/AppDrawer.vue';
+import AppErrorBoundary from '@/components/AppErrorBoundary.vue';
 import PagePet from '@/components/PagePet.vue';
 import { useMediaQuery } from '@/app/use-media-query';
 import { notifyPageMounted, prefetchRoute, registerContentEl } from '@/features/page-transition';
@@ -36,6 +37,11 @@ onBeforeUnmount(() => registerContentEl(null));
 const isDesktop = useMediaQuery('(min-width: 768px)', { defaultValue: true });
 
 const drawerOpen = ref(false);
+/** 路由级错误边界重试：key bump 重建 RouterView 子树 */
+const routeBoundaryKey = ref(0);
+function bumpRouteBoundary(): void {
+  routeBoundaryKey.value += 1;
+}
 
 function openDrawer(): void {
   drawerOpen.value = true;
@@ -182,9 +188,16 @@ function prefetch(to: string): void {
       tabindex="-1"
       class="relative flex-1 overflow-x-hidden overflow-y-auto focus:outline-none"
     >
-      <RouterView v-slot="{ Component, route: viewRoute }">
-        <component :is="Component" :key="viewRoute.fullPath" @vue:mounted="notifyPageMounted" />
-      </RouterView>
+      <!-- 路由级错误边界：单个页面渲染失败仅降级该页，导航与全局 UI 不受影响 -->
+      <AppErrorBoundary :key="routeBoundaryKey" name="route" @retry="bumpRouteBoundary">
+        <RouterView v-slot="{ Component: ViewComponent, route: viewRoute }">
+          <component
+            :is="ViewComponent"
+            :key="viewRoute.fullPath"
+            @vue:mounted="notifyPageMounted"
+          />
+        </RouterView>
+      </AppErrorBoundary>
     </main>
 
     <!-- 移动端导航抽屉（<768px；惰性渲染，关闭时 DOM 无残留） -->
