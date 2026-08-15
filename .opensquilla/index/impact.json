@@ -20,6 +20,7 @@
     "apps/api/src/common/redis/redis.module.ts",
     "apps/api/src/common/testing/platform-fixtures.ts",
     "apps/api/src/common/validation.ts",
+    "apps/api/src/main.ts",
     "apps/api/src/modules/_shared/pagination.ts",
     "apps/api/src/modules/_shared/testing/test-app.ts",
     "apps/api/src/modules/agents/agents.controller.ts",
@@ -76,7 +77,8 @@
     "apps/api/src/modules/sub2api/sub2api.module.ts",
     "apps/api/src/modules/sub2api/sub2api.service.ts",
     "apps/api/src/modules/sub2api/sub2api.settings.service.ts",
-    "apps/api/test/data-import.spec.ts"
+    "apps/api/test/data-import.spec.ts",
+    "apps/api/test/platform-versioning.spec.ts"
   ],
   "@nestjs/core": [
     "apps/api/src/app.module.ts",
@@ -180,20 +182,7 @@
     "apps/api/src/common/guards/api-key.guard.ts",
     "apps/api/src/common/interceptors/request-id.interceptor.ts",
     "apps/api/src/modules/chat/chat.constants.ts",
-    "apps/api/src/modules/inspiration/inspiration.schema.ts",
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/chunks/virtual/entry.mjs",
-    "apps/blog/.output/server/index.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
+    "apps/api/src/modules/inspiration/inspiration.schema.ts"
   ],
   "./health.service.js": [
     "apps/api/src/common/health/health.controller.ts",
@@ -257,7 +246,8 @@
     "apps/worker/src/main.ts",
     "apps/worker/src/secrets/secret-reader.ts",
     "apps/worker/src/workers/registration.ts",
-    "apps/api/src/modules/sub2api/sub2api.settings.service.ts"
+    "apps/api/src/modules/sub2api/sub2api.settings.service.ts",
+    "apps/worker/src/metrics/queue-depth.ts"
   ],
   "../redis/redis.module.js": [
     "apps/api/src/common/health/health.service.ts",
@@ -334,43 +324,17 @@
   "node:fs": [
     "apps/api/src/config/configuration.ts",
     "apps/api/src/config/load-env.ts",
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
     "apps/web/test/page-transition.spec.ts",
     "apps/api/src/modules/articles/articles.service.ts",
-    "apps/blog/.output/server/chunks/_/posts.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs",
     "apps/blog/scripts/validate-posts.mjs",
     "apps/blog/server/utils/posts.ts",
     "apps/blog/test/posts.spec.ts"
   ],
   "node:path": [
     "apps/api/src/config/configuration.ts",
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
     "apps/blog/nuxt.config.ts",
     "apps/web/test/page-transition.spec.ts",
     "apps/api/src/modules/articles/articles.service.ts",
-    "apps/blog/.output/server/chunks/_/posts.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs",
     "apps/blog/scripts/validate-posts.mjs",
     "apps/blog/server/utils/posts.ts",
     "apps/blog/test/posts.spec.ts"
@@ -399,7 +363,10 @@
     "apps/api/test/platform-security.spec.ts",
     "apps/api/test/articles-module.spec.ts",
     "apps/api/test/sub2api-module.real.spec.ts",
-    "apps/api/test/sub2api-module.spec.ts"
+    "apps/api/test/sub2api-module.spec.ts",
+    "apps/api/test/platform-security-headers.spec.ts",
+    "apps/api/test/platform-validation-prod.spec.ts",
+    "apps/api/test/platform-versioning.spec.ts"
   ],
   "@nestjs/swagger": [
     "apps/api/src/main.ts",
@@ -457,8 +424,10 @@
     "apps/api/src/modules/data-import/data-import.dto.ts",
     "apps/api/src/modules/sub2api/sub2api.controller.ts"
   ],
+  "@fastify/helmet": ["apps/api/src/main.ts", "apps/api/test/platform-security-headers.spec.ts"],
   "./app.module.js": ["apps/api/src/main.ts"],
   "./common/cors.js": ["apps/api/src/main.ts"],
+  "./common/security/helmet.js": ["apps/api/src/main.ts"],
   "@nestjs/testing": [
     "apps/api/src/modules/_shared/testing/test-app.ts",
     "apps/api/test/ai-module.spec.ts",
@@ -471,7 +440,10 @@
     "apps/api/test/platform-security.spec.ts",
     "apps/api/test/articles-module.spec.ts",
     "apps/api/test/sub2api-module.real.spec.ts",
-    "apps/api/test/sub2api-module.spec.ts"
+    "apps/api/test/sub2api-module.spec.ts",
+    "apps/api/test/platform-security-headers.spec.ts",
+    "apps/api/test/platform-validation-prod.spec.ts",
+    "apps/api/test/platform-versioning.spec.ts"
   ],
   "./mock-model.js": ["apps/api/src/modules/_shared/testing/test-app.ts"],
   "./agents.service.js": [
@@ -579,7 +551,8 @@
     "apps/worker/src/workers/registration.ts",
     "apps/worker/test/timeout-abort.spec.ts",
     "apps/worker/test/worker-lifecycle.spec.ts",
-    "apps/worker/test/workflow-processor.spec.ts"
+    "apps/worker/test/workflow-processor.spec.ts",
+    "apps/worker/src/metrics/queue-depth.ts"
   ],
   "@personal-os/queue-contract": [
     "apps/api/src/modules/chat/chat-job-queue.ts",
@@ -1139,7 +1112,18 @@
     "apps/web/test/sub2api-page.spec.ts",
     "apps/web/test/sync-core.spec.ts",
     "apps/web/test/workflow-share.spec.ts",
-    "apps/worker/test/queue-contract.spec.ts"
+    "apps/worker/test/queue-contract.spec.ts",
+    "apps/api/test/platform-security-headers.spec.ts",
+    "apps/api/test/platform-validation-prod.spec.ts",
+    "apps/api/test/platform-versioning.spec.ts",
+    "apps/web/test/a11y-baseline.spec.ts",
+    "apps/web/test/app-error-boundary.spec.ts",
+    "apps/web/test/sub2api-route-form.spec.ts",
+    "apps/web/test/sync-handles.spec.ts",
+    "apps/web/test/sync-status-banner.spec.ts",
+    "apps/worker/test/failed-registry.spec.ts",
+    "apps/worker/test/queue-depth.spec.ts",
+    "apps/worker/test/worker-metrics.spec.ts"
   ],
   "../src/modules/agents/agents.service.js": ["apps/api/test/agents-chat.spec.ts"],
   "../src/modules/chat/conversations.service.js": [
@@ -1166,7 +1150,10 @@
     "apps/api/test/articles-module.spec.ts",
     "apps/api/test/data-import.spec.ts",
     "apps/api/test/sub2api-module.real.spec.ts",
-    "apps/api/test/sub2api-module.spec.ts"
+    "apps/api/test/sub2api-module.spec.ts",
+    "apps/api/test/platform-security-headers.spec.ts",
+    "apps/api/test/platform-validation-prod.spec.ts",
+    "apps/api/test/platform-versioning.spec.ts"
   ],
   "../src/app.module.js": [
     "apps/api/test/ai-module.spec.ts",
@@ -1223,14 +1210,20 @@
     "apps/api/test/platform-cors.spec.ts",
     "apps/api/test/platform-error.spec.ts",
     "apps/api/test/platform-ready.spec.ts",
-    "apps/api/test/platform-security.spec.ts"
+    "apps/api/test/platform-security.spec.ts",
+    "apps/api/test/platform-security-headers.spec.ts",
+    "apps/api/test/platform-validation-prod.spec.ts",
+    "apps/api/test/platform-versioning.spec.ts"
   ],
   "reflect-metadata": ["apps/api/test/platform-api.spec.ts"],
   "../src/common/interfaces/error-codes.js": ["apps/api/test/platform-api.spec.ts"],
   "../src/common/pagination/pagination.js": ["apps/api/test/platform-api.spec.ts"],
   "../src/common/pagination/page-query.dto.js": ["apps/api/test/platform-api.spec.ts"],
   "../src/common/pipes/parse-object-id.pipe.js": ["apps/api/test/platform-api.spec.ts"],
-  "../src/common/cors.js": ["apps/api/test/platform-cors.spec.ts"],
+  "../src/common/cors.js": [
+    "apps/api/test/platform-cors.spec.ts",
+    "apps/api/test/platform-security-headers.spec.ts"
+  ],
   "../src/common/health/health.service.js": [
     "apps/api/test/platform-health.spec.ts",
     "apps/api/test/platform-ready.spec.ts"
@@ -1268,131 +1261,18 @@
     "apps/worker/vitest.config.ts",
     "packages/utils/vitest.config.ts"
   ],
-  "@vue/shared": ["apps/blog/.output/server/chunks/_/error-500.mjs"],
-  "node:process": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/virtual/entry.mjs",
-    "apps/blog/.output/server/index.mjs"
-  ],
-  "nuxtseo-shared/utils": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
-  ],
-  "fnv1a-64": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
-  ],
-  "object-identity": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
-  ],
-  "nuxtseo-shared/server": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
-  ],
-  "node:http": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
-  ],
-  "node:https": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
-  ],
-  "node:events": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
-  ],
-  "node:buffer": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
+  "@tailwindcss/vite": ["apps/blog/nuxt.config.ts", "apps/web/vite.config.ts"],
+  "nuxt/config": ["apps/blog/nuxt.config.ts"],
+  "@personal-os/utils": ["apps/blog/test/smoke.spec.ts"],
+  "@playwright/test": [
+    "apps/web/e2e/router-transition.spec.ts",
+    "apps/web/e2e/scroll.spec.ts",
+    "apps/web/e2e/smoke.spec.ts",
+    "apps/web/playwright.config.ts",
+    "apps/web/e2e/chat-send.spec.ts",
+    "apps/web/e2e/nav-smoke.spec.ts"
   ],
   "vue": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/_/server.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/chunks/virtual/entry.mjs",
-    "apps/blog/.output/server/index.mjs",
     "apps/web/src/app/confirm.ts",
     "apps/web/src/app/perf.ts",
     "apps/web/src/app/toast.ts",
@@ -1452,125 +1332,11 @@
     "apps/web/test/workflow-ai-preview.spec.ts",
     "apps/web/test/workflow-contract-panel.spec.ts",
     "apps/web/test/workflow-drawer.spec.ts",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs",
     "apps/web/src/features/sub2api/hooks.ts",
-    "apps/web/test/sync-core.spec.ts"
-  ],
-  "node:url": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
-    "apps/web/vite.config.ts",
-    "apps/web/vitest.config.ts",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs",
-    "apps/blog/scripts/validate-posts.mjs"
-  ],
-  "nuxtseo-shared/i18n-runtime": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
-  ],
-  "sitemapd/parse": [
-    "apps/blog/.output/server/chunks/_/nitro.mjs",
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
-  ],
-  "./nitro.mjs": [
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/_/posts.mjs"
-  ],
-  "playwright": ["apps/blog/.output/server/chunks/_/renderer.mjs"],
-  "./fetchTimeout.mjs": ["apps/blog/.output/server/chunks/_/renderer.mjs"],
-  "lru-cache": [
-    "apps/blog/.output/server/chunks/_/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/index.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
-  ],
-  "unhead/server": [
-    "apps/blog/.output/server/chunks/_/server.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/renderer.mjs"
-  ],
-  "../../../_/nitro.mjs": [
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/_og/r/resolve.mjs",
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs"
-  ],
-  "devalue": [
-    "apps/blog/.output/server/chunks/routes/_og/d/image.mjs",
-    "apps/blog/.output/server/chunks/routes/renderer.mjs"
-  ],
-  "../../../_/server.mjs": ["apps/blog/.output/server/chunks/routes/_og/d/image.mjs"],
-  "../../../_/fetchTimeout.mjs": ["apps/blog/.output/server/chunks/routes/_og/d/image.mjs"],
-  "../_/nitro.mjs": [
-    "apps/blog/.output/server/chunks/routes/renderer.mjs",
-    "apps/blog/.output/server/chunks/routes/rss.xml.mjs"
-  ],
-  "../_/server.mjs": [
-    "apps/blog/.output/server/chunks/routes/renderer.mjs",
-    "apps/blog/.output/server/chunks/virtual/entry.mjs"
-  ],
-  "unhead/legacy": ["apps/blog/.output/server/chunks/routes/renderer.mjs"],
-  "unhead/plugins": [
-    "apps/blog/.output/server/chunks/routes/renderer.mjs",
-    "apps/blog/.output/server/chunks/virtual/entry.mjs"
-  ],
-  "nostics": ["apps/blog/.output/server/chunks/routes/renderer.mjs"],
-  "vue-bundle-renderer/runtime": ["apps/blog/.output/server/chunks/routes/renderer.mjs"],
-  "vue/server-renderer": ["apps/blog/.output/server/chunks/routes/renderer.mjs"],
-  "../routes/renderer.mjs": ["apps/blog/.output/server/chunks/virtual/entry.mjs"],
-  "unhead/utils": ["apps/blog/.output/server/chunks/virtual/entry.mjs"],
-  "./chunks/_/nitro.mjs": ["apps/blog/.output/server/index.mjs"],
-  "@tailwindcss/vite": ["apps/blog/nuxt.config.ts", "apps/web/vite.config.ts"],
-  "nuxt/config": ["apps/blog/nuxt.config.ts"],
-  "@personal-os/utils": ["apps/blog/test/smoke.spec.ts"],
-  "@playwright/test": [
-    "apps/web/e2e/router-transition.spec.ts",
-    "apps/web/e2e/scroll.spec.ts",
-    "apps/web/e2e/smoke.spec.ts",
-    "apps/web/playwright.config.ts"
+    "apps/web/test/sync-core.spec.ts",
+    "apps/web/test/app-error-boundary.spec.ts",
+    "apps/web/test/sub2api-route-form.spec.ts",
+    "apps/web/test/sync-handles.spec.ts"
   ],
   "@/features/page-transition/transition-store": ["apps/web/src/app/perf.ts"],
   "@tanstack/vue-query": [
@@ -1765,7 +1531,8 @@
     "apps/web/test/workflow-vars-browser.spec.ts",
     "apps/web/test/workflow-version.spec.ts",
     "apps/web/test/sub2api-navigation.spec.ts",
-    "apps/web/test/workflow-share.spec.ts"
+    "apps/web/test/workflow-share.spec.ts",
+    "apps/web/test/a11y-baseline.spec.ts"
   ],
   "./mock": [
     "apps/web/src/features/achievements/store.ts",
@@ -1891,7 +1658,8 @@
     "apps/web/test/project-card.spec.ts",
     "apps/web/test/project-detail-tabs.spec.ts",
     "apps/web/test/sub2api-navigation.spec.ts",
-    "apps/web/test/sub2api-page.spec.ts"
+    "apps/web/test/sub2api-page.spec.ts",
+    "apps/web/test/a11y-baseline.spec.ts"
   ],
   "./sync-core": ["apps/web/src/features/projects/api.ts"],
   "./health": ["apps/web/src/features/projects/archive.ts"],
@@ -2028,7 +1796,12 @@
   "./filter": ["apps/web/src/features/tasks/store.ts"],
   "./focus": ["apps/web/src/features/tasks/store.ts", "apps/web/src/features/tasks/sync.ts"],
   "./subtasks": ["apps/web/src/features/tasks/store.ts"],
-  "@/features/projects/sync": ["apps/web/src/features/tasks/sync.ts"],
+  "@/features/projects/sync": [
+    "apps/web/src/features/tasks/sync.ts",
+    "apps/web/test/sync-handles.spec.ts",
+    "apps/web/test/sync-handles.spec.ts",
+    "apps/web/test/sync-handles.spec.ts"
+  ],
   "./schema": [
     "apps/web/src/features/workflows/ai-workflow.ts",
     "apps/web/src/features/workflows/diagnostics.ts",
@@ -2150,7 +1923,11 @@
     "apps/web/test/sub2api-channels.spec.ts",
     "apps/web/test/sub2api-navigation.spec.ts",
     "apps/web/test/sub2api-page.spec.ts",
-    "apps/web/test/sync-core.spec.ts"
+    "apps/web/test/sync-core.spec.ts",
+    "apps/web/test/a11y-baseline.spec.ts",
+    "apps/web/test/app-error-boundary.spec.ts",
+    "apps/web/test/sub2api-route-form.spec.ts",
+    "apps/web/test/sync-status-banner.spec.ts"
   ],
   "@/features/achievements/achievement-card.vue": [
     "apps/web/test/achievement-card.spec.ts",
@@ -2225,7 +2002,8 @@
   "@/layouts/default-layout.vue": [
     "apps/web/test/app-shell.spec.ts",
     "apps/web/test/default-layout.spec.ts",
-    "apps/web/test/sub2api-navigation.spec.ts"
+    "apps/web/test/sub2api-navigation.spec.ts",
+    "apps/web/test/a11y-baseline.spec.ts"
   ],
   "@/components/AppIconButton.vue": ["apps/web/test/app-ui.spec.ts"],
   "@/components/AppStatus.vue": ["apps/web/test/app-ui.spec.ts"],
@@ -2292,7 +2070,8 @@
     "apps/web/test/chat-components.spec.ts",
     "apps/web/test/chat-draft.spec.ts",
     "apps/web/test/chat-presets.spec.ts",
-    "apps/web/test/chat-workspace.spec.ts"
+    "apps/web/test/chat-workspace.spec.ts",
+    "apps/web/test/a11y-baseline.spec.ts"
   ],
   "@/features/chat/components/chat-message.vue": [
     "apps/web/test/chat-components.spec.ts",
@@ -2313,6 +2092,7 @@
     "apps/web/test/chat-presets.spec.ts",
     "apps/web/test/chat-session-workspace.spec.ts",
     "apps/web/test/chat-store-extra.spec.ts",
+    "apps/web/test/chat-store.spec.ts",
     "apps/web/test/chat-workspace.spec.ts"
   ],
   "@/features/chat/types": [
@@ -2359,12 +2139,15 @@
     "apps/web/test/dashboard-home.spec.ts",
     "apps/web/test/dashboard-workspace.spec.ts"
   ],
+  "@/features/dashboard": [
+    "apps/web/test/dashboard-home.spec.ts",
+    "apps/web/test/dashboard-workspace.spec.ts"
+  ],
   "@/features/dashboard/today-workbench.vue": ["apps/web/test/dashboard-workspace.spec.ts"],
   "@/features/dashboard/efficiency-summary.vue": ["apps/web/test/dashboard-workspace.spec.ts"],
   "@/features/dashboard/ai-workbench.vue": ["apps/web/test/dashboard-workspace.spec.ts"],
   "@/features/dashboard/system-events.vue": ["apps/web/test/dashboard-workspace.spec.ts"],
   "@/features/dashboard/notification-center.vue": ["apps/web/test/dashboard-workspace.spec.ts"],
-  "@/features/dashboard": ["apps/web/test/dashboard-workspace.spec.ts"],
   "@/features/projects/release-store": [
     "apps/web/test/project-archive.spec.ts",
     "apps/web/test/project-release.spec.ts"
@@ -2391,7 +2174,8 @@
     "apps/web/test/project-health.spec.ts",
     "apps/web/test/project-milestone.spec.ts",
     "apps/web/test/project-retro-markdown.spec.ts",
-    "apps/web/test/project-roadmap.spec.ts"
+    "apps/web/test/project-roadmap.spec.ts",
+    "apps/web/test/sync-handles.spec.ts"
   ],
   "@/pages/projects/[id].vue": ["apps/web/test/project-detail-tabs.spec.ts"],
   "@/features/projects/execution": ["apps/web/test/project-execution.spec.ts"],
@@ -2486,6 +2270,11 @@
   "@/features/workflows/undo": ["apps/web/test/workflow-undo.spec.ts"],
   "@/features/workflows/vars": ["apps/web/test/workflow-vars-browser.spec.ts"],
   "@vitejs/plugin-vue": ["apps/web/vite.config.ts", "apps/web/vitest.config.ts"],
+  "node:url": [
+    "apps/web/vite.config.ts",
+    "apps/web/vitest.config.ts",
+    "apps/blog/scripts/validate-posts.mjs"
+  ],
   "vite": ["apps/web/vite.config.ts"],
   "../../providers/errors.js": ["apps/worker/src/jobs/chat/chat-completion.service.ts"],
   "../../errors/worker-errors.js": ["apps/worker/src/jobs/chat/chat-completion.service.ts"],
@@ -2537,6 +2326,9 @@
   "./jobs/chat/chat.worker.js": ["apps/worker/src/main.ts"],
   "./secrets/secret-reader.js": ["apps/worker/src/main.ts"],
   "./workers/manager.js": ["apps/worker/src/main.ts"],
+  "./metrics/worker-metrics.js": ["apps/worker/src/main.ts"],
+  "./metrics/queue-depth.js": ["apps/worker/src/main.ts"],
+  "./jobs/failed-registry.js": ["apps/worker/src/main.ts"],
   "./ai-completion.js": [
     "apps/worker/src/providers/deterministic-mock.adapter.ts",
     "apps/worker/src/providers/deterministic-mock.adapter.ts",
@@ -2564,6 +2356,8 @@
   "../jobs/workflows/run-store.js": ["apps/worker/src/workers/registration.ts"],
   "../jobs/chat/chat-completion.service.js": ["apps/worker/src/workers/registration.ts"],
   "../jobs/chat/chat.worker.js": ["apps/worker/src/workers/registration.ts"],
+  "../metrics/worker-metrics.js": ["apps/worker/src/workers/registration.ts"],
+  "../jobs/failed-registry.js": ["apps/worker/src/workers/registration.ts"],
   "../src/providers/deterministic-mock.adapter.js": [
     "apps/worker/test/chat-generation.spec.ts",
     "apps/worker/test/chat-idempotency.spec.ts",
@@ -2700,22 +2494,6 @@
   "../src/modules/sub2api/client/fake.adapter.js": ["apps/api/test/sub2api-module.spec.ts"],
   "../src/modules/sub2api/client/url-validation.js": ["apps/api/test/sub2api-module.spec.ts"],
   "../src/modules/sub2api/manifest.js": ["apps/api/test/sub2api-module.spec.ts"],
-  "../../../_/posts.mjs": [
-    "apps/blog/.output/server/chunks/routes/api/categories/_category_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/posts/_slug_.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/tags/_tag_.get.mjs"
-  ],
-  "../../_/nitro.mjs": [
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs"
-  ],
-  "../../_/posts.mjs": [
-    "apps/blog/.output/server/chunks/routes/api/index.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/index2.get.mjs",
-    "apps/blog/.output/server/chunks/routes/api/sitemap-urls.get.mjs"
-  ],
-  "../_/posts.mjs": ["apps/blog/.output/server/chunks/routes/rss.xml.mjs"],
   "~/types/post": ["apps/blog/composables/usePosts.ts"],
   "../../utils/posts": [
     "apps/blog/server/api/categories/[category].get.ts",
@@ -2727,7 +2505,6 @@
   "../utils/markdown": ["apps/blog/server/routes/rss.xml.ts"],
   "../../types/post": ["apps/blog/server/utils/posts.ts"],
   "./markdown": ["apps/blog/server/utils/posts.ts"],
-  "../server/utils/markdown": ["apps/blog/test/markdown.spec.ts"],
   "node:os": ["apps/blog/test/posts.spec.ts"],
   "../server/utils/posts": ["apps/blog/test/posts.spec.ts"],
   "@/services/sub2api": [
@@ -2739,6 +2516,21 @@
   "./query-keys": ["apps/web/src/features/sub2api/hooks.ts"],
   "@/features/sub2api/components/channels-view.vue": ["apps/web/test/sub2api-channels.spec.ts"],
   "@/pages/sub2api/index.vue": ["apps/web/test/sub2api-page.spec.ts"],
-  "@/features/projects/sync-core": ["apps/web/test/sync-core.spec.ts"],
-  "@/features/workflows/share": ["apps/web/test/workflow-share.spec.ts"]
+  "@/features/projects/sync-core": [
+    "apps/web/test/sync-core.spec.ts",
+    "apps/web/test/sync-status-banner.spec.ts"
+  ],
+  "@/features/workflows/share": ["apps/web/test/workflow-share.spec.ts"],
+  "../src/common/security/helmet.js": ["apps/api/test/platform-security-headers.spec.ts"],
+  "axe-core": ["apps/web/test/a11y-baseline.spec.ts"],
+  "@/features/sub2api/components/route-form-dialog.vue": [
+    "apps/web/test/a11y-baseline.spec.ts",
+    "apps/web/test/sub2api-route-form.spec.ts"
+  ],
+  "@/components/AppErrorBoundary.vue": ["apps/web/test/app-error-boundary.spec.ts"],
+  "@/features/tasks/sync": ["apps/web/test/sync-handles.spec.ts"],
+  "@/features/projects/sync-status-banner.vue": ["apps/web/test/sync-status-banner.spec.ts"],
+  "../src/jobs/failed-registry.js": ["apps/worker/test/failed-registry.spec.ts"],
+  "../src/metrics/queue-depth.js": ["apps/worker/test/queue-depth.spec.ts"],
+  "../src/metrics/worker-metrics.js": ["apps/worker/test/worker-metrics.spec.ts"]
 }

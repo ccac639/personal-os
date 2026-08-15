@@ -32,7 +32,8 @@
 ### Blog
 
 - [x] P1 文章 / 标签 / 分类 / 专题模型与页面（页面已提交，A/B 待决）
-- [ ] P1 RSS + Sitemap 内容接入（sitemap 路由在途）
+- [x] P1 RSS + Sitemap 内容接入（SEO 全链路已闭合，ee33f0a）
+- [x] P1 Blog 阅读体验与性能（09 线，2026-08-15 交付：图片 CLS 占位 / 暗色手动切换 / TOC+进度条+代码高亮+相关文章 / SWR 缓存；ADR-0016）
 - [ ] P2 项目介绍 / 成果展示页
 
 ### Sub2API（管理模块）
@@ -53,8 +54,9 @@
 - [ ] P2 根 tsconfig 仅占位（solution-style references 待各包 composite 化后启用）
 - [ ] P2 Playwright 浏览器二进制未预装（`npx playwright install` 按需执行）
 - [x] P2 repo-index 脚本已恢复至项目 workspace 层（`.opensquilla/skills/repo-index/scripts/`，2026-08-15），索引已刷新入库
+- [x] P2 repo-index 脚本未随项目分发（`.opensquilla/index/` 6:08 构建已过期，增量更新需 workspace 层 indexer.py；见 repo-index skill）——已恢复脚本 + 2026-08-15 二次刷新（.output 剔除，1206 文件）
 - [ ] P3 TS 7 升级跟踪（待 typescript-eslint 兼容后评估）
-- [ ] P2 repo-index 脚本未随项目分发（`.opensquilla/index/` 6:08 构建已过期，增量更新需 workspace 层 indexer.py；见 repo-index skill）
+- [ ] P2 Blog 图片引入时评估 @nuxt/image（ADR-0016：当前零依赖，内容无图）
 
 ## FO3 测试体系收口登记（2026-08-15 Phase 0）
 

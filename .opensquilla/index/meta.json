@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "built_at": "2026-08-15T07:56:55",
-  "files": 1255,
-  "symbols": 8719,
+  "built_at": "2026-08-15T09:20:11",
+  "files": 1206,
+  "symbols": 4531,
   "apis": 0,
   "lines": 1600486,
   "languages": {
@@ -21,6 +21,6 @@
     "python": 1
   },
   "duration_s": 60.1,
-  "updated_files": 390,
-  "deleted_files": 3511
+  "updated_files": 22,
+  "deleted_files": 75
 }

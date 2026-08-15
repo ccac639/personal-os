@@ -30,7 +30,7 @@ from pathlib import Path
 INDEX_DIR = ".opensquilla/index"
 DEFAULT_EXCLUDES = {
     ".git", "node_modules", ".venv", "venv", "env", "__pycache__",
-    "build", "dist", "target", ".next", ".nuxt", "coverage", ".cache",
+    "build", "dist", "target", ".next", ".nuxt", ".output", "coverage", ".cache",
     ".idea", ".vscode", ".opensquilla", ".fetch", ".pytest_cache",
     ".mypy_cache", ".ruff_cache", ".tox", "vendor", ".terraform",
 }
