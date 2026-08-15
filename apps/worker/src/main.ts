@@ -34,6 +34,8 @@ import {
   type WorkerHandle,
 } from './workers/registration.js';
 import { shutdown, startWorkers } from './workers/manager.js';
+import { WorkerMetrics } from './metrics/worker-metrics.js';
+import { QueueDepthSampler } from './metrics/queue-depth.js';
 
 const { config, issues } = loadWorkerConfig();
 if (issues.length > 0) {
@@ -55,6 +57,10 @@ let redis: Redis | null = null;
 let secretReader: RedisSecretReader | null = null;
 let handles: WorkerHandle[] = [];
 let shuttingDown = false;
+let depthSampler: QueueDepthSampler | null = null;
+
+// 轻量指标（worker-local，pino 日志字段采集；见 metrics/worker-metrics.ts）
+const metrics = new WorkerMetrics();
 
 async function main(): Promise<void> {
   logger.info(
@@ -112,6 +118,7 @@ async function main(): Promise<void> {
             logger,
             connection: redis!,
             concurrency: config.workflowConcurrency,
+            metrics,
           }),
       },
       {
@@ -122,6 +129,7 @@ async function main(): Promise<void> {
             logger,
             connection: redis!,
             concurrency: config.chatConcurrency,
+            metrics,
           }),
       },
     ],
@@ -129,7 +137,17 @@ async function main(): Promise<void> {
     failurePolicy: config.failurePolicy,
   });
 
-  // 6. 进程级兜底：记录后有序退出（不继续运行，避免状态损坏）
+  // 6. 队列深度采样（周期结构化日志：depth + metrics 快照；shutdown 时 dispose）
+  depthSampler = new QueueDepthSampler({
+    queueNames: [WORKFLOW_RUN_QUEUE, CHAT_QUEUE_NAME],
+    connection: redis,
+    intervalMs: config.metricsIntervalMs,
+    logger,
+    metricsSnapshot: () => metrics.snapshot(),
+  });
+  depthSampler.start();
+
+  // 7. 进程级兜底：记录后有序退出（不继续运行，避免状态损坏）
   process.on('uncaughtException', (err) => {
     logger.fatal({ err: err.message }, '未捕获异常，进入有序退出');
     void runShutdown(1);
@@ -158,9 +176,12 @@ async function runShutdown(exitCode: number, signal?: string): Promise<void> {
       logger,
       handles,
       graceMs: config.shutdownGraceMs,
-      closables: secretReader
-        ? [{ name: 'secret-reader', close: () => secretReader!.close() }]
-        : [],
+      closables: [
+        ...(secretReader ? [{ name: 'secret-reader', close: () => secretReader!.close() }] : []),
+        ...(depthSampler
+          ? [{ name: 'queue-depth-sampler', close: () => depthSampler!.dispose() }]
+          : []),
+      ],
       redis: redis ?? undefined,
       mongo: mongoose,
     });

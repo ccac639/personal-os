@@ -32,6 +32,7 @@ import { createWorkflowRunProcessor } from '../jobs/workflows/processor.js';
 import type { ChatCompletionService } from '../jobs/chat/chat-completion.service.js';
 import { createChatProcessor } from '../jobs/chat/chat.worker.js';
 import { retryDelayMs } from '../errors/worker-errors.js';
+import type { WorkerMetrics } from '../metrics/worker-metrics.js';
 
 export type WorkerConnection = ConnectionOptions | Redis;
 
@@ -65,18 +66,44 @@ function runIdOf(data: unknown): string | undefined {
   return undefined;
 }
 
-function makeHandle(queue: string, worker: Worker, logger: LoggerLike): WorkerHandle {
+/** job 耗时（ms）：BullMQ 时间戳差值，无本地状态、无泄漏风险 */
+function jobDurationMs(job: { processedOn?: number; finishedOn?: number }): number {
+  const end = job.finishedOn ?? Date.now();
+  const start = job.processedOn ?? end;
+  return Math.max(0, end - start);
+}
+
+function makeHandle(
+  queue: string,
+  worker: Worker,
+  logger: LoggerLike,
+  metrics?: WorkerMetrics,
+): WorkerHandle {
   worker.on('ready', () => logger.info({ queue }, 'bullmq worker ready'));
   worker.on('error', (err) => logger.error({ queue, err: err.message }, 'bullmq worker error'));
-  worker.on('completed', (job) =>
-    logger.info({ queue, jobId: job.id, runId: runIdOf(job.data) }, 'bullmq job completed'),
-  );
-  worker.on('failed', (job, err) =>
+  worker.on('active', () => {
+    metrics?.jobStarted(queue);
+  });
+  worker.on('completed', (job) => {
+    metrics?.jobCompleted(queue, jobDurationMs(job));
+    logger.info(
+      { queue, jobId: job.id, runId: runIdOf(job.data), durationMs: jobDurationMs(job) },
+      'bullmq job completed',
+    );
+  });
+  worker.on('failed', (job, err) => {
+    metrics?.jobFailed(queue);
     logger.error(
-      { queue, jobId: job?.id, runId: runIdOf(job?.data), err: err.message },
+      {
+        queue,
+        jobId: job?.id,
+        runId: runIdOf(job?.data),
+        attemptsMade: job?.attemptsMade,
+        err: err.message,
+      },
       'bullmq job failed（重试耗尽或不可重试错误）',
-    ),
-  );
+    );
+  });
   return {
     queue,
     worker,
@@ -94,6 +121,8 @@ export interface CreateWorkflowWorkerOptions {
   connection: WorkerConnection;
   /** 默认 QUEUE_CONTRACT.workflowRuns.concurrency（4） */
   concurrency?: number;
+  /** 指标埋点（可选；缺省不采集） */
+  metrics?: WorkerMetrics;
 }
 
 export function createWorkflowWorker(options: CreateWorkflowWorkerOptions): WorkerHandle {
@@ -117,7 +146,7 @@ export function createWorkflowWorker(options: CreateWorkflowWorkerOptions): Work
       settings: { backoffStrategy: makeBackoffStrategy(entry.backoffMs) },
     },
   );
-  return makeHandle(WORKFLOW_RUN_QUEUE, worker, options.logger);
+  return makeHandle(WORKFLOW_RUN_QUEUE, worker, options.logger, options.metrics);
 }
 
 export interface CreateChatWorkerOptions {
@@ -126,6 +155,8 @@ export interface CreateChatWorkerOptions {
   connection: WorkerConnection;
   /** 默认 QUEUE_CONTRACT.chatGeneration.concurrency（2） */
   concurrency?: number;
+  /** 指标埋点（可选；缺省不采集） */
+  metrics?: WorkerMetrics;
 }
 
 export function createChatWorker(options: CreateChatWorkerOptions): WorkerHandle {
@@ -145,7 +176,7 @@ export function createChatWorker(options: CreateChatWorkerOptions): WorkerHandle
       settings: { backoffStrategy: makeBackoffStrategy(entry.backoffMs) },
     },
   );
-  return makeHandle(CHAT_QUEUE_NAME, worker, options.logger);
+  return makeHandle(CHAT_QUEUE_NAME, worker, options.logger, options.metrics);
 }
 
 /**

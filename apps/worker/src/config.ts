@@ -9,6 +9,7 @@
  * - WORKER_SHUTDOWN_GRACE_MS：优雅关闭等待在途任务上限
  * - WORKER_INIT_TIMEOUT_MS：worker 就绪等待上限
  * - WORKER_REDIS_CONNECT_TIMEOUT_MS / WORKER_MONGO_CONNECT_TIMEOUT_MS：连接超时
+ * - WORKER_METRICS_INTERVAL_MS：队列深度/指标摘要采样间隔（默认 30_000）
  */
 export interface WorkerConfig {
   mongoUri: string;
@@ -22,6 +23,7 @@ export interface WorkerConfig {
   workerInitTimeoutMs: number;
   redisConnectTimeoutMs: number;
   mongoConnectTimeoutMs: number;
+  metricsIntervalMs: number;
 }
 
 export interface ConfigIssue {
@@ -40,6 +42,7 @@ export const DEFAULT_WORKER_CONFIG: Omit<
   workerInitTimeoutMs: 20_000,
   redisConnectTimeoutMs: 10_000,
   mongoConnectTimeoutMs: 5_000,
+  metricsIntervalMs: 30_000,
 };
 
 export const CHAT_ADAPTERS = ['siliconflow', 'sf', 'deterministic-mock', 'mock'] as const;
@@ -141,6 +144,12 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): {
         env,
         'WORKER_MONGO_CONNECT_TIMEOUT_MS',
         DEFAULT_WORKER_CONFIG.mongoConnectTimeoutMs,
+        issues,
+      ),
+      metricsIntervalMs: parsePositiveInt(
+        env,
+        'WORKER_METRICS_INTERVAL_MS',
+        DEFAULT_WORKER_CONFIG.metricsIntervalMs,
         issues,
       ),
     },
