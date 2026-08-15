@@ -105,7 +105,7 @@ onBeforeUnmount(() => {
 .confirm-dialog__backdrop {
   position: absolute;
   inset: 0;
-  background: color-mix(in srgb, var(--app-text, #0f172a) 38%, transparent);
+  background: color-mix(in srgb, var(--app-text, var(--color-surface-900)) 38%, transparent);
 }
 
 .confirm-dialog__panel {
@@ -113,9 +113,9 @@ onBeforeUnmount(() => {
   width: min(24rem, 100%);
   padding: 1.25rem;
   border-radius: 0.75rem;
-  background: var(--app-surface, #ffffff);
+  background: var(--app-surface, var(--color-surface-0));
   box-shadow: var(--app-shadow-float, 0 8px 24px -6px rgb(0 0 0 / 0.12));
-  color: var(--app-text, #0f172a);
+  color: var(--app-text, var(--color-surface-900));
   outline: none;
 }
 
@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
   margin: 0.5rem 0 0;
   font-size: 13px;
   line-height: 1.6;
-  color: var(--app-text-secondary, #1e293b);
+  color: var(--app-text-secondary, var(--color-surface-800));
   overflow-wrap: anywhere;
 }
 
@@ -142,11 +142,11 @@ onBeforeUnmount(() => {
 
 .confirm-dialog__btn {
   padding: 6px 16px;
-  border: 1px solid var(--app-border, #f1f5f9);
+  border: 1px solid var(--app-border, var(--color-surface-100));
   border-radius: 0.5rem;
   font-size: 13px;
-  color: var(--app-text, #0f172a);
-  background: var(--app-surface-subtle, #f8fafc);
+  color: var(--app-text, var(--color-surface-900));
+  background: var(--app-surface-subtle, var(--color-page));
   cursor: pointer;
   transition:
     background-color var(--app-duration-fast, 120ms) var(--app-ease-out, ease),
@@ -154,31 +154,31 @@ onBeforeUnmount(() => {
 }
 
 .confirm-dialog__btn:hover {
-  background: var(--app-surface-100, #f1f5f9);
+  background: var(--app-surface-100, var(--color-surface-100));
 }
 
 .confirm-dialog__btn:focus-visible {
-  outline: 2px solid var(--app-accent, #6366f1);
+  outline: 2px solid var(--app-accent, var(--color-brand-500));
   outline-offset: 2px;
 }
 
 .confirm-dialog__confirm {
-  border-color: var(--app-accent-strong, #4f46e5);
-  background: var(--app-accent-strong, #4f46e5);
-  color: #ffffff;
+  border-color: var(--app-accent-strong, var(--color-brand-600));
+  background: var(--app-accent-strong, var(--color-brand-600));
+  color: var(--color-surface-0);
 }
 
 .confirm-dialog__confirm:hover {
-  background: var(--app-accent, #6366f1);
+  background: var(--app-accent, var(--color-brand-500));
 }
 
 .confirm-dialog__confirm--danger {
-  border-color: var(--color-red-600, #dc2626);
-  background: var(--color-red-600, #dc2626);
+  border-color: var(--color-red-600, var(--color-danger-600));
+  background: var(--color-red-600, var(--color-danger-600));
 }
 
 .confirm-dialog__confirm--danger:hover {
-  background: var(--color-red-700, #b91c1c);
+  background: var(--color-red-700, var(--color-danger-700));
 }
 
 /* 进出场：仅 transform/opacity */

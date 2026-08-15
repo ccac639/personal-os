@@ -133,7 +133,7 @@ onBeforeUnmount(() => {
 .app-drawer__backdrop {
   position: absolute;
   inset: 0;
-  background: color-mix(in srgb, var(--app-text, #0f172a) 38%, transparent);
+  background: color-mix(in srgb, var(--app-text, var(--color-surface-900)) 38%, transparent);
 }
 
 .app-drawer__panel {
@@ -143,9 +143,9 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   width: min(19rem, calc(100vw - 3rem));
-  background: var(--app-surface, #ffffff);
+  background: var(--app-surface, var(--color-surface-0));
   box-shadow: var(--app-shadow-float, 0 8px 24px -6px rgb(0 0 0 / 0.12));
-  color: var(--app-text, #0f172a);
+  color: var(--app-text, var(--color-surface-900));
   outline: none;
 }
 
@@ -156,7 +156,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   height: 3.5rem;
   padding-inline: 1rem 0.5rem;
-  border-bottom: 1px solid var(--app-border, #f1f5f9);
+  border-bottom: 1px solid var(--app-border, var(--color-surface-100));
 }
 
 .app-drawer__title {

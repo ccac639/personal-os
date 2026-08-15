@@ -111,11 +111,11 @@ onBeforeUnmount(() => {
   gap: 0.75rem;
   width: 100%;
   padding: 0.625rem 0.875rem;
-  border: 1px solid var(--app-border, #f1f5f9);
+  border: 1px solid var(--app-border, var(--color-surface-100));
   border-radius: 0.625rem;
-  background: var(--app-surface, #ffffff);
+  background: var(--app-surface, var(--color-surface-0));
   box-shadow: var(--app-shadow-float, 0 8px 24px -6px rgb(0 0 0 / 0.12));
-  color: var(--app-text, #0f172a);
+  color: var(--app-text, var(--color-surface-900));
   font-size: 13px;
   pointer-events: auto;
 }
@@ -126,15 +126,15 @@ onBeforeUnmount(() => {
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 9999px;
-  background: var(--app-accent, #6366f1);
+  background: var(--app-accent, var(--color-brand-500));
 }
 
 .app-toast--success::before {
-  background: var(--color-emerald-500, #10b981);
+  background: var(--color-emerald-500, var(--color-success-400));
 }
 
 .app-toast--error::before {
-  background: var(--color-red-500, #ef4444);
+  background: var(--color-red-500, var(--color-danger-500));
 }
 
 .app-toast__msg {
@@ -150,7 +150,7 @@ onBeforeUnmount(() => {
   width: 1.5rem;
   height: 1.5rem;
   border-radius: 0.375rem;
-  color: var(--app-text-secondary, #1e293b);
+  color: var(--app-text-secondary, var(--color-surface-800));
   background: transparent;
   cursor: pointer;
   transition:
@@ -159,11 +159,11 @@ onBeforeUnmount(() => {
 }
 
 .app-toast__close:hover {
-  background: var(--app-surface-subtle, #f8fafc);
+  background: var(--app-surface-subtle, var(--color-page));
 }
 
 .app-toast__close:focus-visible {
-  outline: 2px solid var(--app-accent, #6366f1);
+  outline: 2px solid var(--app-accent, var(--color-brand-500));
   outline-offset: 2px;
 }
 

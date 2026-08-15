@@ -41,7 +41,7 @@ defineEmits<{ click: [event: MouseEvent] }>();
   justify-content: center;
   flex-shrink: 0;
   border-radius: 0.5rem;
-  color: var(--app-text-secondary, #1e293b);
+  color: var(--app-text-secondary, var(--color-surface-800));
   background: transparent;
   cursor: pointer;
   transition:
@@ -51,12 +51,12 @@ defineEmits<{ click: [event: MouseEvent] }>();
 }
 
 .app-icon-btn:hover:not(:disabled) {
-  background: var(--app-surface-subtle, #f8fafc);
-  color: var(--app-text, #0f172a);
+  background: var(--app-surface-subtle, var(--color-page));
+  color: var(--app-text, var(--color-surface-900));
 }
 
 .app-icon-btn:focus-visible {
-  outline: 2px solid var(--app-accent, #6366f1);
+  outline: 2px solid var(--app-accent, var(--color-brand-500));
   outline-offset: 2px;
 }
 
@@ -76,22 +76,22 @@ defineEmits<{ click: [event: MouseEvent] }>();
 }
 
 .app-icon-btn--primary {
-  background: var(--app-accent-strong, #4f46e5);
-  color: #ffffff;
+  background: var(--app-accent-strong, var(--color-brand-600));
+  color: var(--color-surface-0);
 }
 
 .app-icon-btn--primary:hover:not(:disabled) {
-  background: var(--app-accent, #6366f1);
-  color: #ffffff;
+  background: var(--app-accent, var(--color-brand-500));
+  color: var(--color-surface-0);
 }
 
 .app-icon-btn--danger {
-  color: var(--color-red-600, #dc2626);
+  color: var(--color-red-600, var(--color-danger-600));
 }
 
 .app-icon-btn--danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-red-600, #dc2626) 10%, transparent);
-  color: var(--color-red-700, #b91c1c);
+  background: color-mix(in srgb, var(--color-red-600, var(--color-danger-600)) 10%, transparent);
+  color: var(--color-red-700, var(--color-danger-700));
 }
 
 @media (prefers-reduced-motion: reduce) {

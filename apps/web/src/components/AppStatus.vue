@@ -38,29 +38,29 @@ defineEmits<{ retry: [] }>();
   gap: 10px;
   min-height: 6rem;
   padding: 1.5rem;
-  color: var(--app-text-secondary, #1e293b);
+  color: var(--app-text-secondary, var(--color-surface-800));
   font-size: 14px;
 }
 
 .app-status--error {
-  color: var(--color-red-600, #dc2626);
+  color: var(--color-red-600, var(--color-danger-600));
 }
 
 .app-status__spinner {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid var(--app-border, #f1f5f9);
-  border-top-color: var(--app-accent, #6366f1);
+  border: 2px solid var(--app-border, var(--color-surface-100));
+  border-top-color: var(--app-accent, var(--color-brand-500));
   animation: app-status-spin 800ms linear infinite;
 }
 
 .app-status__retry {
   padding: 4px 14px;
-  border: 1px solid var(--app-border, #f1f5f9);
+  border: 1px solid var(--app-border, var(--color-surface-100));
   border-radius: 0.5rem;
-  color: var(--app-text, #0f172a);
-  background: var(--app-surface-subtle, #f8fafc);
+  color: var(--app-text, var(--color-surface-900));
+  background: var(--app-surface-subtle, var(--color-page));
   cursor: pointer;
   transition:
     background-color var(--app-duration-fast, 120ms) var(--app-ease-out, ease),
@@ -68,11 +68,11 @@ defineEmits<{ retry: [] }>();
 }
 
 .app-status__retry:hover {
-  background: var(--app-surface-100, #f1f5f9);
+  background: var(--app-surface-100, var(--color-surface-100));
 }
 
 .app-status__retry:focus-visible {
-  outline: 2px solid var(--app-accent, #6366f1);
+  outline: 2px solid var(--app-accent, var(--color-brand-500));
   outline-offset: 2px;
 }
 

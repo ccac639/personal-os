@@ -123,7 +123,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--color-page, #f8fafc) 82%, transparent);
+  background: color-mix(in srgb, var(--color-page, var(--color-page)) 82%, transparent);
   backdrop-filter: blur(2px);
   animation: pt-layer-in 120ms ease both;
 }
@@ -136,9 +136,9 @@
   max-width: min(420px, calc(100vw - 48px));
   padding: 20px 28px;
   border-radius: var(--radius-card, 0.75rem);
-  background: var(--color-surface-0, #ffffff);
+  background: var(--color-surface-0, var(--color-surface-0));
   box-shadow: var(--shadow-float, 0 8px 24px -6px rgb(0 0 0 / 0.12));
-  color: var(--color-surface-900, #0f172a);
+  color: var(--color-surface-900, var(--color-surface-900));
   text-align: center;
 }
 
@@ -150,7 +150,7 @@
 
 .pt-layer__hint {
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-surface-900, #0f172a) 55%, transparent);
+  color: color-mix(in srgb, var(--color-surface-900, var(--color-surface-900)) 55%, transparent);
   overflow-wrap: anywhere;
 }
 
@@ -161,12 +161,13 @@
 }
 
 .pt-btn {
-  border: 1px solid color-mix(in srgb, var(--color-surface-900, #0f172a) 18%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--color-surface-900, var(--color-surface-900)) 18%, transparent);
   border-radius: 0.5rem;
   padding: 6px 14px;
   font-size: 13px;
-  color: var(--color-surface-900, #0f172a);
-  background: var(--color-surface-50, #f8fafc);
+  color: var(--color-surface-900, var(--color-surface-900));
+  background: var(--color-surface-50, var(--color-page));
   cursor: pointer;
   transition:
     background-color 120ms ease,
@@ -174,22 +175,22 @@
 }
 
 .pt-btn:hover {
-  background: var(--color-surface-100, #f1f5f9);
+  background: var(--color-surface-100, var(--color-surface-100));
 }
 
 .pt-btn:focus-visible {
-  outline: 2px solid var(--color-brand-500, #6366f1);
+  outline: 2px solid var(--color-brand-500, var(--color-brand-500));
   outline-offset: 2px;
 }
 
 .pt-btn--primary {
-  border-color: var(--color-brand-600, #4f46e5);
-  background: var(--color-brand-600, #4f46e5);
-  color: #ffffff;
+  border-color: var(--color-brand-600, var(--color-brand-600));
+  background: var(--color-brand-600, var(--color-brand-600));
+  color: var(--color-surface-0);
 }
 
 .pt-btn--primary:hover {
-  background: var(--color-brand-700, #4338ca);
+  background: var(--color-brand-700, var(--color-brand-700));
 }
 
 /* 小型进度指示：纯装饰，不代表真实百分比 */
@@ -197,8 +198,8 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid var(--color-surface-100, #f1f5f9);
-  border-top-color: var(--color-brand-500, #6366f1);
+  border: 2px solid var(--color-surface-100, var(--color-surface-100));
+  border-top-color: var(--color-brand-500, var(--color-brand-500));
   animation: pt-spin 800ms linear infinite;
 }
 

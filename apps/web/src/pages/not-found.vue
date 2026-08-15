@@ -25,9 +25,9 @@ function goBack(): void {
     <h1 class="app-not-found__title">页面不存在或已被移动</h1>
     <p class="app-not-found__hint">请检查地址，或返回首页继续浏览。</p>
     <div class="app-not-found__actions">
-      <RouterLink to="/" class="app-not-found__btn app-not-found__btn--primary"
-        >返回首页</RouterLink
-      >
+      <RouterLink to="/" class="app-not-found__btn app-not-found__btn--primary">
+        返回首页
+      </RouterLink>
       <button type="button" class="app-not-found__btn" @click="goBack">返回上一页</button>
     </div>
   </section>
@@ -49,7 +49,7 @@ function goBack(): void {
   font-size: 4rem;
   font-weight: 800;
   letter-spacing: 0.06em;
-  color: var(--app-accent, #6366f1);
+  color: var(--app-accent, var(--color-brand-500));
   line-height: 1;
 }
 
@@ -57,13 +57,13 @@ function goBack(): void {
   margin: 1rem 0 0;
   font-size: 1.25rem;
   font-weight: 600;
-  color: var(--app-text, #0f172a);
+  color: var(--app-text, var(--color-surface-900));
 }
 
 .app-not-found__hint {
   margin: 0.5rem 0 0;
   font-size: 0.875rem;
-  color: var(--app-text-secondary, #1e293b);
+  color: var(--app-text-secondary, var(--color-surface-800));
 }
 
 .app-not-found__actions {
@@ -78,11 +78,11 @@ function goBack(): void {
   display: inline-flex;
   align-items: center;
   padding: 0.5rem 1.25rem;
-  border: 1px solid var(--app-border, #f1f5f9);
+  border: 1px solid var(--app-border, var(--color-surface-100));
   border-radius: 0.5rem;
   font-size: 0.875rem;
-  color: var(--app-text, #0f172a);
-  background: var(--app-surface-subtle, #f8fafc);
+  color: var(--app-text, var(--color-surface-900));
+  background: var(--app-surface-subtle, var(--color-page));
   cursor: pointer;
   text-decoration: none;
   transition:
@@ -91,22 +91,22 @@ function goBack(): void {
 }
 
 .app-not-found__btn:hover {
-  background: var(--app-surface-100, #f1f5f9);
+  background: var(--app-surface-100, var(--color-surface-100));
 }
 
 .app-not-found__btn:focus-visible {
-  outline: 2px solid var(--app-accent, #6366f1);
+  outline: 2px solid var(--app-accent, var(--color-brand-500));
   outline-offset: 2px;
 }
 
 .app-not-found__btn--primary {
-  border-color: var(--app-accent-strong, #4f46e5);
-  background: var(--app-accent-strong, #4f46e5);
-  color: #ffffff;
+  border-color: var(--app-accent-strong, var(--color-brand-600));
+  background: var(--app-accent-strong, var(--color-brand-600));
+  color: var(--color-surface-0);
 }
 
 .app-not-found__btn--primary:hover {
-  background: var(--app-accent, #6366f1);
+  background: var(--app-accent, var(--color-brand-500));
 }
 
 @media (prefers-reduced-motion: reduce) {

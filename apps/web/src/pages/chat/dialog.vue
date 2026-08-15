@@ -147,10 +147,10 @@ watch(
 <style>
 /* Chat 工作区语义色（模型类别）：亮/暗主题下均清晰，非营销渐变 */
 .chat-workspace {
-  --chat-cyan: #0891b2;
-  --chat-teal: #0d9488;
+  --chat-cyan: var(--color-info-600);
+  --chat-teal: var(--color-success-700);
   --chat-orange: #ea580c;
-  --chat-rose: #e11d48;
-  --chat-mono: #64748b;
+  --chat-rose: var(--color-danger-800);
+  --chat-mono: var(--color-surface-500);
 }
 </style>

@@ -239,8 +239,8 @@ function prefetch(to: string): void {
   z-index: 80;
   padding: 0.5rem 1rem;
   border-radius: 0.5rem;
-  background: var(--app-accent-strong, #4f46e5);
-  color: #ffffff;
+  background: var(--app-accent-strong, var(--color-brand-600));
+  color: var(--color-surface-0);
   font-size: 0.875rem;
   text-decoration: none;
   transform: translateY(-220%);
@@ -259,7 +259,7 @@ function prefetch(to: string): void {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 0.5rem;
-  color: var(--app-text-secondary, #1e293b);
+  color: var(--app-text-secondary, var(--color-surface-800));
   background: transparent;
   cursor: pointer;
   transition:
@@ -268,12 +268,12 @@ function prefetch(to: string): void {
 }
 
 .app-menu-btn:hover {
-  background: var(--app-surface-subtle, #f8fafc);
-  color: var(--app-text, #0f172a);
+  background: var(--app-surface-subtle, var(--color-page));
+  color: var(--app-text, var(--color-surface-900));
 }
 
 .app-menu-btn:focus-visible {
-  outline: 2px solid var(--app-accent, #6366f1);
+  outline: 2px solid var(--app-accent, var(--color-brand-500));
   outline-offset: 2px;
 }
 
@@ -291,7 +291,7 @@ function prefetch(to: string): void {
   padding: 0.5rem 0.875rem;
   border-radius: 0.5rem;
   font-size: 0.9375rem;
-  color: var(--app-text-secondary, #1e293b);
+  color: var(--app-text-secondary, var(--color-surface-800));
   text-decoration: none;
   transition:
     background-color var(--app-duration-fast, 120ms) var(--app-ease-out, ease),
@@ -299,18 +299,18 @@ function prefetch(to: string): void {
 }
 
 .app-drawer-nav__link:hover {
-  background: var(--app-surface-subtle, #f8fafc);
-  color: var(--app-text, #0f172a);
+  background: var(--app-surface-subtle, var(--color-page));
+  color: var(--app-text, var(--color-surface-900));
 }
 
 .app-drawer-nav__link:focus-visible {
-  outline: 2px solid var(--app-accent, #6366f1);
+  outline: 2px solid var(--app-accent, var(--color-brand-500));
   outline-offset: -2px;
 }
 
 .app-drawer-nav__link--active {
-  background: var(--app-surface-subtle, #f8fafc);
-  color: var(--app-text, #0f172a);
+  background: var(--app-surface-subtle, var(--color-page));
+  color: var(--app-text, var(--color-surface-900));
   font-weight: 600;
 }
 

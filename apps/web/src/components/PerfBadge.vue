@@ -47,11 +47,11 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 0.5rem;
   padding: 4px 10px;
-  border: 1px solid var(--app-border, #f1f5f9);
+  border: 1px solid var(--app-border, var(--color-surface-100));
   border-radius: 9999px;
-  background: var(--app-surface, #ffffff);
+  background: var(--app-surface, var(--color-surface-0));
   box-shadow: var(--app-shadow-card, 0 1px 3px 0 rgb(0 0 0 / 0.08));
-  color: var(--app-text-secondary, #1e293b);
+  color: var(--app-text-secondary, var(--color-surface-800));
   font-size: 11px;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
@@ -59,7 +59,7 @@ onBeforeUnmount(() => {
 }
 
 .app-perf-badge__item--warn {
-  color: var(--color-amber-600, #d97706);
+  color: var(--color-amber-600, var(--color-warning-600));
   font-weight: 600;
 }
 </style>

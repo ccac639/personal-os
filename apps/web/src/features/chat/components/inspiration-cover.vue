@@ -30,7 +30,11 @@ const categoryMark = computed(() => {
 </script>
 
 <template>
-  <div class="insp-cover relative flex h-28 w-full overflow-hidden" :class="className" aria-hidden="true">
+  <div
+    class="insp-cover relative flex h-28 w-full overflow-hidden"
+    :class="className"
+    aria-hidden="true"
+  >
     <span class="insp-cover-mark">{{ categoryMark }}</span>
   </div>
 </template>
@@ -53,12 +57,17 @@ const categoryMark = computed(() => {
 
 /* 配色块：语义色渐变 + 大面积色域 */
 .insp-cover-color {
-  background: linear-gradient(135deg, #0891b2 0%, #0d9488 45%, #ea580c 100%);
+  background: linear-gradient(
+    135deg,
+    var(--color-info-600) 0%,
+    var(--color-success-700) 45%,
+    #ea580c 100%
+  );
 }
 
 /* 网格：细线网格 + 深色底 */
 .insp-cover-grid {
-  background-color: #0f172a;
+  background-color: var(--color-surface-900);
   background-image:
     linear-gradient(rgb(148 163 184 / 0.14) 1px, transparent 1px),
     linear-gradient(90deg, rgb(148 163 184 / 0.14) 1px, transparent 1px);
@@ -66,25 +75,24 @@ const categoryMark = computed(() => {
 }
 
 .insp-cover-grid .insp-cover-mark {
-  color: #e2e8f0;
+  color: var(--color-surface-200);
 }
 
 /* 纸张：米白底 + 横线 */
 .insp-cover-paper {
   background-color: #f8f5f0;
-  background-image:
-    linear-gradient(rgb(148 163 184 / 0.28) 1px, transparent 1px);
+  background-image: linear-gradient(rgb(148 163 184 / 0.28) 1px, transparent 1px);
   background-size: 100% 26px;
   background-position: 0 8px;
 }
 
 .insp-cover-paper .insp-cover-mark {
-  color: #64748b;
+  color: var(--color-surface-500);
 }
 
 /* 代码：深底 + 代码行 */
 .insp-cover-code {
-  background-color: #0f172a;
+  background-color: var(--color-surface-900);
   background-image:
     repeating-linear-gradient(
       180deg,
@@ -108,12 +116,12 @@ const categoryMark = computed(() => {
 
 /* 极简排版：浅底 + 大号衬线标记 */
 .insp-cover-minimal {
-  background: linear-gradient(160deg, #eef2ff 0%, #f8fafc 100%);
+  background: linear-gradient(160deg, #eef2ff 0%, var(--color-page) 100%);
 }
 
 .insp-cover-minimal .insp-cover-mark {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  color: #6366f1;
+  color: var(--color-brand-500);
 }
 
 /* 抽象几何：径向 + 圆锥渐变 */
@@ -122,10 +130,10 @@ const categoryMark = computed(() => {
     radial-gradient(circle at 20% 20%, rgb(232 121 249 / 0.5) 0, transparent 34%),
     radial-gradient(circle at 85% 70%, rgb(56 189 248 / 0.45) 0, transparent 40%),
     conic-gradient(from 210deg at 70% 30%, rgb(251 191 36 / 0.5), transparent 40%),
-    #f8fafc;
+    var(--color-page);
 }
 
 .insp-cover-geometry .insp-cover-mark {
-  color: #a855f7;
+  color: var(--color-accent-400);
 }
 </style>

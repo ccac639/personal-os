@@ -242,8 +242,8 @@ function toggle() {
         >
           <defs>
             <linearGradient id="petBodyGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#fbbf24" />
-              <stop offset="100%" stop-color="#f59e0b" />
+              <stop offset="0%" stop-color="var(--color-warning-400)" />
+              <stop offset="100%" stop-color="var(--color-warning-500)" />
             </linearGradient>
           </defs>
 
@@ -251,7 +251,7 @@ function toggle() {
           <path
             d="M80 76 C 100 78, 106 62, 98 50 C 94 44, 88 48, 90 56"
             fill="none"
-            stroke="#d97706"
+            stroke="var(--color-warning-600)"
             stroke-width="5"
             stroke-linecap="round"
           />
@@ -261,74 +261,94 @@ function toggle() {
             cy="68"
             r="34"
             fill="url(#petBodyGrad)"
-            stroke="#d97706"
+            stroke="var(--color-warning-600)"
             stroke-width="2"
           />
           <!-- 肚皮 -->
-          <ellipse cx="60" cy="80" rx="20" ry="15" fill="#fffbeb" />
+          <ellipse cx="60" cy="80" rx="20" ry="15" fill="var(--color-warning-50)" />
           <!-- 耳朵 -->
           <path
             d="M30 50 L22 20 L52 34 Z"
-            fill="#fbbf24"
-            stroke="#d97706"
+            fill="var(--color-warning-400)"
+            stroke="var(--color-warning-600)"
             stroke-width="2"
             stroke-linejoin="round"
           />
           <path
             d="M90 50 L98 20 L68 34 Z"
-            fill="#fbbf24"
-            stroke="#d97706"
+            fill="var(--color-warning-400)"
+            stroke="var(--color-warning-600)"
             stroke-width="2"
             stroke-linejoin="round"
           />
           <!-- 耳朵内 -->
-          <path d="M31 45 L26 25 L47 35 Z" fill="#fcd34d" />
-          <path d="M89 45 L94 25 L73 35 Z" fill="#fcd34d" />
+          <path d="M31 45 L26 25 L47 35 Z" fill="var(--color-warning-300)" />
+          <path d="M89 45 L94 25 L73 35 Z" fill="var(--color-warning-300)" />
 
           <!-- 眼睛（打开时变成开心弯月） -->
           <template v-if="open">
             <path
               d="M40 64 Q46 55 52 64"
               fill="none"
-              stroke="#292524"
+              stroke="var(--color-warm-900)"
               stroke-width="3"
               stroke-linecap="round"
             />
             <path
               d="M68 64 Q74 55 80 64"
               fill="none"
-              stroke="#292524"
+              stroke="var(--color-warm-900)"
               stroke-width="3"
               stroke-linecap="round"
             />
           </template>
           <template v-else>
             <g class="pet-eye">
-              <circle cx="46" cy="62" r="5" fill="#292524" />
-              <circle cx="48" cy="60" r="1.6" fill="#ffffff" />
+              <circle cx="46" cy="62" r="5" fill="var(--color-warm-900)" />
+              <circle cx="48" cy="60" r="1.6" fill="var(--color-surface-0)" />
             </g>
             <g class="pet-eye">
-              <circle cx="74" cy="62" r="5" fill="#292524" />
-              <circle cx="76" cy="60" r="1.6" fill="#ffffff" />
+              <circle cx="74" cy="62" r="5" fill="var(--color-warm-900)" />
+              <circle cx="76" cy="60" r="1.6" fill="var(--color-surface-0)" />
             </g>
           </template>
 
           <!-- 腮红 -->
-          <ellipse cx="36" cy="72" rx="6" ry="4" fill="#fda4af" opacity="0.7" />
-          <ellipse cx="84" cy="72" rx="6" ry="4" fill="#fda4af" opacity="0.7" />
+          <ellipse cx="36" cy="72" rx="6" ry="4" fill="var(--color-danger-300)" opacity="0.7" />
+          <ellipse cx="84" cy="72" rx="6" ry="4" fill="var(--color-danger-300)" opacity="0.7" />
           <!-- 嘴 -->
           <path
             d="M56 74 Q60 78 64 74"
             fill="none"
-            stroke="#292524"
+            stroke="var(--color-warm-900)"
             stroke-width="2.5"
             stroke-linecap="round"
           />
           <!-- 胡须 -->
-          <path d="M24 66 L12 62" stroke="#a8a29e" stroke-width="1.5" stroke-linecap="round" />
-          <path d="M24 74 L12 78" stroke="#a8a29e" stroke-width="1.5" stroke-linecap="round" />
-          <path d="M96 66 L108 62" stroke="#a8a29e" stroke-width="1.5" stroke-linecap="round" />
-          <path d="M96 74 L108 78" stroke="#a8a29e" stroke-width="1.5" stroke-linecap="round" />
+          <path
+            d="M24 66 L12 62"
+            stroke="var(--color-warm-400)"
+            stroke-width="1.5"
+            stroke-linecap="round"
+          />
+          <path
+            d="M24 74 L12 78"
+            stroke="var(--color-warm-400)"
+            stroke-width="1.5"
+            stroke-linecap="round"
+          />
+          <path
+            d="M96 66 L108 62"
+            stroke="var(--color-warm-400)"
+            stroke-width="1.5"
+            stroke-linecap="round"
+          />
+          <path
+            d="M96 74 L108 78"
+            stroke="var(--color-warm-400)"
+            stroke-width="1.5"
+            stroke-linecap="round"
+          />
         </svg>
       </span>
     </button>

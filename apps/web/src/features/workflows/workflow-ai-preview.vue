@@ -136,7 +136,7 @@ const scanCls = computed(() => (reduceMotion.value ? 'hidden' : 'ai-scanline'));
             :d="g.d"
             class="ai-preview-edge"
             fill="none"
-            stroke="#8b5cf6"
+            stroke="var(--color-accent-500)"
             stroke-width="2.2"
             stroke-dasharray="10 6"
           />

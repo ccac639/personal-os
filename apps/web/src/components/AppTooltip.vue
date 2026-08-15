@@ -33,8 +33,8 @@ defineProps<{
   max-width: 16rem;
   padding: 4px 10px;
   border-radius: 0.375rem;
-  background: var(--app-text, #0f172a);
-  color: var(--app-surface, #ffffff);
+  background: var(--app-text, var(--color-surface-900));
+  color: var(--app-surface, var(--color-surface-0));
   font-size: 12px;
   line-height: 1.4;
   text-align: center;

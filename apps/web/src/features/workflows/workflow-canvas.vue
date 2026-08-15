@@ -77,7 +77,7 @@ function onEdgesChange(changes: EdgeChange[]) {
 }
 
 /** 点阵背景色随主题明暗切换 */
-const patternColor = computed(() => (theme.palette.dark ? '#3b4250' : '#94a3b8'));
+const patternColor = computed(() => (theme.palette.dark ? '#3b4250' : 'var(--color-surface-400)'));
 
 /** 拖动状态：拖动开始记录一次撤销点，拖动中的 position 变化不再入栈 */
 let dragging = false;

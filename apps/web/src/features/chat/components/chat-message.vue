@@ -460,7 +460,7 @@ function handleAction(kind: ChatActionKind) {
 .markdown-body :deep(blockquote) {
   margin: 0.75rem 0;
   padding: 0.1rem 0 0.1rem 0.85rem;
-  border-left: 3px solid var(--color-brand-200, #c7d2fe);
+  border-left: 3px solid var(--color-brand-200, var(--color-brand-200));
   color: var(--color-surface-800);
   opacity: 0.85;
 }
@@ -485,8 +485,8 @@ function handleAction(kind: ChatActionKind) {
   margin: 0.8rem 0;
   padding: 0.9rem 1rem;
   border-radius: 0.75rem;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--color-surface-900);
+  color: var(--color-surface-200);
   font-size: 0.82rem;
   line-height: 1.65;
   overflow-x: auto;
@@ -565,7 +565,7 @@ function handleAction(kind: ChatActionKind) {
 
 .markdown-body :deep(.hljs-comment),
 .markdown-body :deep(.hljs-quote) {
-  color: #64748b;
+  color: var(--color-surface-500);
   font-style: italic;
 }
 
