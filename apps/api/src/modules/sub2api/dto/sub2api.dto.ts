@@ -12,16 +12,20 @@ import {
   Min,
 } from 'class-validator';
 
+import { Trimmed, TrimmedEach } from '../../../common/validation/trim.js';
+
 /** 连接设置（部分更新；apiToken 传空串 = 不修改） */
 export class SaveSub2ApiSettingsDto {
   @IsOptional()
   @IsString()
   @MaxLength(2_048, { message: 'Base URL 过长' })
+  @Trimmed()
   baseUrl?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(512, { message: '管理端凭据过长' })
+  @Trimmed()
   apiToken?: string;
 
   @IsOptional()
@@ -67,11 +71,13 @@ const ROUTE_ENDPOINTS = [
 export class ChannelInputDto {
   @IsString()
   @MaxLength(128, { message: '渠道名称过长' })
+  @Trimmed()
   name: string = '';
 
   @IsOptional()
   @IsString()
   @MaxLength(512)
+  @Trimmed()
   description?: string;
 
   @IsOptional()
@@ -100,6 +106,7 @@ export class ChannelInputDto {
 export class AccountInputDto {
   @IsString()
   @MaxLength(128, { message: '账号名称过长' })
+  @Trimmed()
   name: string = '';
 
   @IsIn(ACCOUNT_PLATFORMS as unknown as string[], { message: 'platform 不合法' })
@@ -112,6 +119,7 @@ export class AccountInputDto {
   @IsOptional()
   @IsString()
   @MaxLength(512)
+  @Trimmed()
   notes?: string;
 
   @IsOptional()
@@ -154,11 +162,13 @@ export class AccountInputDto {
 export class GroupInputDto {
   @IsString()
   @MaxLength(128, { message: '分组名称过长' })
+  @Trimmed()
   name: string = '';
 
   @IsOptional()
   @IsString()
   @MaxLength(512)
+  @Trimmed()
   description?: string;
 
   @IsOptional()
@@ -204,6 +214,7 @@ export class GroupInputDto {
 export class CompositeRouteInputDto {
   @IsString()
   @MaxLength(256, { message: '对外模型名过长' })
+  @Trimmed()
   public_model: string = '';
 
   @IsOptional()
@@ -216,6 +227,7 @@ export class CompositeRouteInputDto {
   @IsOptional()
   @IsString()
   @MaxLength(256)
+  @Trimmed()
   upstream_model?: string;
 
   @IsOptional()
@@ -236,6 +248,7 @@ export class CompositeRouteInputDto {
   @IsOptional()
   @IsString()
   @MaxLength(512)
+  @Trimmed()
   notes?: string;
 }
 
@@ -243,6 +256,7 @@ export class CompositeRouteInputDto {
 export class ApiKeyCreateDto {
   @IsString()
   @MaxLength(128, { message: '凭据名称过长' })
+  @Trimmed()
   name: string = '';
 
   @IsOptional()
@@ -253,6 +267,7 @@ export class ApiKeyCreateDto {
   @IsOptional()
   @IsString()
   @MaxLength(512)
+  @Trimmed()
   custom_key?: string;
 
   @IsOptional()
@@ -271,11 +286,13 @@ export class ApiKeyCreateDto {
   @IsOptional()
   @IsString({ each: true })
   @MaxLength(64, { each: true })
+  @TrimmedEach()
   ip_whitelist?: string[];
 
   @IsOptional()
   @IsString({ each: true })
   @MaxLength(64, { each: true })
+  @TrimmedEach()
   ip_blacklist?: string[];
 }
 
@@ -284,6 +301,7 @@ export class ApiKeyUpdateDto {
   @IsOptional()
   @IsString()
   @MaxLength(128)
+  @Trimmed()
   name?: string;
 
   @IsOptional()
