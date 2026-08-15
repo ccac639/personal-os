@@ -12,14 +12,16 @@ if (!post.value) {
   throw createError({ statusCode: 404, statusMessage: '文章不存在', fatal: true });
 }
 
-// ---------- 阅读进度条 ----------
+// ---------- 阅读进度条（SSR 安全：仅客户端访问 window/document） ----------
 const scrollY = ref(0);
 const progress = computed(() => {
+  if (import.meta.server) return 0;
   const doc = document.documentElement;
   const max = doc.scrollHeight - window.innerHeight;
   return max > 0 ? Math.min(100, (scrollY.value / max) * 100) : 0;
 });
 function onScroll() {
+  if (import.meta.server) return;
   scrollY.value = window.scrollY;
 }
 
