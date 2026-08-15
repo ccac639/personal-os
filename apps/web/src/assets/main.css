@@ -2,6 +2,66 @@
 @import '@personal-os/config/tailwind';
 @import '@personal-os/ui/styles';
 
+/* 语义色板扩展（本线 F3 · 设计系统）：
+ * 共享包 @personal-os/config/tailwind 仅含 brand/surface 少量档位；
+ * 此处补齐 neutral 中间档 + warning/danger/success/info/accent/warm 全语义系，
+ * 供 apps/web 业务层以 var(--color-*) 或 bg-*/
+text-*
+  类引用，消除硬编码魔术色。
+  *
+  注：令牌值
+  =
+  Tailwind
+  默认调色板色值（indigo/slate/amber/red/green…），
+  *
+  替换后视觉零变化；后续可上提至共享包供
+  apps/blog
+  复用（见交付报告遗留项）。
+  */
+  @theme {
+  /* brand（indigo）补全 */
+  --color-brand-200: #c7d2fe;
+  --color-brand-400: #818cf8;
+  /* neutral（slate）中间档 */
+  --color-surface-200: #e2e8f0;
+  --color-surface-300: #cbd5e1;
+  --color-surface-400: #94a3b8;
+  --color-surface-500: #64748b;
+  --color-surface-600: #475569;
+  --color-surface-700: #334155;
+  /* warning（amber 系） */
+  --color-warning-50: #fffbeb;
+  --color-warning-300: #fcd34d;
+  --color-warning-400: #fbbf24;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+  --color-warning-800: #92400e;
+  --color-warning-900: #78350f;
+  /* danger（red 系） */
+  --color-danger-300: #fda4af;
+  --color-danger-500: #ef4444;
+  --color-danger-600: #dc2626;
+  --color-danger-700: #b91c1c;
+  --color-danger-800: #e11d48;
+  /* success（green/emerald/teal 系） */
+  --color-success-400: #10b981;
+  --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
+  --color-success-700: #0d9488;
+  /* info（blue/cyan 系） */
+  --color-info-500: #3b82f6;
+  --color-info-600: #0891b2;
+  /* accent（violet/purple 系） */
+  --color-accent-400: #a855f7;
+  --color-accent-500: #8b5cf6;
+  /* warm（stone 暖灰系 + 沙色） */
+  --color-warm-300: #f1c27d;
+  --color-warm-400: #a8a29e;
+  --color-warm-500: #78716c;
+  --color-warm-900: #292524;
+}
+
 /* 全局隐藏滚动条（用户要求暂时隐藏） */
 @layer base {
   /* 隐藏所有滚动条 */
