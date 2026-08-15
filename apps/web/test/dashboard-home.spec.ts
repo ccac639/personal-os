@@ -12,12 +12,7 @@ import DashboardSystemStatus from '@/features/dashboard/system-status.vue';
 import DashboardStatsCards from '@/features/dashboard/stats-cards.vue';
 import HomePage from '@/pages/index.vue';
 import { routes } from '@/router/routes';
-import {
-  GITHUB_TREND,
-  WORKFLOW_RUNS,
-  SYSTEM_SERVICES,
-  QUICK_ACTIONS,
-} from '@/features/dashboard';
+import { GITHUB_TREND, WORKFLOW_RUNS, SYSTEM_SERVICES, QUICK_ACTIONS } from '@/features/dashboard';
 
 /** 测试用 router（含全部已有路由，验证链接目标真实存在） */
 function makeRouter() {
@@ -59,7 +54,10 @@ function stubMatchMedia(matches = false) {
     removeListener: vi.fn(),
     dispatchEvent: vi.fn(),
   };
-  vi.stubGlobal('matchMedia', vi.fn(() => mq));
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => mq),
+  );
 }
 
 describe('首页 Dashboard（轮播版）', () => {
@@ -74,23 +72,43 @@ describe('首页 Dashboard（轮播版）', () => {
     vi.unstubAllGlobals();
   });
 
-  it('正常渲染：标题、指标轮播、最近活动、GitHub 趋势、工作流、系统监控、快速操作、系统状态', async () => {
-    const wrapper = mountWithRouter(HomePage);
-    await flushPromises();
-    expect(wrapper.text()).toContain('最近活动');
-    expect(wrapper.text()).toContain('GitHub 本周趋势');
-    expect(wrapper.text()).toContain('工作流');
-    expect(wrapper.text()).toContain('系统监控');
-    expect(wrapper.text()).toContain('快速操作');
-    expect(wrapper.text()).toContain('系统状态');
-  });
+  it(
+    '正常渲染：标题、指标轮播、最近活动、GitHub 趋势、工作流、系统监控、快速操作、系统状态',
+    { timeout: 15_000 },
+    async () => {
+      // 全量并行时懒加载 chunk + 整棵首页树渲染可能超出默认 5s 阈值（既有 flaky 根因）：
+      // 显式放宽到 15s，属合理阈值而非掩盖（用例本身无等待循环/定时器依赖）
+      const wrapper = mountWithRouter(HomePage);
+      await flushPromises();
+      expect(wrapper.text()).toContain('最近活动');
+      expect(wrapper.text()).toContain('GitHub 本周趋势');
+      expect(wrapper.text()).toContain('工作流');
+      expect(wrapper.text()).toContain('系统监控');
+      expect(wrapper.text()).toContain('快速操作');
+      expect(wrapper.text()).toContain('系统状态');
+    },
+  );
 
   it('指标卡片：显示标题、主数值、趋势与迷你图；无趋势数据显示占位', async () => {
     const wrapper = mount(DashboardStatsCards, {
       props: {
         metrics: [
-          { id: 'a', label: '指标A', value: '12', icon: 'Layers', trend: { value: '+5%', direction: 'up', label: '较上周' }, points: [1, 2, 3] },
-          { id: 'b', label: '指标B', value: '8', icon: 'Code2', trend: { value: '-2%', direction: 'down', label: '较上周' }, points: [3, 2, 1] },
+          {
+            id: 'a',
+            label: '指标A',
+            value: '12',
+            icon: 'Layers',
+            trend: { value: '+5%', direction: 'up', label: '较上周' },
+            points: [1, 2, 3],
+          },
+          {
+            id: 'b',
+            label: '指标B',
+            value: '8',
+            icon: 'Code2',
+            trend: { value: '-2%', direction: 'down', label: '较上周' },
+            points: [3, 2, 1],
+          },
           { id: 'c', label: '指标C', value: '0', icon: 'Boxes' },
         ],
       },
@@ -132,11 +150,30 @@ describe('首页 Dashboard（轮播版）', () => {
   });
 
   it('最近活动：进行中显示进度，失败显示原因，标题/摘要两行截断', () => {
-    const wrapper = mount(DashboardActivityFeed, {
+    // ActivityFeed 使用 RouterLink：必须带 router 插件（消除 router-link 解析 warn）
+    const wrapper = mountWithRouter(DashboardActivityFeed, {
       props: {
         activities: [
-          { id: 'r1', type: 'workflow', title: '运行中的流水线', description: '描述', timestamp: '1 分钟前', icon: 'Workflow', status: 'running', progress: 60 },
-          { id: 'f1', type: 'workflow', title: '失败的任务', description: '描述', timestamp: '2 分钟前', icon: 'XCircle', status: 'failed', failureReason: '超时' },
+          {
+            id: 'r1',
+            type: 'workflow',
+            title: '运行中的流水线',
+            description: '描述',
+            timestamp: '1 分钟前',
+            icon: 'Workflow',
+            status: 'running',
+            progress: 60,
+          },
+          {
+            id: 'f1',
+            type: 'workflow',
+            title: '失败的任务',
+            description: '描述',
+            timestamp: '2 分钟前',
+            icon: 'XCircle',
+            status: 'failed',
+            failureReason: '超时',
+          },
         ],
       } as never,
     });
@@ -279,7 +316,8 @@ describe('首页 Dashboard（轮播版）', () => {
     expect(wrapper.findAll('a').length).toBe(2);
   });
 
-  it('窄屏布局：指标卡片与主网格不横向溢出', async () => {
+  it('窄屏布局：指标卡片与主网格不横向溢出', { timeout: 15_000 }, async () => {
+    // 同 77 行：整棵首页树渲染，全量并行下放宽超时阈值
     const wrapper = mountWithRouter(HomePage);
     await flushPromises();
     // 首页容器不应有横向滚动
@@ -293,7 +331,15 @@ describe('首页 Dashboard（轮播版）', () => {
   it('导航链接和其他页面行为未被改变（布局测试）', () => {
     makeRouter();
     // 路由表必须包含全部导航目标
-    const navTargets = ['/', '/chat', '/workflows', '/projects', '/achievements', '/admin', '/settings'];
+    const navTargets = [
+      '/',
+      '/chat',
+      '/workflows',
+      '/projects',
+      '/achievements',
+      '/admin',
+      '/settings',
+    ];
     const paths = routes.map((r) => r.path);
     for (const t of navTargets) {
       expect(paths).toContain(t);
