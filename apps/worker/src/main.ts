@@ -36,6 +36,7 @@ import {
 import { shutdown, startWorkers } from './workers/manager.js';
 import { WorkerMetrics } from './metrics/worker-metrics.js';
 import { QueueDepthSampler } from './metrics/queue-depth.js';
+import { FailedJobRegistry } from './jobs/failed-registry.js';
 
 const { config, issues } = loadWorkerConfig();
 if (issues.length > 0) {
@@ -61,6 +62,8 @@ let depthSampler: QueueDepthSampler | null = null;
 
 // 轻量指标（worker-local，pino 日志字段采集；见 metrics/worker-metrics.ts）
 const metrics = new WorkerMetrics();
+// 失败台账（failed 事件记录，供巡检；见 jobs/failed-registry.ts）
+const failedRegistry = new FailedJobRegistry();
 
 async function main(): Promise<void> {
   logger.info(
@@ -119,6 +122,7 @@ async function main(): Promise<void> {
             connection: redis!,
             concurrency: config.workflowConcurrency,
             metrics,
+            failedRegistry,
           }),
       },
       {
@@ -130,6 +134,7 @@ async function main(): Promise<void> {
             connection: redis!,
             concurrency: config.chatConcurrency,
             metrics,
+            failedRegistry,
           }),
       },
     ],

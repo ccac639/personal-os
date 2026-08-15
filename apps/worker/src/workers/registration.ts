@@ -33,6 +33,7 @@ import type { ChatCompletionService } from '../jobs/chat/chat-completion.service
 import { createChatProcessor } from '../jobs/chat/chat.worker.js';
 import { retryDelayMs } from '../errors/worker-errors.js';
 import type { WorkerMetrics } from '../metrics/worker-metrics.js';
+import type { FailedJobRegistry } from '../jobs/failed-registry.js';
 
 export type WorkerConnection = ConnectionOptions | Redis;
 
@@ -78,6 +79,7 @@ function makeHandle(
   worker: Worker,
   logger: LoggerLike,
   metrics?: WorkerMetrics,
+  failedRegistry?: FailedJobRegistry,
 ): WorkerHandle {
   worker.on('ready', () => logger.info({ queue }, 'bullmq worker ready'));
   worker.on('error', (err) => logger.error({ queue, err: err.message }, 'bullmq worker error'));
@@ -90,9 +92,25 @@ function makeHandle(
       { queue, jobId: job.id, runId: runIdOf(job.data), durationMs: jobDurationMs(job) },
       'bullmq job completed',
     );
+    // removeOnComplete 策略（worker 侧等价实现）：成功即清理，避免 completed 集合长期堆积。
+    // fire-and-forget：不阻塞事件派发；remove 失败仅告警（BullMQ 会重试清理）。
+    void job.remove().catch((err: unknown) => {
+      logger.warn(
+        { queue, jobId: job.id, err: err instanceof Error ? err.message : String(err) },
+        'bullmq completed job remove 失败（由 BullMQ 后续清理兜底）',
+      );
+    });
   });
   worker.on('failed', (job, err) => {
     metrics?.jobFailed(queue);
+    const record = {
+      queue,
+      jobId: job?.id,
+      runId: runIdOf(job?.data),
+      error: err.message,
+      attemptsMade: job?.attemptsMade ?? 0,
+    };
+    failedRegistry?.record(record);
     logger.error(
       {
         queue,
@@ -123,6 +141,8 @@ export interface CreateWorkflowWorkerOptions {
   concurrency?: number;
   /** 指标埋点（可选；缺省不采集） */
   metrics?: WorkerMetrics;
+  /** 失败台账（可选；failed 事件记录，供巡检） */
+  failedRegistry?: FailedJobRegistry;
 }
 
 export function createWorkflowWorker(options: CreateWorkflowWorkerOptions): WorkerHandle {
@@ -146,7 +166,13 @@ export function createWorkflowWorker(options: CreateWorkflowWorkerOptions): Work
       settings: { backoffStrategy: makeBackoffStrategy(entry.backoffMs) },
     },
   );
-  return makeHandle(WORKFLOW_RUN_QUEUE, worker, options.logger, options.metrics);
+  return makeHandle(
+    WORKFLOW_RUN_QUEUE,
+    worker,
+    options.logger,
+    options.metrics,
+    options.failedRegistry,
+  );
 }
 
 export interface CreateChatWorkerOptions {
@@ -157,6 +183,8 @@ export interface CreateChatWorkerOptions {
   concurrency?: number;
   /** 指标埋点（可选；缺省不采集） */
   metrics?: WorkerMetrics;
+  /** 失败台账（可选；failed 事件记录，供巡检） */
+  failedRegistry?: FailedJobRegistry;
 }
 
 export function createChatWorker(options: CreateChatWorkerOptions): WorkerHandle {
@@ -176,7 +204,13 @@ export function createChatWorker(options: CreateChatWorkerOptions): WorkerHandle
       settings: { backoffStrategy: makeBackoffStrategy(entry.backoffMs) },
     },
   );
-  return makeHandle(CHAT_QUEUE_NAME, worker, options.logger, options.metrics);
+  return makeHandle(
+    CHAT_QUEUE_NAME,
+    worker,
+    options.logger,
+    options.metrics,
+    options.failedRegistry,
+  );
 }
 
 /**
