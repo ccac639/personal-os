@@ -29,6 +29,15 @@ export default defineNuxtConfig({
     plugins: [tailwindcss()],
   },
 
+  // 性能：内容型页面 SWR 静态缓存（ISR 语义：后台重新验证，首访快、更新及时）
+  routeRules: {
+    '/': { swr: 300 },
+    '/posts/**': { swr: 300 },
+    '/tags/**': { swr: 300 },
+    '/categories/**': { swr: 300 },
+    '/rss.xml': { swr: 600 },
+  },
+
   typescript: {
     strict: true,
     typeCheck: true,

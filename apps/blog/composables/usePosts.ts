@@ -11,7 +11,10 @@ const BASE = '/api';
 
 /** 文章列表（非 draft，按 date 倒序）。 */
 export function usePostList() {
-  return useFetch<BlogPostMeta[]>(`${BASE}/posts`, { key: 'blog:posts' });
+  return useFetch<BlogPostMeta[]>(`${BASE}/posts`, {
+    key: 'blog:posts',
+    getCachedData: (key) => useNuxtData(key).data.value as BlogPostMeta[] | undefined,
+  });
 }
 
 /** 文章详情响应：正文 + 相邻导航；未知 slug 由 API 返回 404。 */
@@ -25,22 +28,28 @@ export interface PostDetailPayload {
 export function usePostDetail(slug: string) {
   return useFetch<PostDetailPayload>(`${BASE}/posts/${slug}`, {
     key: `blog:post:${slug}`,
+    getCachedData: (key) => useNuxtData(key).data.value as PostDetailPayload | undefined,
   });
 }
 
 /** 标签聚合（含文章数）。 */
 export function useTagList() {
-  return useFetch<PostGroupCount[]>(`${BASE}/tags`, { key: 'blog:tags' });
+  return useFetch<PostGroupCount[]>(`${BASE}/tags`, {
+    key: 'blog:tags',
+    getCachedData: (key) => useNuxtData(key).data.value as PostGroupCount[] | undefined,
+  });
 }
 
 export function usePostsByTag(tag: string) {
   return useFetch<BlogPostMeta[]>(`${BASE}/tags/${encodeURIComponent(tag)}`, {
     key: `blog:tag:${tag}`,
+    getCachedData: (key) => useNuxtData(key).data.value as BlogPostMeta[] | undefined,
   });
 }
 
 export function usePostsByCategory(category: string) {
   return useFetch<BlogPostMeta[]>(`${BASE}/categories/${encodeURIComponent(category)}`, {
     key: `blog:category:${category}`,
+    getCachedData: (key) => useNuxtData(key).data.value as BlogPostMeta[] | undefined,
   });
 }
