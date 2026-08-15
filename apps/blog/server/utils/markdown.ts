@@ -122,11 +122,53 @@ const QUOTE_RE = /^>\s?/;
 const UNORDERED_ITEM_RE = /^(\s*)[-*+]\s+(.*)$/;
 const ORDERED_ITEM_RE = /^(\s*)\d+[.)]\s+(.*)$/;
 
+/**
+ * 标题锚点 id 生成（TOC 与渲染共用同一规则，保证链接一致）：
+ * - 中文/字母/数字保留，其余（含空格）转 '-'；全符号降级为 'section'；
+ * - 同级重复时追加 -2 / -3 去重（按出现顺序）。
+ */
+const MAX_HEADING_ID_LEN = 64;
+
+export function headingIdOf(text: string, used: Map<string, number>): string {
+  const base = text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, MAX_HEADING_ID_LEN);
+  const safeBase = base === '' ? 'section' : base;
+  const n = used.get(safeBase) ?? 0;
+  used.set(safeBase, n + 1);
+  return n === 0 ? safeBase : `${safeBase}-${n + 1}`;
+}
+
+/** 从 Markdown 源码提取标题结构（TOC 用；与渲染器同一 id 规则）。 */
+export interface HeadingEntry {
+  id: string;
+  text: string;
+  level: number;
+}
+
+export function extractHeadings(source: string): HeadingEntry[] {
+  const used = new Map<string, number>();
+  const headings: HeadingEntry[] = [];
+  for (const line of source.replace(/\r\n/g, '\n').split('\n')) {
+    const m = HEADING_RE.exec(line);
+    if (m) {
+      // 与渲染器一致：渲染时整体降一级
+      const level = Math.min(6, m[1]!.length + 1);
+      headings.push({ id: headingIdOf(m[2]!, used), text: m[2]!.trim(), level });
+    }
+  }
+  return headings;
+}
+
 /** 将 Markdown 子集渲染为 HTML。 */
 export function renderMarkdown(source: string): string {
   const lines = source.replace(/\r\n/g, '\n').split('\n');
   const blocks: string[] = [];
   let paragraph: string[] = [];
+  const headingUsed = new Map<string, number>();
 
   const flushParagraph = () => {
     if (paragraph.length === 0) {
@@ -200,12 +242,15 @@ export function renderMarkdown(source: string): string {
       continue;
     }
 
-    // 标题（降一级：h1 -> h2 ... h6 -> h6）
+    // 标题（降一级：h1 -> h2 ... h6 -> h6；带锚点 id 供 TOC/跳转）
     const heading = HEADING_RE.exec(line);
     if (heading) {
       flushParagraph();
       const level = Math.min(6, heading[1]!.length + 1);
-      blocks.push(`<h${level}>${renderInline(escapeText(heading[2]!))}</h${level}>`);
+      const id = headingIdOf(heading[2]!, headingUsed);
+      blocks.push(
+        `<h${level} id="${escapeHtml(id)}">${renderInline(escapeText(heading[2]!))}</h${level}>`,
+      );
       i += 1;
       continue;
     }

@@ -16,7 +16,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import type { AdjacentPost, BlogPost, BlogPostMeta, PostGroupCount } from '../../types/post';
-import { estimateReadingMinutes, renderMarkdown } from './markdown';
+import { estimateReadingMinutes, extractHeadings, renderMarkdown } from './markdown';
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -37,6 +37,7 @@ interface RawMeta {
 interface ParsedPost {
   meta: BlogPostMeta;
   body: string;
+  headings: { id: string; text: string; level: number }[];
 }
 
 function parseScalar(value: string): string | boolean {
@@ -201,6 +202,7 @@ function parsePost(raw: string, file: string): ParsedPost {
       readingMinutes,
     },
     body: rendered,
+    headings: extractHeadings(body),
   };
 }
 
@@ -293,7 +295,7 @@ export function createPostsStore(contentDir: string, options: { dev?: boolean } 
       if (post.meta.draft && !isDev) {
         return null;
       }
-      return { ...post.meta, body: post.body };
+      return { ...post.meta, body: post.body, headings: post.headings };
     },
 
     listTags: () => {

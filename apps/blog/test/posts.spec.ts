@@ -85,7 +85,8 @@ describe('posts 数据访问层', () => {
     expect(post!.category).toBe('技术');
     expect(post!.updated).toBe('2026-03-03');
     expect(post!.readingMinutes).toBeGreaterThanOrEqual(1);
-    expect(post!.body).toContain('<h2>标题</h2>');
+    expect(post!.body).toContain('<h2 id="标题">标题</h2>');
+    expect(post!.headings).toEqual([{ id: '标题', text: '标题', level: 2 }]);
     expect(post!.body).toContain('<strong>加粗</strong>');
   });
 

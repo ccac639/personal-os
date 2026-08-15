@@ -1,11 +1,38 @@
 import { describe, expect, it } from 'vitest';
 
-import { escapeHtml, estimateReadingMinutes, renderMarkdown } from '../server/utils/markdown';
+import {
+  escapeHtml,
+  estimateReadingMinutes,
+  extractHeadings,
+  renderMarkdown,
+} from '../server/utils/markdown';
 
 describe('markdown 渲染器（子集）', () => {
-  it('标题降一级渲染', () => {
-    expect(renderMarkdown('# 一级\n\n## 二级')).toContain('<h2>一级</h2>');
-    expect(renderMarkdown('# 一级\n\n## 二级')).toContain('<h3>二级</h3>');
+  it('标题降一级渲染并带锚点 id', () => {
+    expect(renderMarkdown('# 一级\n\n## 二级')).toContain('<h2 id="一级">一级</h2>');
+    expect(renderMarkdown('# 一级\n\n## 二级')).toContain('<h3 id="二级">二级</h3>');
+  });
+
+  it('extractHeadings 提取标题结构（id 与渲染一致）', () => {
+    const src = '# 标题\n\n## 子标题\n\n## 标题\n\n### 嵌套';
+    const headings = extractHeadings(src);
+    expect(headings).toEqual([
+      { id: '标题', text: '标题', level: 2 },
+      { id: '子标题', text: '子标题', level: 3 },
+      { id: '标题-2', text: '标题', level: 3 },
+      { id: '嵌套', text: '嵌套', level: 4 },
+    ]);
+    // 与渲染 HTML 中的 id 一致
+    const html = renderMarkdown(src);
+    expect(html).toContain('<h2 id="标题">');
+    expect(html).toContain('<h3 id="标题-2">');
+  });
+
+  it('extractHeadings 处理符号/去重边界', () => {
+    expect(extractHeadings('## 你好，世界！')).toEqual([
+      { id: '你好-世界', text: '你好，世界！', level: 3 },
+    ]);
+    expect(extractHeadings('## !!!')).toEqual([{ id: 'section', text: '!!!', level: 3 }]);
   });
 
   it('段落与软换行', () => {

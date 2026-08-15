@@ -28,6 +28,8 @@ export interface BlogPostMeta {
 export interface BlogPost extends BlogPostMeta {
   /** 由 Markdown 渲染出的 HTML，服务端渲染，客户端不再处理。 */
   body: string;
+  /** 正文标题结构（TOC 用；与 body 内标题 id 同规则）。 */
+  headings?: { id: string; text: string; level: number }[];
 }
 
 /** 标签/分类聚合项。 */

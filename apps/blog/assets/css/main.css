@@ -70,6 +70,46 @@
   @apply bg-surface-900 text-surface-50 rounded-card my-4 overflow-x-auto p-4 text-sm leading-relaxed;
 }
 
+/*
+ * 代码高亮（零依赖 CSS 色板）：渲染器输出 <pre><code class="language-xx">，
+ * 这里用 CSS 变量 + 通用 token 色实现基础语法着色（关键字/字符串/注释/数字）。
+ * 明暗主题共用一套高对比色，深浅背景均保持可读。
+ */
+.prose-blog pre code {
+  @apply bg-transparent p-0 text-inherit;
+  --tok-keyword: #93c5fd;
+  --tok-string: #a5d6a7;
+  --tok-comment: #94a3b8;
+  --tok-number: #fcd34d;
+  --tok-func: #c4b5fd;
+}
+
+.prose-blog pre code .token-keyword,
+.prose-blog pre code .keyword {
+  color: var(--tok-keyword);
+}
+
+.prose-blog pre code .token-string,
+.prose-blog pre code .string {
+  color: var(--tok-string);
+}
+
+.prose-blog pre code .token-comment,
+.prose-blog pre code .comment {
+  color: var(--tok-comment);
+  font-style: italic;
+}
+
+.prose-blog pre code .token-number,
+.prose-blog pre code .number {
+  color: var(--tok-number);
+}
+
+.prose-blog pre code .token-function,
+.prose-blog pre code .function {
+  color: var(--tok-func);
+}
+
 .prose-blog code {
   @apply bg-surface-100 rounded px-1 py-0.5 text-[0.9em];
 }
